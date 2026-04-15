@@ -70,7 +70,6 @@ pub const CLASSES: ClassExports = objc_classes! {
     let bounds: CGRect = msg![env; screen bounds];
     let this: id = msg_super![env; this initWithFrame:bounds];
 
-    // Dark semi-transparent backdrop
     let bg_color: id = msg_class![env; UIColor colorWithWhite:0.0 alpha:0.6];
     let _: () = msg![env; this setBackgroundColor:bg_color];
 
@@ -95,10 +94,6 @@ pub const CLASSES: ClassExports = objc_classes! {
     if other_titles != nil {
         let _: () = msg![env; buttons addObject:other_titles];
     }
-
-    let title_str = if title != nil { ns_string::to_rust_string(env, title).into_owned() } else { "(nil)".into() };
-    let msg_str   = if message != nil { ns_string::to_rust_string(env, message).into_owned() } else { "(nil)".into() };
-    log!("UIAlertView init title={:?} message={:?}", title_str, msg_str);
     
     this
 }
@@ -184,10 +179,8 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (id)textFieldAtIndex:(NSInteger)_index { nil }
 
 - (())show {
-    log!("UIAlertView show (Custom UI)");
     env.objc.borrow_mut::<UIAlertViewHostObject>(this).visible = true;
 
-    // Ensure we cover the screen
     let screen: id = msg_class![env; UIScreen mainScreen];
     let bounds: CGRect = msg![env; screen bounds];
     let _: () = msg![env; this setFrame:bounds];
@@ -196,20 +189,18 @@ pub const CLASSES: ClassExports = objc_classes! {
     let window: id = msg![env; app keyWindow];
     if window != nil {
         let _: () = msg![env; window addSubview:this];
-    } else {
-        log!("Warning: No keyWindow found for UIAlertView");
     }
 
     let dialog_width: f32 = 280.0;
     let padding: f32 = 15.0;
 
-    let dialog_view: id = msg_class![env; UIView alloc];
-    let dialog_view: id = msg![env; dialog_view initWithFrame:CGRect {
+    let dialog_init_frame = CGRect {
         origin: CGPoint { x: 0.0, y: 0.0 },
         size: CGSize { width: dialog_width, height: 100.0 }
-    }];
+    };
+    let dialog_view: id = msg_class![env; UIView alloc];
+    let dialog_view: id = msg![env; dialog_view initWithFrame:dialog_init_frame];
 
-    // Dark gray background mimicking the screenshot style
     let dark_gray: id = msg_class![env; UIColor colorWithRed:0.2 green:0.2 blue:0.2 alpha:0.95];
     let _: () = msg![env; dialog_view setBackgroundColor:dark_gray];
 
@@ -221,10 +212,11 @@ pub const CLASSES: ClassExports = objc_classes! {
     let title = env.objc.borrow::<UIAlertViewHostObject>(this).title;
     if title != nil {
         let title_label: id = msg_class![env; UILabel new];
-        let _: () = msg![env; title_label setFrame:CGRect {
+        let title_frame = CGRect {
             origin: CGPoint { x: padding, y: current_y },
             size: CGSize { width: dialog_width - padding * 2.0, height: 24.0 }
-        }];
+        };
+        let _: () = msg![env; title_label setFrame:title_frame];
         let font: id = msg_class![env; UIFont boldSystemFontOfSize:18.0];
         let white: id = msg_class![env; UIColor whiteColor];
         let clear: id = msg_class![env; UIColor clearColor];
@@ -241,10 +233,11 @@ pub const CLASSES: ClassExports = objc_classes! {
     let message = env.objc.borrow::<UIAlertViewHostObject>(this).message;
     if message != nil {
         let msg_label: id = msg_class![env; UILabel new];
-        let _: () = msg![env; msg_label setFrame:CGRect {
+        let msg_frame = CGRect {
             origin: CGPoint { x: padding, y: current_y },
             size: CGSize { width: dialog_width - padding * 2.0, height: 60.0 }
-        }];
+        };
+        let _: () = msg![env; msg_label setFrame:msg_frame];
         let font: id = msg_class![env; UIFont systemFontOfSize:14.0];
         let white: id = msg_class![env; UIColor whiteColor];
         let clear: id = msg_class![env; UIColor clearColor];
@@ -263,8 +256,8 @@ pub const CLASSES: ClassExports = objc_classes! {
     let btn_count: NSUInteger = msg![env; buttons count];
 
     let actual_btn_count = if btn_count == 0 { 1 } else { btn_count };
-    let btn_height = 44.0;
-    let btn_spacing = 10.0;
+    let btn_height: f32 = 44.0;
+    let btn_spacing: f32 = 10.0;
 
     for i in 0..actual_btn_count {
         let btn_title = if btn_count == 0 {
@@ -273,12 +266,12 @@ pub const CLASSES: ClassExports = objc_classes! {
             msg![env; buttons objectAtIndex:i]
         };
 
-        // 1 = UIButtonTypeRoundedRect
         let btn: id = msg_class![env; UIButton buttonWithType:1];
-        let _: () = msg![env; btn setFrame:CGRect {
+        let btn_frame = CGRect {
             origin: CGPoint { x: padding, y: current_y },
             size: CGSize { width: dialog_width - padding * 2.0, height: btn_height }
-        }];
+        };
+        let _: () = msg![env; btn setFrame:btn_frame];
         let _: () = msg![env; btn setTitle:btn_title forState:0];
         let _: () = msg![env; btn setTag:(i as NSInteger)];
 
@@ -289,17 +282,18 @@ pub const CLASSES: ClassExports = objc_classes! {
         current_y += btn_height + btn_spacing;
     }
 
-    let dialog_height = current_y + padding; // Extra padding at bottom
-    let _: () = msg![env; dialog_view setFrame:CGRect {
+    let dialog_height = current_y + padding;
+    let final_dialog_frame = CGRect {
         origin: CGPoint {
             x: (bounds.size.width - dialog_width) / 2.0,
             y: (bounds.size.height - dialog_height) / 2.0,
         },
         size: CGSize { width: dialog_width, height: dialog_height }
-    }];
+    };
+    let _: () = msg![env; dialog_view setFrame:final_dialog_frame];
 
     let _: () = msg![env; this addSubview:dialog_view];
-    release(env, dialog_view); // Releasing as `addSubview:` retains it
+    release(env, dialog_view);
 }
 
 - (())_buttonClicked:(id)sender {
@@ -339,3 +333,4 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
+            
