@@ -539,6 +539,9 @@ fn sqlite3_column_count(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
 fn sqlite3_column_name(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
     arg1.min(arg2)
 }
+fn sqlite3_column_int64(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
+    arg1.min(arg2)
+}
 fn sqlite3_bind_parameter_index(_env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
     arg1.min(arg2)
 }
@@ -576,6 +579,13 @@ fn nan(env: &mut Environment, arg: ConstPtr<u8>) -> f32 {
 }
 
 fn hypot(env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
+    if arg1.is_infinite() {
+        return f64::INFINITY;
+    }
+    sqrt(env, arg1 * arg1 + arg2 * arg2)
+}
+
+fn hypotf(env: &mut Environment, arg1: f64, arg2: f64) -> f64 {
     if arg1.is_infinite() {
         return f64::INFINITY;
     }
@@ -703,6 +713,7 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(sqlite3_prepare(_, _)),
     export_c_func!(sqlite3_column_count(_, _)),
     export_c_func!(sqlite3_column_name(_, _)),
+    export_c_func!(sqlite3_column_int64(_, _)),
     export_c_func!(sqlite3_bind_parameter_index(_, _)),
     export_c_func!(_ZNSt3__112basic_stringIcNS_11char_traitsIcEENS_9allocatorIcEEE6__initEPKcm(_, _)),
     export_c_func!(_ZNSt6vectorIN8InputMgr7KeyDataESaIS1_EE7reserveEm(_, _)),
@@ -713,5 +724,6 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(rintf(_)),
     export_c_func!(nan(_)),
     export_c_func!(hypot(_, _)),
+    export_c_func!(hypotf(_, _)),
     export_c_func!(__fpclassifyf(_)),
 ];

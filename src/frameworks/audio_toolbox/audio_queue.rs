@@ -3,6 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
+
 //! `AudioQueue.h` (Audio Queue Services)
 //!
 //! The audio playback here is mapped onto OpenAL Soft for convenience.
@@ -25,7 +26,8 @@ use crate::frameworks::core_foundation::cf_run_loop::{
 };
 use crate::frameworks::foundation::ns_run_loop;
 use crate::frameworks::foundation::ns_string::get_static_str;
-use crate::mem::{guest_size_of, ConstPtr, GuestUSize, Mem, MutPtr, MutVoidPtr, Ptr, SafeRead};
+// ИСПРАВЛЕНИЕ: Добавлен ConstVoidPtr в импорт ниже
+use crate::mem::{guest_size_of, ConstPtr, ConstVoidPtr, GuestUSize, Mem, MutPtr, MutVoidPtr, Ptr, SafeRead};
 use crate::objc::msg;
 use crate::Environment;
 use std::collections::{HashMap, VecDeque};
@@ -34,10 +36,12 @@ use std::collections::{HashMap, VecDeque};
 pub struct State {
     audio_queues: HashMap<AudioQueueRef, AudioQueueHostObject>,
 }
+
 impl State {
     fn get(framework_state: &mut crate::frameworks::State) -> &mut Self {
         &mut framework_state.audio_toolbox.audio_queue
     }
+    
     fn get_with_context<'s, 'm: 's>(
         framework_state: &'s mut crate::frameworks::State,
         manager: &'m mut OpenALManager,
@@ -369,7 +373,6 @@ pub fn AudioQueueEnqueueBuffer(
     }
 
     host_object.buffer_queue.push_back(in_buffer);
-
     log_dbg!("New buffer enqueued: {:?}", in_buffer);
 
     0 // success
@@ -681,7 +684,6 @@ pub fn decode_buffer(
                 data_slice.to_owned()
             } else {
                 let actual_frame_count = data_slice.len() / actual_bytes_per_frame as usize;
-
                 let processed_frame_count = format.bytes_per_frame as usize * actual_frame_count;
                 let mut processed_data = Vec::<u8>::with_capacity(processed_frame_count);
 
@@ -724,9 +726,9 @@ pub fn decode_buffer(
                 (2, 16) => al::AL_FORMAT_STEREO16,
                 (2, 32) => {
                     // assert!((format.format_flags & kAudioFormatFlagIsSignedInteger) != 0);
-
                     // assert!(processed_data.len().is_multiple_of(4));
-                    let new_size = (processed_data.len() / 4) * 2; // size from 32-bit to 16-bit
+                    let new_size = (processed_data.len() / 4) * 2;
+                    // size from 32-bit to 16-bit
                     let mut new_processed_data = Vec::<u8>::with_capacity(new_size);
 
                     for chunk in processed_data.chunks(4) {
@@ -843,7 +845,6 @@ fn prime_audio_queue(env: &mut Environment, in_aq: AudioQueueRef) {
 fn unqueue_buffers<F: FnMut(ALuint)>(al_source: ALuint, context: &OpenAL<'_>, mut callback: F) {
     loop {
         let mut al_buffers_processed = 0;
-
         unsafe {
             context.GetSourcei(
                 al_source,
@@ -930,14 +931,13 @@ pub fn handle_audio_queue(env: &mut Environment, in_aq: AudioQueueRef) {
     if is_running != AudioQueueIsRunning::Stopped {
         unsafe {
             let mut al_source_state = 0;
-
             context.GetSourcei(al_source, al::AL_SOURCE_STATE, &mut al_source_state);
             assert!(context.GetError() == 0);
             // Source probably ran out data and needs restarting
             // TODO: We currently have to do this even when touchHLE is not
             // lagging, because we're not ensuring OpenAL always has at least
-            // one buffer it hasn't processed yet. We need to change our queue
-            // handling.
+            // one buffer it hasn't processed yet.
+            // We need to change our queue handling.
             if al_source_state == al::AL_STOPPED {
                 context.SourcePlay(al_source);
                 log_dbg!("Restarted OpenAL source for queue {:?}", in_aq);
@@ -960,7 +960,6 @@ pub fn handle_audio_queue(env: &mut Environment, in_aq: AudioQueueRef) {
                 "OpenAL source stopped for queue {:?}, completing asynchronous stop.",
                 in_aq
             );
-
             finish_stopping_audio_queue(env, in_aq);
         }
     }
@@ -968,7 +967,6 @@ pub fn handle_audio_queue(env: &mut Environment, in_aq: AudioQueueRef) {
     let state = State::get(&mut env.framework_state);
 
     let host_object = state.audio_queues.get_mut(&in_aq).unwrap();
-
     host_object.is_running_handler = false;
 }
 
@@ -979,17 +977,17 @@ fn AudioQueuePrime(
     out_number_of_frames_prepared: MutPtr<u32>,
 ) -> OSStatus {
     return_if_null!(in_aq);
-    
+
     // Сначала подготавливаем аудио-очередь (декодируем и отправляем в OpenAL)
     prime_audio_queue(env, in_aq);
-    
+
     // Если игра запрашивает количество подготовленных фреймов
     if !out_number_of_frames_prepared.is_null() {
         let host_object = State::get(&mut env.framework_state)
             .audio_queues
             .get(&in_aq)
             .unwrap();
-            
+
         let mut prepared_frames = 0;
         let format = &host_object.format;
         
@@ -1056,23 +1054,19 @@ pub fn AudioQueueStart(
 
     if is_supported_audio_format(&host_object.format) {
         host_object.is_running = AudioQueueIsRunning::Running;
-
         let al_source = host_object.al_source.unwrap();
         unsafe { context.SourcePlay(al_source) };
         assert!(unsafe { context.GetError() } == 0);
-
     } else {
         // For unsupported formats (e.g. AAC used by PvZ for music),
         // leave the queue Stopped and do NOT fire the is_running
         // callback. Firing it would cause the app to launch an audio
         // decode thread that subsequently crashes in the virtual
         // filesystem (stat() on a directory node).
-
         log!(
             "AudioQueueStart: Unsupported format {:?}, not starting",
             host_object.format
         );
-
         return 0;
     }
 
@@ -1088,7 +1082,6 @@ pub fn AudioQueuePause(env: &mut Environment, in_aq: AudioQueueRef) -> OSStatus 
         State::get_with_context(&mut env.framework_state, &mut env.openal_manager);
 
     let host_object = state.audio_queues.get_mut(&in_aq).unwrap();
-
     // FIXME: is this correct? is it notifiable?
     host_object.is_running = AudioQueueIsRunning::Stopped;
 
@@ -1104,7 +1097,6 @@ fn finish_stopping_audio_queue(env: &mut Environment, in_aq: AudioQueueRef) {
     // OpenAL stop is not done here because it would be redundant in the case
     // of an asynchronous stop, where the audio queue stopping is triggered by
     // the OpenAL queue stopping.
-
     AudioQueueReset(env, in_aq);
     State::get(&mut env.framework_state)
         .audio_queues
@@ -1137,7 +1129,6 @@ pub fn AudioQueueStop(env: &mut Environment, in_aq: AudioQueueRef, in_immediate:
         let host_object = state.audio_queues.get_mut(&in_aq).unwrap();
         if host_object.is_running != AudioQueueIsRunning::Stopped {
             log_dbg!("Starting asynchronous AudioQueueStop for {:?}.", in_aq);
-
             host_object.is_running = AudioQueueIsRunning::Stopping;
         } else {
             log_dbg!(
@@ -1163,14 +1154,12 @@ fn AudioQueueReset(env: &mut Environment, in_aq: AudioQueueRef) -> OSStatus {
     if let Some(al_source) = host_object.al_source {
         unsafe {
             let mut al_source_state = 0;
-
             context.GetSourcei(al_source, al::AL_SOURCE_STATE, &mut al_source_state);
             assert!(context.GetError() == 0);
             if al_source_state != al::AL_STOPPED {
                 // If the source is not already stopped, it must be stopped in
                 // order to be able to clear its buffer queue. Note that the
                 // audio queue may still be considered "running".
-
                 context.SourceStop(al_source);
                 assert!(context.GetError() == 0);
             }
@@ -1189,7 +1178,6 @@ fn AudioQueueReset(env: &mut Environment, in_aq: AudioQueueRef) -> OSStatus {
 
 fn AudioQueueFlush(_env: &mut Environment, in_aq: AudioQueueRef) -> OSStatus {
     return_if_null!(in_aq);
-
     // TODO
     0 // success
 }
@@ -1212,7 +1200,6 @@ fn AudioQueueFreeBuffer(
 
     if let Some(index) = host_object.buffers.iter().position(|x| x == &in_buffer) {
         host_object.buffers.remove(index);
-
         log_dbg!("Freeing buffer: {:?}", in_buffer);
 
         let buffer = env.mem.read(in_buffer);
@@ -1360,4 +1347,3 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(AudioQueueDispose(_, _)),
     export_c_func!(AudioQueueNewInput(_, _, _, _, _, _, _)),
 ];
-

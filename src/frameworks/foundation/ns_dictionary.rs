@@ -22,7 +22,7 @@ use crate::frameworks::foundation::ns_file_manager::{
 use crate::fs::GuestPath;
 use crate::mem::{ConstPtr, MutPtr, Ptr, SafeRead};
 use crate::objc::{
-    autorelease, id, msg, msg_class, nil, objc_classes, release, retain, Class, ClassExports,
+    autorelease, id, msg, msg_class, nil, objc_classes, release, retain, todo_objc_setter, Class, ClassExports,
     HostObject, NSZonePtr,
 };
 use crate::{impl_HostObject_with_superclass, Environment};
@@ -734,6 +734,10 @@ pub const CLASSES: ClassExports = objc_classes! {
     env.objc.dealloc_object(this, &mut env.mem)
 }
 
+- (())setDictionary:(id)dict {
+    todo_objc_setter!(this, dict);
+}
+    
 - (id)initWithObjectsAndKeys:(id)first_object, ...dots {
     init_with_objects_and_keys(env, this, first_object, dots.start())
 }

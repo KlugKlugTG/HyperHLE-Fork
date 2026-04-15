@@ -1,6 +1,7 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 [workspace]
 
 [workspace.package]
@@ -38,6 +39,7 @@ cmake = "0.1.49"
 gl_generator = "0.14.0"
 
 [dependencies]
+caf = "0.1.0" # ИСПРАВЛЕНИЕ: Добавлен недостающий крейт
 hound = "3.5.0"
 mach_object = "0.1.17"
 plist = "1.8.0"
@@ -61,8 +63,7 @@ sha1 = "0.10.6"
 yore = "1.1.0"
 encoding_rs = "0.8.35"
 # We currently use a fork of rust-sdl2 because we need a fix for Android builds
-# that's not upstream yet.
-# The HIDAPI feature is enabled because rust-sdl2 hides the SDL2 sensor features
+# that's not upstream yet. The HIDAPI feature is enabled because rust-sdl2 hides the SDL2 sensor features
 # behind this, but the actual HIDAPI is not used by touchHLE (see window.rs).
 # Note that the submodule in vendor/SDL2/ must use exactly the same revision of
 # SDL2 that rust-sdl2 uses, so that the Android JNI interface matches.

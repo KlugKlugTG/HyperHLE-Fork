@@ -236,6 +236,11 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (())setShadowColor:(id)color { // UIColor*
     todo_objc_setter!(this, color);
 }
+
+- (())setBaselineAdjustment:(id)adj {
+    todo_objc_setter!(this, adj);
+}
+    
 - (())setShadowOffset:(CGSize)value {
     todo_objc_setter!(this, value);
 }
