@@ -1059,15 +1059,18 @@ pub fn objc_autoreleasePoolPush(env: &mut crate::Environment, name: ConstPtr<u8>
     nil
 }
 
-pub fn objc_autoreleasePoolPop(env: &mut crate::Environment, context: MutVoidPtr) {
+pub fn objc_autoreleasePoolPop(_env: &mut crate::Environment, context: MutVoidPtr) {
     if context.is_null() {
         return;
     }
-    
-    // Честная реализация: передаём контекст пула во внутренний механизм TouchHLE.
-    // Это заставит эмулятор пройтись по всем объектам в этом пуле 
-    // и честно вызвать для каждого crate::objc::release(env, obj).
-    crate::objc::autorelease_pool_pop(env, context);
+    // TODO: implement proper draining via NSAutoreleasePool.
+    // For now we keep this as a stub so apps that link against the ARC helpers
+    // (e.g. Mono/Unity titles) don't fail to load, matching the existing
+    // behaviour of `objc_autoreleasePoolPush`.
+    log_dbg!(
+        "TODO: objc_autoreleasePoolPop({:?}) is a stub",
+        context
+    );
 }
                                 
 pub fn objc_setProperty_nonatomic(env: &mut crate::Environment, name: ConstPtr<u8>) -> Class {
