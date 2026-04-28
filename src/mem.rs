@@ -696,11 +696,41 @@ impl Mem {
             len += 1;
         }
 
+        // wchar_t in Apple's iOS ABI is a signed 32-bit integer holding a
+        // single Unicode scalar value (one wchar_t per code point, *not*
+        // UTF-16 code units).  Invalid scalar values (e.g. unpaired
+        // surrogates, values above U+10FFFF) shouldn't crash the emulator —
+        // substitute the Unicode replacement character instead, matching the
+        // behaviour of the %C handler in printf_inner.
         let iter = self
             .bytes_at(ptr.cast(), len * guest_size_of::<wchar_t>())
             .chunks(4)
-            .map(|chunk| char::from_u32(u32::from_le_bytes(chunk.try_into().unwrap())).unwrap());
+            .map(|chunk| {
+                let code = u32::from_le_bytes(chunk.try_into().unwrap());
+                char::from_u32(code).unwrap_or('\u{FFFD}')
+            });
         String::from_iter(iter)
+    }
+
+    /// Read a null-terminated UTF-16 (`unichar`) string from guest memory.
+    ///
+    /// This corresponds to `const unichar *` arguments in Apple's
+    /// `NSString`/`CFString` formatting (e.g. the `%S` and `%@` specifiers
+    /// when formatting an `NSString *` whose backing store is UTF-16).
+    /// Surrogate pairs are decoded into the corresponding scalar value;
+    /// unpaired surrogates are replaced with U+FFFD rather than panicking.
+    pub fn unichar_str_at<const MUT: bool>(
+        &self,
+        ptr: Ptr<crate::frameworks::foundation::unichar, MUT>,
+    ) -> String {
+        let mut len: GuestUSize = 0;
+        while self.read(ptr + len) != 0 {
+            len += 1;
+        }
+        let units: Vec<u16> = (0..len).map(|i| self.read(ptr + i)).collect();
+        char::decode_utf16(units.into_iter())
+            .map(|r| r.unwrap_or('\u{FFFD}'))
+            .collect()
     }
 
     /// Permanently mark a region of address space as being unusable to the

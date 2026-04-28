@@ -273,13 +273,28 @@ pub fn printf_inner<const NS_LOG: bool, F: Fn(&Mem, GuestUSize) -> u8>(
                 // TODO: support other locales
                 let ctype_locale = setlocale(env, LC_CTYPE, Ptr::null());
                 assert_eq!(env.mem.read(ctype_locale), b'C');
-                let w_string: ConstPtr<wchar_t> = args.next(env);
                 assert!(pad_char == ' ' && pad_width == 0);
-                // TODO
-                if !w_string.is_null() {
-                    res.extend_from_slice(env.mem.wcstr_at(w_string).as_bytes());
+                // Per Apple's "String Format Specifiers" docs, in the
+                // NSString/CFString family `%S` is `const unichar *` (a
+                // null-terminated array of UTF-16 code units), while in libc
+                // `printf` it is `const wchar_t *` (UTF-32 on Apple, since
+                // wchar_t is a 32-bit `int`).  Read accordingly so we don't
+                // misinterpret a UTF-16 string as UTF-32 and crash on the
+                // first non-zero high half.
+                if NS_LOG {
+                    let w_string: ConstPtr<unichar> = args.next(env);
+                    if !w_string.is_null() {
+                        res.extend_from_slice(env.mem.unichar_str_at(w_string).as_bytes());
+                    } else {
+                        res.extend_from_slice("(null)".as_bytes());
+                    }
                 } else {
-                    res.extend_from_slice("(null)".as_bytes());
+                    let w_string: ConstPtr<wchar_t> = args.next(env);
+                    if !w_string.is_null() {
+                        res.extend_from_slice(env.mem.wcstr_at(w_string).as_bytes());
+                    } else {
+                        res.extend_from_slice("(null)".as_bytes());
+                    }
                 }
             }
             b'd' | b'i' => {
