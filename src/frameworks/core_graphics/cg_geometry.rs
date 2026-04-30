@@ -531,17 +531,20 @@ fn CGRectUnion(_env: &mut Environment, r1: CGRect, r2: CGRect) -> CGRect {
 /// `amount` units are taken from the edge indicated by `edge` (CGRectEdge).
 /// CGRectEdge: 0=MinX, 1=MinY, 2=MaxX, 3=MaxY
 fn CGRectDivide(
-    _env: &mut Environment,
+    env: &mut Environment,
     rect: CGRect,
     slice_out: crate::mem::MutPtr<CGRect>,
     remainder_out: crate::mem::MutPtr<CGRect>,
     amount: CGFloat,
     edge: u32,
-    env_inner: &mut Environment,
 ) {
     let (slice, remainder) = rect_divide(rect, amount, edge);
-    env_inner.mem.write(slice_out, slice);
-    env_inner.mem.write(remainder_out, remainder);
+    if !slice_out.is_null() {
+        env.mem.write(slice_out, slice);
+    }
+    if !remainder_out.is_null() {
+        env.mem.write(remainder_out, remainder);
+    }
 }
 
 fn rect_divide(rect: CGRect, amount: CGFloat, edge: u32) -> (CGRect, CGRect) {
@@ -676,6 +679,7 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CGRectUnion(_, _)),
     export_c_func!(CGRectStandardize(_)),
     export_c_func!(CGRectIntegral(_)),
+    export_c_func!(CGRectDivide(_, _, _, _, _)),
     // CGVector
     export_c_func!(CGVectorMake(_, _)),
     export_c_func!(CGPointCreateDictionaryRepresentation(_)),
