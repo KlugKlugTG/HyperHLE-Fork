@@ -7,23 +7,29 @@
 
 use crate::frameworks::core_graphics::{CGRect, CGSize};
 use crate::frameworks::foundation::NSInteger;
+use crate::frameworks::uikit::ui_view;
 use crate::objc::{
-    id, msg, msg_class, msg_super, nil, objc_classes, release, retain, ClassExports, HostObject, NSZonePtr,
+    id, impl_HostObject_with_superclass, msg, msg_class, msg_super, nil, objc_classes, release,
+    retain, ClassExports, HostObject, NSZonePtr,
 };
 
 type UIBarStyle = NSInteger;
-const UIBarStyleDefault:      UIBarStyle = 0;
-const UIBarStyleBlack:        UIBarStyle = 1;
-const UIBarStyleBlackOpaque:  UIBarStyle = 2;
+const UIBarStyleDefault: UIBarStyle = 0;
+const UIBarStyleBlack: UIBarStyle = 1;
+const UIBarStyleBlackOpaque: UIBarStyle = 2;
 const UIBarStyleBlackTranslucent: UIBarStyle = 3;
 
 struct UINavigationBarHostObject {
+    /// `UIView` storage. UINavigationBar is documented as a UIView subclass,
+    /// so all inherited UIView accessors must operate on this state via
+    /// `as_superclass`.
+    superclass: ui_view::UIViewHostObject,
     /// UINavigationBarDelegate — weak reference
     delegate: id,
     bar_style: UIBarStyle,
     translucent: bool,
-    tint_color: id,       // UIColor* — retained
-    bar_tint_color: id,   // UIColor* — retained
+    tint_color: id,            // UIColor* — retained
+    bar_tint_color: id,        // UIColor* — retained
     title_text_attributes: id, // NSDictionary* — retained
     /// NSMutableArray* of UINavigationItem* — retained
     items: id,
@@ -32,19 +38,19 @@ struct UINavigationBarHostObject {
     /// UIImage* background — retained
     background_image: id,
 }
-impl HostObject for UINavigationBarHostObject {}
+impl_HostObject_with_superclass!(UINavigationBarHostObject);
 
 // MARK: - UINavigationItem
 
 struct UINavigationItemHostObject {
-    title: id,            // NSString* — retained
-    title_view: id,       // UIView* — retained
-    prompt: id,           // NSString* — retained
-    back_button: id,      // UIBarButtonItem* — retained
-    left_button: id,      // UIBarButtonItem* — retained
-    right_button: id,     // UIBarButtonItem* — retained
-    left_items: id,       // NSArray* — retained
-    right_items: id,      // NSArray* — retained
+    title: id,        // NSString* — retained
+    title_view: id,   // UIView* — retained
+    prompt: id,       // NSString* — retained
+    back_button: id,  // UIBarButtonItem* — retained
+    left_button: id,  // UIBarButtonItem* — retained
+    right_button: id, // UIBarButtonItem* — retained
+    left_items: id,   // NSArray* — retained
+    right_items: id,  // NSArray* — retained
     hides_back_button: bool,
     left_items_supplemented: bool,
 }
@@ -59,6 +65,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 + (id)allocWithZone:(NSZonePtr)_zone {
     let items = msg_class![env; NSMutableArray new];
     let host_object = Box::new(UINavigationBarHostObject {
+        superclass: ui_view::UIViewHostObject::default(),
         delegate: nil,
         bar_style: UIBarStyleDefault,
         translucent: true,

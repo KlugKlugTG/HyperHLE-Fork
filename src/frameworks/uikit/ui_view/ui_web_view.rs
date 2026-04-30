@@ -9,28 +9,36 @@
 use crate::frameworks::core_graphics::CGRect;
 use crate::frameworks::foundation::ns_string::{self, to_rust_string};
 use crate::frameworks::foundation::NSUInteger;
-use crate::objc::{id, msg, msg_class, nil, objc_classes, release, retain, ClassExports, HostObject, NSZonePtr};
+use crate::objc::{
+    id, impl_HostObject_with_superclass, msg, msg_class, nil, objc_classes, release, retain,
+    ClassExports, NSZonePtr,
+};
 use std::borrow::Cow;
 
 // UIWebViewNavigationType constants
 pub type UIWebViewNavigationType = i32;
-pub const UIWebViewNavigationTypeLinkClicked:    UIWebViewNavigationType = 0;
-pub const UIWebViewNavigationTypeFormSubmitted:  UIWebViewNavigationType = 1;
-pub const UIWebViewNavigationTypeBackForward:    UIWebViewNavigationType = 2;
-pub const UIWebViewNavigationTypeReload:         UIWebViewNavigationType = 3;
-pub const UIWebViewNavigationTypeFormResubmitted:UIWebViewNavigationType = 4;
-pub const UIWebViewNavigationTypeOther:          UIWebViewNavigationType = 5;
+pub const UIWebViewNavigationTypeLinkClicked: UIWebViewNavigationType = 0;
+pub const UIWebViewNavigationTypeFormSubmitted: UIWebViewNavigationType = 1;
+pub const UIWebViewNavigationTypeBackForward: UIWebViewNavigationType = 2;
+pub const UIWebViewNavigationTypeReload: UIWebViewNavigationType = 3;
+pub const UIWebViewNavigationTypeFormResubmitted: UIWebViewNavigationType = 4;
+pub const UIWebViewNavigationTypeOther: UIWebViewNavigationType = 5;
 
 // UIDataDetectorTypes bitmask
 pub type UIDataDetectorTypes = NSUInteger;
-pub const UIDataDetectorTypePhoneNumber:  UIDataDetectorTypes = 1 << 0;
-pub const UIDataDetectorTypeLink:         UIDataDetectorTypes = 1 << 1;
-pub const UIDataDetectorTypeAddress:      UIDataDetectorTypes = 1 << 2;
-pub const UIDataDetectorTypeCalendarEvent:UIDataDetectorTypes = 1 << 3;
-pub const UIDataDetectorTypeNone:         UIDataDetectorTypes = 0;
-pub const UIDataDetectorTypeAll:          UIDataDetectorTypes = u32::MAX as UIDataDetectorTypes;
+pub const UIDataDetectorTypePhoneNumber: UIDataDetectorTypes = 1 << 0;
+pub const UIDataDetectorTypeLink: UIDataDetectorTypes = 1 << 1;
+pub const UIDataDetectorTypeAddress: UIDataDetectorTypes = 1 << 2;
+pub const UIDataDetectorTypeCalendarEvent: UIDataDetectorTypes = 1 << 3;
+pub const UIDataDetectorTypeNone: UIDataDetectorTypes = 0;
+pub const UIDataDetectorTypeAll: UIDataDetectorTypes = u32::MAX as UIDataDetectorTypes;
 
 struct UIWebViewHostObject {
+    /// `UIView` storage. UIWebView is documented as a UIView subclass, so
+    /// all inherited UIView accessors (`frame`, `bounds`, `subviews`,
+    /// `hidden`, `alpha`, `transform`, …) must operate on this state via
+    /// `as_superclass`.
+    superclass: super::UIViewHostObject,
     /// UIWebViewDelegate — weak reference (no retain per Apple docs)
     delegate: id,
     scales_page_to_fit: bool,
@@ -47,13 +55,13 @@ struct UIWebViewHostObject {
     gap_between_pages: f64,
     /// NSString* — last URL string passed to loadRequest:
     current_url: id,
-   
+
     loading: bool,
     /// Simple back/forward stack — NSString* items.
     back_stack: Vec<id>,
     forward_stack: Vec<id>,
 }
-impl HostObject for UIWebViewHostObject {}
+impl_HostObject_with_superclass!(UIWebViewHostObject);
 
 pub const CLASSES: ClassExports = objc_classes! {
 
@@ -67,6 +75,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 + (id)allocWithZone:(NSZonePtr)_zone {
     let host_object = Box::new(UIWebViewHostObject {
+        superclass: super::UIViewHostObject::default(),
         delegate: nil,
         scales_page_to_fit: false,
         detects_phone_numbers: true,
@@ -76,7 +85,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         media_playback_allows_air_play: true,
         suppress_incremental_rendering: false,
         keyboard_display_requires_user_action: true,
-  
+
         pagination_mode: 0,
         pagination_breaking_mode: 0,
         page_length: 0.0,
@@ -254,11 +263,11 @@ pub const CLASSES: ClassExports = objc_classes! {
     let current = env.objc.borrow::<UIWebViewHostObject>(this).current_url;
     if current == nil { return; }
     retain(env, current);
-    
+
     // Вынесено в отдельную переменную для предотвращения ошибки E0283
     let url: id = msg_class![env; NSURL URLWithString:current];
     let ns_req: id = msg_class![env; NSURLRequest requestWithURL:url];
-    
+
     let _: () = msg![env; this loadRequest:ns_req];
     release(env, current);
 }
@@ -503,4 +512,3 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
-

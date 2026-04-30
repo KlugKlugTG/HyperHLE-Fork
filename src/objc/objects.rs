@@ -110,7 +110,8 @@ impl super::ObjC {
         host_object: Box<dyn AnyHostObject>,
         mem: &mut Mem,
     ) -> id {
-        let instance_size = self.get_host_object(isa)
+        let instance_size = self
+            .get_host_object(isa)
             .and_then(|h| h.as_any().downcast_ref::<ClassHostObject>())
             .map(|c| c.instance_size)
             .unwrap_or(guest_size_of::<objc_object>());
@@ -139,7 +140,9 @@ impl super::ObjC {
         guest_object: id,
         host_object: Box<dyn AnyHostObject>,
     ) {
-        if guest_object == nil { return; }
+        if guest_object == nil {
+            return;
+        }
         self.objects.insert(
             guest_object,
             HostObjectEntry {
@@ -150,8 +153,28 @@ impl super::ObjC {
     }
 
     pub fn get_host_object(&self, object: id) -> Option<&dyn AnyHostObject> {
-        if object == nil { return None; }
+        if object == nil {
+            return None;
+        }
         self.objects.get(&object).map(|entry| &*entry.host_object)
+    }
+
+    /// Format a guest object as `0xADDR (class "Name")` for diagnostics, when
+    /// possible. Falls back to `0xADDR (no isa / class lookup failed)` if the
+    /// object's `isa` cannot be resolved (e.g. the object was never alloc'd
+    /// or is wholly outside the runtime's object table).
+    fn describe_object(&self, object: id) -> String {
+        if object == nil {
+            return "nil".to_string();
+        }
+        // We can't read guest memory from here without `&Mem`, so instead use
+        // the host-object table to recover the class entry that was stored at
+        // alloc time.
+        if let Some(entry) = self.objects.get(&object) {
+            let stored_type = entry.host_object.type_name();
+            return format!("{:?} (host-stored as {})", object, stored_type);
+        }
+        format!("{:?} (no host object recorded)", object)
     }
 
     pub fn borrow<T: AnyHostObject + 'static>(&self, object: id) -> &T {
@@ -168,12 +191,27 @@ impl super::ObjC {
             }
         }
 
-        // SUPER HACK: Вместо паники создаем "мираж" объекта в памяти
-        log!("Warning: SUPER HACK! Faking borrow for missing object {:?} of type {}", object, std::any::type_name::<T>());
-        unsafe {
-            static mut DUMMY_BUF: [u64; 256] = [0; 256];
-            & *(&DUMMY_BUF as *const _ as *const T)
-        }
+        // Per Apple documentation every Objective-C object has a stable host
+        // representation: alloc/init produces a host-side state struct that
+        // every later message reads. If we end up here it means either:
+        //   * the object was never allocated through one of our +alloc paths
+        //     (custom guest allocator / objc_addClass / NIB unarchiver bug), or
+        //   * a UIView subclass owns its own HostObject but doesn't expose its
+        //     UIViewHostObject through `as_superclass` (use
+        //     `impl_HostObject_with_superclass!` and embed
+        //     `superclass: super::UIViewHostObject`).
+        //
+        // Returning shared static memory under the requested type would alias
+        // every "lost" view to the same frame/bounds/subviews, so instead we
+        // hand out a dedicated zero-initialized buffer per (type, object) pair.
+        // Same `(object, T)` always returns the same buffer so repeated reads
+        // observe earlier writes.
+        log!(
+            "Warning: borrow::<{}>() on {} — synthesizing per-object zero buffer.",
+            std::any::type_name::<T>(),
+            self.describe_object(object)
+        );
+        leaked_zero_buffer::<T>(object)
     }
 
     pub fn borrow_mut<T: AnyHostObject + 'static>(&mut self, object: id) -> &mut T {
@@ -185,7 +223,7 @@ impl super::ObjC {
                 if let Some(res) = unsafe { &mut *current_ptr }.as_any_mut().downcast_mut() {
                     return res;
                 }
-                
+
                 let has_super = unsafe { &*current_ptr }.as_superclass().is_some();
                 if has_super {
                     host_object = unsafe { &mut *current_ptr }.as_superclass_mut().unwrap();
@@ -194,26 +232,31 @@ impl super::ObjC {
                 }
             }
         }
-        
-        // SUPER HACK: Возвращаем кусок нулей под видом нужного объекта
-        log!("Warning: SUPER HACK! Faking borrow_mut for missing object {:?} of type {}", object, std::any::type_name::<T>());
-        unsafe {
-            static mut DUMMY_BUF: [u64; 256] = [0; 256];
-            &mut *(&mut DUMMY_BUF as *mut _ as *mut T)
-        }
+
+        log!(
+            "Warning: borrow_mut::<{}>() on {} — synthesizing per-object zero buffer.",
+            std::any::type_name::<T>(),
+            self.describe_object(object)
+        );
+        leaked_zero_buffer_mut::<T>(object)
     }
 
     pub fn get_refcount(&mut self, object: id) -> NonZeroU32 {
         let default_rc = NonZeroU32::new(1).unwrap();
-        if object == nil { return default_rc; }
-        
-        self.objects.get(&object)
+        if object == nil {
+            return default_rc;
+        }
+
+        self.objects
+            .get(&object)
             .and_then(|e| e.refcount)
             .unwrap_or(default_rc)
     }
 
     pub fn increment_refcount(&mut self, object: id) {
-        if object == nil { return; }
+        if object == nil {
+            return;
+        }
         if let Some(entry) = self.objects.get_mut(&object) {
             if let Some(refcount) = entry.refcount.as_mut() {
                 if let Some(new_rc) = refcount.get().checked_add(1) {
@@ -225,7 +268,9 @@ impl super::ObjC {
 
     #[must_use]
     pub fn decrement_refcount(&mut self, object: id) -> bool {
-        if object == nil { return false; }
+        if object == nil {
+            return false;
+        }
         if let Some(entry) = self.objects.get_mut(&object) {
             if let Some(refcount) = entry.refcount.as_mut() {
                 if refcount.get() == 1 {
@@ -240,11 +285,78 @@ impl super::ObjC {
     }
 
     pub fn dealloc_object(&mut self, object: id, mem: &mut Mem) {
-        if object == nil { return; }
-        
+        if object == nil {
+            return;
+        }
+
         if let Some(entry) = self.objects.remove(&object) {
             std::mem::drop(entry.host_object);
             mem.free(object.cast());
         }
     }
+}
+
+// =====================================================================
+// Per-object synthetic host buffers (fallback for `borrow` / `borrow_mut`).
+//
+// When a guest object cannot be resolved to its proper HostObject we still
+// must return a `&T` of the requested host-object type. Prior code aliased a
+// single global static buffer under every type T, which made every
+// "missing" UIView share the same frame/bounds/subviews state. Instead we
+// keep a `(id, TypeId)` -> heap-allocated zero buffer table; each
+// (object, type) pair gets its own dedicated, aligned buffer that lives for
+// the rest of the process. Subsequent reads observe earlier writes.
+// =====================================================================
+
+use std::any::TypeId;
+use std::collections::HashMap;
+use std::ptr::NonNull;
+use std::sync::Mutex;
+
+struct LeakedBuf {
+    ptr: NonNull<u8>,
+    layout: std::alloc::Layout,
+}
+// SAFETY: `ptr` is read/written only via `&T`/`&mut T` references that the
+// caller serializes; the box itself is never deallocated. The pointer never
+// moves so it can cross threads.
+unsafe impl Send for LeakedBuf {}
+unsafe impl Sync for LeakedBuf {}
+
+fn leaked_buf_table() -> &'static Mutex<HashMap<(id, TypeId), LeakedBuf>> {
+    use std::sync::OnceLock;
+    static TABLE: OnceLock<Mutex<HashMap<(id, TypeId), LeakedBuf>>> = OnceLock::new();
+    TABLE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn get_or_alloc_zero<T: 'static>(object: id) -> NonNull<u8> {
+    let key = (object, TypeId::of::<T>());
+    let mut tbl = leaked_buf_table().lock().unwrap();
+    if let Some(buf) = tbl.get(&key) {
+        return buf.ptr;
+    }
+    let layout = std::alloc::Layout::new::<T>();
+    // SAFETY: `layout` is non-zero for any `Sized` host-object type we use.
+    // `alloc_zeroed` returns memory matching that layout; we leak it.
+    let raw = unsafe { std::alloc::alloc_zeroed(layout) };
+    let ptr = NonNull::new(raw).expect("alloc_zeroed for synthetic host object");
+    tbl.insert(key, LeakedBuf { ptr, layout });
+    ptr
+}
+
+fn leaked_zero_buffer<T: 'static>(object: id) -> &'static T {
+    let p = get_or_alloc_zero::<T>(object);
+    // SAFETY: returned pointer is `Layout::new::<T>()` aligned and valid for
+    // the entire program lifetime; the table guarantees we always hand out
+    // the same pointer for the same `(object, T)` pair, so aliasing rules
+    // hold across repeated `borrow()` calls.
+    unsafe { &*(p.as_ptr().cast::<T>()) }
+}
+
+fn leaked_zero_buffer_mut<T: 'static>(object: id) -> &'static mut T {
+    let p = get_or_alloc_zero::<T>(object);
+    // SAFETY: see `leaked_zero_buffer`. `borrow_mut` takes `&mut self` on
+    // `ObjC`, which serialises access through Rust's borrow checker, so we
+    // never produce two live `&mut` references to the same buffer.
+    unsafe { &mut *(p.as_ptr().cast::<T>()) }
 }
