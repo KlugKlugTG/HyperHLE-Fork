@@ -17,6 +17,8 @@
 #include "dynarmic/interface/A32/config.h"
 #include "dynarmic/interface/A32/coprocessor.h"
 #include "dynarmic/interface/exclusive_monitor.h"
+#include "dynarmic/interface/A64/a64.h"
+#include "dynarmic/interface/A64/config.h"
 
 namespace touchHLE::cpu {
 
@@ -382,3 +384,180 @@ std::int32_t touchHLE_DynarmicWrapper_run_or_step(DynarmicWrapper *cpu,
 }
 
 } // namespace touchHLE::cpu
+
+// ==========================================================
+// 🏎️ 64-BIT (AArch64) ENVIRONMENT & CALLBACKS
+// ==========================================================
+class EnvironmentA64 final : public Dynarmic::A64::UserCallbacks {
+public:
+  Dynarmic::A64::Jit *cpu = nullptr;
+  touchHLE_Mem *mem = nullptr;
+  std::uint64_t ticks_remaining;
+  uint32_t halting_svc;
+
+private:
+  std::uint8_t MemoryRead8(std::uint64_t vaddr) override {
+    bool error = false;
+    auto value = touchHLE_cpu_read_u8(mem, (VAddr)vaddr, &error);
+    if (error) cpu->HaltExecution(Dynarmic::HaltReason::MemoryAbort);
+    return value;
+  }
+  std::uint16_t MemoryRead16(std::uint64_t vaddr) override {
+    bool error = false;
+    auto value = touchHLE_cpu_read_u16(mem, (VAddr)vaddr, &error);
+    if (error) cpu->HaltExecution(Dynarmic::HaltReason::MemoryAbort);
+    return value;
+  }
+  std::uint32_t MemoryRead32(std::uint64_t vaddr) override {
+    bool error = false;
+    auto value = touchHLE_cpu_read_u32(mem, (VAddr)vaddr, &error);
+    if (error) cpu->HaltExecution(Dynarmic::HaltReason::MemoryAbort);
+    return value;
+  }
+  std::uint64_t MemoryRead64(std::uint64_t vaddr) override {
+    bool error = false;
+    auto value = touchHLE_cpu_read_u64(mem, (VAddr)vaddr, &error);
+    if (error) cpu->HaltExecution(Dynarmic::HaltReason::MemoryAbort);
+    return value;
+  }
+  std::optional<std::uint32_t> MemoryReadCode(std::uint64_t vaddr) override {
+    bool error = false;
+    auto value = touchHLE_cpu_read_u32(mem, (VAddr)vaddr, &error);
+    if (error) return std::nullopt;
+    return value;
+  }
+  void MemoryWrite8(std::uint64_t vaddr, std::uint8_t value) override {
+    if (touchHLE_cpu_write_u8(mem, (VAddr)vaddr, value))
+      cpu->HaltExecution(Dynarmic::HaltReason::MemoryAbort);
+  }
+  void MemoryWrite16(std::uint64_t vaddr, std::uint16_t value) override {
+    if (touchHLE_cpu_write_u16(mem, (VAddr)vaddr, value))
+      cpu->HaltExecution(Dynarmic::HaltReason::MemoryAbort);
+  }
+  void MemoryWrite32(std::uint64_t vaddr, std::uint32_t value) override {
+    if (touchHLE_cpu_write_u32(mem, (VAddr)vaddr, value))
+      cpu->HaltExecution(Dynarmic::HaltReason::MemoryAbort);
+  }
+  void MemoryWrite64(std::uint64_t vaddr, std::uint64_t value) override {
+    if (touchHLE_cpu_write_u64(mem, (VAddr)vaddr, value))
+      cpu->HaltExecution(Dynarmic::HaltReason::MemoryAbort);
+  }
+  bool MemoryWriteExclusive8(std::uint64_t vaddr, std::uint8_t value, std::uint8_t expected) override {
+    if (MemoryRead8(vaddr) != expected) return false;
+    MemoryWrite8(vaddr, value);
+    return true;
+  }
+  bool MemoryWriteExclusive16(std::uint64_t vaddr, std::uint16_t value, std::uint16_t expected) override {
+    if (MemoryRead16(vaddr) != expected) return false;
+    MemoryWrite16(vaddr, value);
+    return true;
+  }
+  bool MemoryWriteExclusive32(std::uint64_t vaddr, std::uint32_t value, std::uint32_t expected) override {
+    if (MemoryRead32(vaddr) != expected) return false;
+    MemoryWrite32(vaddr, value);
+    return true;
+  }
+  bool MemoryWriteExclusive64(std::uint64_t vaddr, std::uint64_t value, std::uint64_t expected) override {
+    if (MemoryRead64(vaddr) != expected) return false;
+    MemoryWrite64(vaddr, value);
+    return true;
+  }
+  void InterpreterFallback(std::uint64_t, size_t) override { abort(); }
+  void CallSVC(std::uint32_t svc) override {
+    halting_svc = svc;
+    cpu->HaltExecution(HaltReasonSvc);
+  }
+  void ExceptionRaised(std::uint64_t pc, Dynarmic::A64::Exception exception) override {
+    if (exception == Dynarmic::A64::Exception::NoExecuteFault) {
+      cpu->HaltExecution(Dynarmic::HaltReason::MemoryAbort);
+    } else if (exception == Dynarmic::A64::Exception::UndefinedInstruction) {
+      cpu->HaltExecution(HaltReasonUndefinedInstruction);
+    } else if (exception == Dynarmic::A64::Exception::Breakpoint) {
+      cpu->HaltExecution(HaltReasonBreakpoint);
+    } else {
+      cpu->HaltExecution(HaltReasonUndefinedInstruction);
+    }
+  }
+  void AddTicks(std::uint64_t ticks) override {
+    if (ticks > ticks_remaining) {
+      ticks_remaining = 0;
+      return;
+    }
+    ticks_remaining -= ticks;
+  }
+  std::uint64_t GetTicksRemaining() override { return ticks_remaining; }
+};
+
+// ==========================================================
+// 🏎️ 64-BIT DYNARMIC WRAPPER
+// ==========================================================
+class DynarmicWrapperA64 {
+  EnvironmentA64 env;
+  std::unique_ptr<Dynarmic::A64::Jit> cpu;
+  std::unique_ptr<Dynarmic::ExclusiveMonitor> mon;
+  
+  // Flat array to sync registers back to Rust (X0-X30, SP, PC)
+  std::array<std::uint64_t, 33> flat_regs;
+
+public:
+  DynarmicWrapperA64(void *direct_memory_access_ptr, size_t null_page_count) {
+    Dynarmic::A64::UserConfig user_config;
+    user_config.callbacks = &env;
+    mon = std::make_unique<Dynarmic::ExclusiveMonitor>(1);
+    user_config.global_monitor = mon.get();
+    
+    cpu = std::make_unique<Dynarmic::A64::Jit>(user_config);
+    env.cpu = cpu.get();
+    flat_regs.fill(0);
+  }
+
+  // Sync Dynarmic -> Flat Array
+  void sync_to_flat() {
+    auto& regs = cpu->Regs();
+    for (int i = 0; i < 31; ++i) flat_regs[i] = regs[i];
+    flat_regs[31] = cpu->SP();
+    flat_regs[32] = cpu->PC();
+  }
+
+  // Sync Flat Array -> Dynarmic
+  void sync_from_flat() {
+    auto& regs = cpu->Regs();
+    for (int i = 0; i < 31; ++i) regs[i] = flat_regs[i];
+    cpu->SetSP(flat_regs[31]);
+    cpu->SetPC(flat_regs[32]);
+  }
+
+  const std::uint64_t *regs_const() {
+    sync_to_flat();
+    return flat_regs.data();
+  }
+  
+  std::uint64_t *regs_mut() {
+    sync_to_flat();
+    return flat_regs.data(); // Note: changes made by Rust must be synced back before next run
+  }
+
+  std::uint32_t pstate() const { return cpu->Pstate(); }
+  void set_pstate(std::uint32_t pstate) { cpu->SetPstate(pstate); }
+};
+
+// ==========================================================
+// 🏎️ C EXPORTS FOR RUST (AArch64)
+// ==========================================================
+extern "C" {
+  void *touchHLE_DynarmicWrapper_new_a64(void *direct_memory_access_ptr, size_t null_page_count) {
+    return new DynarmicWrapperA64(direct_memory_access_ptr, null_page_count);
+  }
+  const std::uint64_t *touchHLE_DynarmicWrapper_regs_const_a64(DynarmicWrapperA64 *cpu) {
+    return cpu->regs_const();
+  }
+  std::uint64_t *touchHLE_DynarmicWrapper_regs_mut_a64(DynarmicWrapperA64 *cpu) {
+    return cpu->regs_mut();
+  }
+  std::uint32_t touchHLE_DynarmicWrapper_pstate(const DynarmicWrapperA64 *cpu) {
+    return cpu->pstate();
+  }
+  void touchHLE_DynarmicWrapper_set_pstate(DynarmicWrapperA64 *cpu, std::uint32_t pstate) {
+    cpu->set_pstate(pstate);
+  }
+}
