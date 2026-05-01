@@ -53,6 +53,14 @@ extern "C" {
         dynamic_memory_access_ptr: *mut std::ffi::c_void,
         null_page_count: usize,
     ) -> *mut touchHLE_DynarmicWrapper;
+    pub fn touchHLE_DynarmicWrapper_new_a64(
+        dynamic_memory_access_ptr: *mut std::ffi::c_void,
+        null_page_count: usize,
+    ) -> *mut touchHLE_DynarmicWrapper;
+    pub fn touchHLE_DynarmicWrapper_regs_const_a64(cpu: *const touchHLE_DynarmicWrapper) -> *const u64;
+    pub fn touchHLE_DynarmicWrapper_regs_mut_a64(cpu: *mut touchHLE_DynarmicWrapper) -> *mut u64;
+    pub fn touchHLE_DynarmicWrapper_pstate(cpu: *const touchHLE_DynarmicWrapper) -> u32;
+    pub fn touchHLE_DynarmicWrapper_set_pstate(cpu: *mut touchHLE_DynarmicWrapper, pstate: u32);
     pub fn touchHLE_DynarmicWrapper_delete(cpu: *mut touchHLE_DynarmicWrapper);
     pub fn touchHLE_DynarmicWrapper_regs_const(cpu: *const touchHLE_DynarmicWrapper) -> *const u32;
     pub fn touchHLE_DynarmicWrapper_regs_mut(cpu: *mut touchHLE_DynarmicWrapper) -> *mut u32;
