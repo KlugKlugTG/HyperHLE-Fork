@@ -37,6 +37,15 @@ pub const MOBILE_CORE_SERVICES: super::HostDylib = super::HostDylib {
     function_exports: &[frameworks::mobile_core_services::FUNCTIONS],
 };
 
+// CoreText (stub — no CT* layout implementation yet)
+pub const CORE_TEXT: super::HostDylib = super::HostDylib {
+    path: "/System/Library/Frameworks/CoreText.framework/CoreText",
+    aliases: &[],
+    class_exports: &[],
+    constant_exports: &[],
+    function_exports: &[frameworks::core_text::FUNCTIONS],
+};
+
 /// The single list of host dylibs that the linker (and Objective-C runtime)
 /// searches through.
 pub const DYLIB_LIST: &[&super::HostDylib] = &[
@@ -70,6 +79,7 @@ pub const DYLIB_LIST: &[&super::HostDylib] = &[
     &CORE_AUDIO,
     &CF_NETWORK,
     &MOBILE_CORE_SERVICES,
+    &CORE_TEXT,
 ];
 
 #[cfg(test)]
