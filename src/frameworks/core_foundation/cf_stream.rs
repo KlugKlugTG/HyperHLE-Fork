@@ -96,13 +96,13 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 (env, this, _cmd);
 
-@implementation _touchHLE_CFReadStream: NSObject
+@implementation _HyperHLE_CFReadStream: NSObject
 - (())dealloc {
     env.objc.dealloc_object(this, &mut env.mem)
 }
 @end
 
-@implementation _touchHLE_CFWriteStream: NSObject
+@implementation _HyperHLE_CFWriteStream: NSObject
 - (())dealloc {
     env.objc.dealloc_object(this, &mut env.mem)
 }
@@ -113,7 +113,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // MARK: - Internal helpers
 
 fn alloc_read_stream(env: &mut Environment) -> CFReadStreamRef {
-    let class = env.objc.get_known_class("_touchHLE_CFReadStream", &mut env.mem);
+    let class = env.objc.get_known_class("_HyperHLE_CFReadStream", &mut env.mem);
     env.objc.alloc_object(
         class,
         Box::new(CFReadStreamHostObject { status: kCFStreamStatusNotOpen }),
@@ -122,7 +122,7 @@ fn alloc_read_stream(env: &mut Environment) -> CFReadStreamRef {
 }
 
 fn alloc_write_stream(env: &mut Environment) -> CFWriteStreamRef {
-    let class = env.objc.get_known_class("_touchHLE_CFWriteStream", &mut env.mem);
+    let class = env.objc.get_known_class("_HyperHLE_CFWriteStream", &mut env.mem);
     env.objc.alloc_object(
         class,
         Box::new(CFWriteStreamHostObject { status: kCFStreamStatusNotOpen }),

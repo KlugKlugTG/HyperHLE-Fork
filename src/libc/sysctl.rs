@@ -41,7 +41,7 @@ static SYSCTL_VALUES: [((i32, i32), &str, SysInfoType); 24] = [
     ((1,1), "kern.ostype" , String(b"Darwin")),
     ((1,2), "kern.osrelease" , String(b"10.4.0")),
     ((1,3), "kern.osversion" , String(b"8A293")),
-    ((1,10), "kern.hostname" , String(b"touchHLE")),
+    ((1,10), "kern.hostname" , String(b"HyperHLE")),
     ((1,4), "kern.version" , String(b"Darwin Kernel Version 10.4.0: Thu Jun 10 14:26:58 PDT 2010; root:xnu-1504.58.2~1/RELEASE_ARM_S5L8900X")),
     ((1,21), "kern.boottime" , SysInfoType::Int64(1600000000)),
 ];

@@ -32,7 +32,7 @@ struct ObjectEnumeratorHostObject {
 }
 impl HostObject for ObjectEnumeratorHostObject {}
 
-/// Belongs to _touchHLE_NSArray
+/// Belongs to _HyperHLE_NSArray
 #[derive(Debug, Default)]
 pub(super) struct ArrayHostObject {
     pub(super) array: Vec<id>,
@@ -47,14 +47,14 @@ pub const CLASSES: ClassExports = objc_classes! {
 // - (NSUInteger)count;
 // - (id)objectAtIndex:(NSUInteger)index;
 // We can pick whichever subclass we want for the various alloc methods.
-// For the time being, that will always be _touchHLE_NSArray.
+// For the time being, that will always be _HyperHLE_NSArray.
 @implementation NSArray: NSObject
 
 + (id)allocWithZone:(NSZonePtr)zone {
     // NSArray might be subclassed by something which needs allocWithZone:
     // to have the normal behaviour. Unimplemented: call superclass alloc then.
     assert!(this == env.objc.get_known_class("NSArray", &mut env.mem));
-    msg_class![env; _touchHLE_NSArray allocWithZone:zone]
+    msg_class![env; _HyperHLE_NSArray allocWithZone:zone]
 }
 
 + (id)array {
@@ -423,7 +423,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     // NSArray might be subclassed by something which needs allocWithZone:
     // to have the normal behaviour. Unimplemented: call superclass alloc then.
     assert!(this == env.objc.get_known_class("NSMutableArray", &mut env.mem));
-    msg_class![env; _touchHLE_NSMutableArray allocWithZone:zone]
+    msg_class![env; _HyperHLE_NSMutableArray allocWithZone:zone]
 }
 
 + (id)arrayWithCapacity:(NSUInteger)capacity {
@@ -592,7 +592,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // Our private subclass that is the single implementation of NSArray for the
 // time being.
-@implementation _touchHLE_NSArray: NSArray
+@implementation _HyperHLE_NSArray: NSArray
 
 + (id)allocWithZone:(NSZonePtr)_zone {
     let host_object = Box::new(ArrayHostObject {
@@ -605,7 +605,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (id)initWithCoder:(id)coder {
     let class: Class = msg![env; coder class];
     let keyed_unarch_class: Class = msg_class![env; NSKeyedUnarchiver class];
-    let nib_archive_class: Class = msg_class![env; _touchHLE_NIBArchiveDecoder class];
+    let nib_archive_class: Class = msg_class![env; _HyperHLE_NIBArchiveDecoder class];
     let objects = if env.objc.class_is_subclass_of(class, keyed_unarch_class) {
     // It seems that every NSArray item in an NSKeyedArchiver plist looks like:
     // {
@@ -755,7 +755,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // Special variant for use by CFArray with NULL callbacks: objects aren't
 // necessarily Objective-C objects and won't be retained/released.
-@implementation _touchHLE_NSArray_non_retaining: _touchHLE_NSArray
+@implementation _HyperHLE_NSArray_non_retaining: _HyperHLE_NSArray
 
 - (())dealloc {
     env.objc.dealloc_object(this, &mut env.mem)
@@ -763,7 +763,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 @end
 
-@implementation _touchHLE_NSArray_ObjectEnumerator: NSEnumerator
+@implementation _HyperHLE_NSArray_ObjectEnumerator: NSEnumerator
 
 - (id)nextObject {
     let host_obj = env.objc.borrow_mut::<ObjectEnumeratorHostObject>(this);
@@ -780,7 +780,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // Our private subclass that is the single implementation of NSMutableArray for
 // the time being.
-@implementation _touchHLE_NSMutableArray: NSMutableArray
+@implementation _HyperHLE_NSMutableArray: NSMutableArray
 
 + (id)allocWithZone:(NSZonePtr)_zone {
     let host_object = Box::new(ArrayHostObject {
@@ -840,7 +840,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (id)initWithCoder:(id)coder {
     let class: Class = msg![env; coder class];
     let keyed_unarch_class: Class = msg_class![env; NSKeyedUnarchiver class];
-    let nib_archive_class: Class = msg_class![env; _touchHLE_NIBArchiveDecoder class];
+    let nib_archive_class: Class = msg_class![env; _HyperHLE_NIBArchiveDecoder class];
 
     let objects = if env.objc.class_is_subclass_of(class, keyed_unarch_class) {
         ns_keyed_unarchiver::decode_current_array(env, coder)
@@ -1052,7 +1052,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // Special variant for use by CFArray with NULL callbacks: objects aren't
 // necessarily Objective-C objects and won't be retained/released.
-@implementation _touchHLE_NSMutableArray_non_retaining: _touchHLE_NSMutableArray
+@implementation _HyperHLE_NSMutableArray_non_retaining: _HyperHLE_NSMutableArray
 
 - (())dealloc {
     env.objc.dealloc_object(this, &mut env.mem)
@@ -1153,7 +1153,7 @@ fn object_enumerator_inner_helper(env: &mut Environment, arr: id, vec: Vec<id>) 
     retain(env, arr);
     let class = env
         .objc
-        .get_known_class("_touchHLE_NSArray_ObjectEnumerator", &mut env.mem);
+        .get_known_class("_HyperHLE_NSArray_ObjectEnumerator", &mut env.mem);
     let enumerator = env.objc.alloc_object(class, host_object, &mut env.mem);
     autorelease(env, enumerator)
 }

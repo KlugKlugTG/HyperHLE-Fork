@@ -37,7 +37,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 (env, this, _cmd);
 
-@implementation _touchHLE_CFUUID: NSObject
+@implementation _HyperHLE_CFUUID: NSObject
 - (())dealloc {
     env.objc.dealloc_object(this, &mut env.mem)
 }
@@ -48,7 +48,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // MARK: - Internal helpers
 
 fn alloc_uuid(env: &mut Environment, bytes: CFUUIDBytes) -> CFUUIDRef {
-    let class = env.objc.get_known_class("_touchHLE_CFUUID", &mut env.mem);
+    let class = env.objc.get_known_class("_HyperHLE_CFUUID", &mut env.mem);
     env.objc.alloc_object(
         class,
         Box::new(CFUUIDHostObject { bytes }),

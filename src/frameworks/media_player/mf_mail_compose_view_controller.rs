@@ -408,7 +408,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 // MARK: Presentation
-// No SMS UI in touchHLE. Immediately fire cancelled delegate callback.
+// No SMS UI in HyperHLE. Immediately fire cancelled delegate callback.
 
 - (())viewWillAppear:(bool)_animated {
     let delegate = env.objc.borrow::<MFMessageComposeViewControllerHostObject>(this)

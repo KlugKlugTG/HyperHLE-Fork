@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# No set -e, since touchHLE can exit with an error
+# No set -e, since HyperHLE can exit with an error
 
 if [[ -z "$1" ]]
 then

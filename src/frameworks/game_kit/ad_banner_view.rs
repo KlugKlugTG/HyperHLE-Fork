@@ -4,7 +4,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 //! `ADBannerView` — iAd framework stub.
-//! Apps that use iAd will never show real ads in touchHLE, but we need
+//! Apps that use iAd will never show real ads in HyperHLE, but we need
 //! to stub the class so they don't crash on startup.
 
 use crate::frameworks::core_graphics::{CGRect, CGSize};
@@ -122,7 +122,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // MARK: - State
 
 - (bool)isBannerLoaded {
-    false // iAd never loads in touchHLE
+    false // iAd never loads in HyperHLE
 }
 
 - (bool)isBannerViewActionInProgress {

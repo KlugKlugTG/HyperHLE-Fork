@@ -246,7 +246,7 @@ fn serialize_plist(env: &mut Environment, plist: id) -> Value {
 
     if env.objc.class_is_subclass_of(class, dict_class) {
         // only our internal implementation is supported
-        assert!(env.objc.get_class_name(class).starts_with("_touchHLE_NS"));
+        assert!(env.objc.get_class_name(class).starts_with("_HyperHLE_NS"));
 
         let mut dict = plist::dictionary::Dictionary::new();
         let dict_host_obj: DictionaryHostObject = std::mem::take(env.objc.borrow_mut(plist));
@@ -265,7 +265,7 @@ fn serialize_plist(env: &mut Environment, plist: id) -> Value {
             assert!(env
                 .objc
                 .get_class_name(key_class)
-                .starts_with("_touchHLE_NS"));
+                .starts_with("_HyperHLE_NS"));
 
             let key_string = ns_string::to_rust_string(env, key);
             let val_plist = serialize_plist(env, val);
@@ -274,7 +274,7 @@ fn serialize_plist(env: &mut Environment, plist: id) -> Value {
         Value::Dictionary(dict)
     } else if env.objc.class_is_subclass_of(class, arr_class) {
         // only our internal implementation is supported
-        assert!(env.objc.get_class_name(class).starts_with("_touchHLE_NS"));
+        assert!(env.objc.get_class_name(class).starts_with("_HyperHLE_NS"));
 
         let arr_host_obj: ArrayHostObject = std::mem::take(env.objc.borrow_mut(plist));
         let arr: Vec<Value> = arr_host_obj
@@ -286,7 +286,7 @@ fn serialize_plist(env: &mut Environment, plist: id) -> Value {
         Value::Array(arr)
     } else if env.objc.class_is_subclass_of(class, str_class) {
         // only our internal implementation is supported
-        assert!(env.objc.get_class_name(class).starts_with("_touchHLE_NS"));
+        assert!(env.objc.get_class_name(class).starts_with("_HyperHLE_NS"));
 
         let s = ns_string::to_rust_string(env, plist);
         Value::String(s.to_string())

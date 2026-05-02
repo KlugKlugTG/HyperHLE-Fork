@@ -33,7 +33,7 @@ const NSCalculationDivideByZero:        NSCalculationError = 4;
 // MARK: - Host object
 
 /// We store the value as an `f64` for simplicity.  Full BCD decimal storage
-/// is not needed for the game use-cases touchHLE targets.
+/// is not needed for the game use-cases HyperHLE targets.
 struct NSDecimalNumberHostObject {
     value: f64,
 }

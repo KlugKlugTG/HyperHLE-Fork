@@ -360,7 +360,7 @@ pub(super) fn objc_msgSend(env: &mut Environment, receiver: id, selector: SEL) {
 }
 
 #[allow(non_snake_case)]
-pub(crate) fn _touchHLE_objc_msgSend_tolerant(env: &mut Environment, receiver: id, selector: SEL) {
+pub(crate) fn _HyperHLE_objc_msgSend_tolerant(env: &mut Environment, receiver: id, selector: SEL) {
     objc_msgSend_inner(
         env, receiver, selector, /* super2: */ None, /* tolerate_type_mismatch: */ true,
     )
@@ -390,7 +390,7 @@ pub(super) fn objc_msgSend_stret(
 }
 
 #[allow(non_snake_case)]
-pub(crate) fn _touchHLE_objc_msgSend_stret_tolerant(
+pub(crate) fn _HyperHLE_objc_msgSend_stret_tolerant(
     env: &mut Environment,
     _stret: MutVoidPtr,
     receiver: id,
@@ -512,10 +512,10 @@ where
     R: GuestRet,
 {
     if R::SIZE_IN_MEM.is_some() {
-        (_touchHLE_objc_msgSend_stret_tolerant as fn(&mut Environment, MutVoidPtr, id, SEL))
+        (_HyperHLE_objc_msgSend_stret_tolerant as fn(&mut Environment, MutVoidPtr, id, SEL))
             .call_from_host(env, args)
     } else {
-        (_touchHLE_objc_msgSend_tolerant as fn(&mut Environment, id, SEL)).call_from_host(env, args)
+        (_HyperHLE_objc_msgSend_tolerant as fn(&mut Environment, id, SEL)).call_from_host(env, args)
     }
 }
 

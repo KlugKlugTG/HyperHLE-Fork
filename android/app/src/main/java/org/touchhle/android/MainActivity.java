@@ -6,7 +6,7 @@
  * Parts of this file are derived from SDL 2's Android project template, which
  * has a different license. Please see vendor/SDL/LICENSE.txt for details.
  */
-package org.touchhle.android;
+package org.hyperhle.android;
 
 import org.libsdl.app.SDLActivity;
 
@@ -19,7 +19,7 @@ public class MainActivity extends SDLActivity {
     protected String[] getLibraries() {
         return new String[]{
             "SDL2",
-            "touchHLE"
+            "HyperHLE"
         };
     }
 }

@@ -66,7 +66,7 @@ fn sleep(env: &mut Environment, seconds: u32) -> u32 {
     env.sleep(Duration::from_secs(seconds.into()));
     // sleep() returns the amount of time remaining that should have been slept,
     // but wasn't, if the thread was woken up early by a signal.
-    // touchHLE never does that currently, so 0 is always correct here.
+    // HyperHLE never does that currently, so 0 is always correct here.
     0
 }
 
@@ -84,7 +84,7 @@ pub type pid_t = i32;
 type gid_t = u32;
 
 pub fn getpid(_env: &mut Environment) -> pid_t {
-    // Not a real value, since touchHLE only simulates a single process.
+    // Not a real value, since HyperHLE only simulates a single process.
     // PID 0 would be init, which is a bit unrealistic, so let's go with 1.
     1
 }
@@ -220,7 +220,7 @@ fn access(env: &mut Environment, path: ConstPtr<u8>, mode: i32) -> i32 {
 }
 
 fn fork(env: &mut Environment) -> i32 {
-    // fork() is not supported in touchHLE — iOS does not support forking
+    // fork() is not supported in HyperHLE — iOS does not support forking
     // Return -1 and set errno to ENOSYS
     log!("Warning: fork() called but is not supported on iOS, returning -1");
     set_errno(env, ENOSYS);
@@ -250,7 +250,7 @@ fn unlink(env: &mut Environment, path: ConstPtr<u8>) -> i32 {
 
 fn gethostname(env: &mut Environment, name: MutPtr<u8>, namelen: GuestUSize) -> i32 {
     // TODO: define unique hostname once networking is supported
-    let hostname = "touchHLE";
+    let hostname = "HyperHLE";
     let len: GuestUSize = hostname.len().try_into().unwrap();
     // TODO: check against HOST_NAME_MAX
     assert!(namelen > len);
@@ -329,7 +329,7 @@ fn pipe(env: &mut Environment, _fds: MutPtr<FileDescriptor>) -> i32 {
 
 fn sbrk(env: &mut Environment, increment: GuestISize) -> GuestISize {
     // sbrk() is used by legacy malloc implementations to grow the heap.
-    // touchHLE manages guest memory separately — return -1 to signal failure,
+    // HyperHLE manages guest memory separately — return -1 to signal failure,
     // causing the C runtime to fall back to mmap-based allocation.
     log_dbg!("sbrk({}) -> -1 (not supported)", increment);
     set_errno(env, ENOSYS);
@@ -337,7 +337,7 @@ fn sbrk(env: &mut Environment, increment: GuestISize) -> GuestISize {
 }
 
 fn chmod(env: &mut Environment, path: ConstPtr<u8>, _mode: u32) -> i32 {
-    // touchHLE guest filesystem is read-only for bundle files.
+    // HyperHLE guest filesystem is read-only for bundle files.
     // chmod is a no-op — return success to keep apps happy.
     log_dbg!("chmod('{}', ...) -> 0 (stubbed)",
         env.mem.cstr_at_utf8(path).unwrap_or_default());

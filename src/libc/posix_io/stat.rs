@@ -209,7 +209,7 @@ fn stat(env: &mut Environment, path: ConstPtr<u8>, buf: MutPtr<stat>) -> i32 {
 
 fn lstat(env: &mut Environment, path: ConstPtr<u8>, buf: MutPtr<stat>) -> i32 {
     set_errno(env, 0);
-    // В touchHLE GuestFS пока не поддерживает реальные симлинки,
+    // В HyperHLE GuestFS пока не поддерживает реальные симлинки,
     // поэтому lstat работает так же, как stat.
     let result = stat(env, path, buf);
     log_dbg!("lstat({:?}, {:?}) -> {}", path, buf, result);

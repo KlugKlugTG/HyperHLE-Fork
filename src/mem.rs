@@ -394,7 +394,7 @@ impl Mem {
                 // Insert a sentinel to emit the notice only once.
                 set.insert((0xFFFF_FFFE, false));
                 log!(
-                    "touchHLE::mem: further NULL-PAGE warnings silenced after {} unique sites",
+                    "HyperHLE::mem: further NULL-PAGE warnings silenced after {} unique sites",
                     MAX_UNIQUE_LOGS
                 );
             }
@@ -403,7 +403,7 @@ impl Mem {
         set.insert(key);
         let op_type = if is_write { "WRITE" } else { "READ" };
         log!(
-            "touchHLE::mem: NULL-PAGE {} at 0x{:08x} (size: 0x{:x}) from {} \
+            "HyperHLE::mem: NULL-PAGE {} at 0x{:08x} (size: 0x{:x}) from {} \
              — returning stub page (unique sites logged: {}/{})",
             op_type,
             at,

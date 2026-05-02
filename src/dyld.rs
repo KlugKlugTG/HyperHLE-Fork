@@ -12,7 +12,7 @@
 //! iPhone OS's system frameworks and other dynamically-linked libraries, but
 //! instead of actually loading and linking the original framework binaries,
 //! this "dynamic linker" will generate appropriate stubs for calling into
-//! touchHLE's own implementations of the frameworks, which are "host code"
+//! HyperHLE's own implementations of the frameworks, which are "host code"
 //! (i.e. not themselves running under emulation).
 //!
 //! This also does normal dynamic linking for libgcc, libstdc++, etc.
@@ -359,7 +359,7 @@ impl Dyld {
         writeln!(file, "    ]\n}}")
     }
 
-    /// Dumps all non-objc symbols provided by touchHLE.
+    /// Dumps all non-objc symbols provided by HyperHLE.
     ///
     /// The dump format is Objective-C code (with meaningless types) that can be
     /// compiled to generate stub libraries that can be linked against, with
@@ -531,7 +531,7 @@ impl Dyld {
                 val_ptr.cast().cast_const()
             } else if name == "dyld_stub_binder" || name == "_dyld_stub_binder" {
                 // In iOS, dyld_stub_binder handles lazy symbol binding.
-                // However, touchHLE resolves lazy symbols entirely via SVC traps,
+                // However, HyperHLE resolves lazy symbols entirely via SVC traps,
                 // bypassing the need for a guest-side binder.
                 // We create a minimal ARM32 function (BX LR) so if it's somehow
                 // called, it just returns safely without executing random memory.
@@ -591,7 +591,7 @@ impl Dyld {
             } else if name == "___gxx_personality_sj0" {
                 // C++ SjLj exception personality routine. Called by the
                 // unwinder for every frame; returning 0 (_URC_NO_REASON)
-                // tells it "no handler here, keep going". touchHLE never
+                // tells it "no handler here, keep going". HyperHLE never
                 // actually invokes the unwinder, but other code may store
                 // this pointer in an LSDA and read it back.
                 let fn_ptr: MutPtr<u32> = mem.alloc(8).cast();

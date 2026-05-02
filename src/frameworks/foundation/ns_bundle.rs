@@ -89,7 +89,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     if let Some(bundle) = env.framework_state.foundation.ns_bundle.main_bundle {
         bundle
     } else {
-        let new = msg_class![env; _touchHLE_NSBundle_Static alloc];
+        let new = msg_class![env; _HyperHLE_NSBundle_Static alloc];
         env.framework_state.foundation.ns_bundle.main_bundle = Some(new);
         new
     }
@@ -244,7 +244,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 + (id)allFrameworks {
-    // No dynamically loaded frameworks in touchHLE.
+    // No dynamically loaded frameworks in HyperHLE.
     msg_class![env; NSArray array]
 }
 
@@ -880,10 +880,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 // =========================================================================
-// MARK: - _touchHLE_NSBundle_Static (main bundle — never released)
+// MARK: - _HyperHLE_NSBundle_Static (main bundle — never released)
 // =========================================================================
 
-@implementation _touchHLE_NSBundle_Static: NSBundle
+@implementation _HyperHLE_NSBundle_Static: NSBundle
 
 + (id)allocWithZone:(NSZonePtr)_zone {
     let bundle_path = env.bundle.bundle_path().as_str().to_string();

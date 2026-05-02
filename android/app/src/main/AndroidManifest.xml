@@ -68,7 +68,7 @@
          -->
 
         <activity
-            android:name="org.touchhle.android.MainActivity"
+            android:name="org.hyperhle.android.MainActivity"
             android:alwaysRetainTaskState="true"
             android:configChanges="layoutDirection|locale|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|keyboard|keyboardHidden|navigation"
             android:exported="true"
@@ -93,7 +93,7 @@
         </activity>
 
         <provider
-            android:name="org.touchhle.android.DocumentsProvider"
+            android:name="org.hyperhle.android.DocumentsProvider"
             android:authorities="${applicationId}.provider"
             android:exported="true"
             android:grantUriPermissions="true"

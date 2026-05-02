@@ -1064,7 +1064,7 @@ pub fn objc_autoreleasePoolPush(env: &mut crate::Environment, name: ConstPtr<u8>
 }
 
 pub fn objc_autoreleasePoolPop(_env: &mut crate::Environment, _context: MutVoidPtr) {
-    // touchHLE manages autorelease pools through NSAutoreleasePool objects, so
+    // HyperHLE manages autorelease pools through NSAutoreleasePool objects, so
     // the matching `objc_autoreleasePoolPush` is a no-op stub that returns
     // nil, and there is nothing to drain here. iPhone OS 2.x/3.x apps target
     // this path very rarely (it's primarily used by ARC).
@@ -1281,7 +1281,7 @@ pub fn ___objc_personality_v0(
     context: MutVoidPtr,
 ) -> i32 {
     log!(
-        "___objc_personality_v0 called! Exception handling is not fully implemented in touchHLE.\n\
+        "___objc_personality_v0 called! Exception handling is not fully implemented in HyperHLE.\n\
         version: {}, actions: {}, class: {:x}, object: {:?}, context: {:?}",
         version, actions, exception_class, exception_object, context
     );

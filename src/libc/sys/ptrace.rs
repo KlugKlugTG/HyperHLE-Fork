@@ -19,7 +19,7 @@ fn ptrace(env: &mut Environment, request: i32, pid: pid_t, addr: MutPtr<u8>, dat
         PT_DENY_ATTACH => {
             log_dbg!("ptrace(PT_DENY_ATTACH) called by app for anti-debugging.");
             
-            // Честная реализация: если в TouchHLE включен и подключен GDB-сервер,
+            // Честная реализация: если в HyperHLE включен и подключен GDB-сервер,
             // мы должны завершить процесс, как это делает реальная iOS.
             if env.is_debugging_enabled() {
                 log!("PT_DENY_ATTACH triggered while GDB server is attached! Terminating process to accurately emulate iOS behavior.");

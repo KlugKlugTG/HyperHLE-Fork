@@ -3,7 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
-//! touchHLE is a high-level emulator (HLE) for iPhone OS applications.
+//! HyperHLE is a high-level emulator (HLE) for iPhone OS applications.
 //!
 //! In various places, the terms "guest" and "host" are used to distinguish
 //! between the emulated application (the "guest") and the emulator itself (the
@@ -15,7 +15,7 @@
 //! - The host can access both "guest memory" and "host memory".
 //! - A "guest function" is emulated Arm code, usually from the app binary.
 //! - A "host function" is a Rust function that is part of this emulator.
-// Allow the crate to have a non-snake-case name (touchHLE).
+// Allow the crate to have a non-snake-case name (HyperHLE).
 // This also allows items in the crate to have non-snake-case names.
 #![allow(non_snake_case)]
 // The documentation for this crate is intended to include private items.
@@ -59,7 +59,7 @@ use environment::{Environment, MutexId, MutexType, ThreadId, PTHREAD_MUTEX_DEFAU
 
 use std::path::PathBuf;
 
-pub use touchHLE_version::*;
+pub use HyperHLE_version::*;
 /// This is the true entry point on Android (SDLActivity calls it after
 /// initialization). On other platforms the true entry point is in src/bin.rs.
 #[cfg(target_os = "android")]
@@ -86,15 +86,15 @@ pub extern "C" fn SDL_main(
     }));
     // Empty args: brings up app picker.
     match main([String::new()].into_iter()) {
-        Ok(_) => echo!("touchHLE finished"),
-        Err(e) => echo!("touchHLE errored: {e:?}"),
+        Ok(_) => echo!("HyperHLE finished"),
+        Err(e) => echo!("HyperHLE errored: {e:?}"),
     }
     0
 }
 
 const USAGE: &str = "\
 Usage:
-    touchHLE [PATH] [OPTIONS]
+    HyperHLE [PATH] [OPTIONS]
 
 PATH should be a path to a .app bundle or .ipa file.
 
@@ -112,7 +112,7 @@ Special options:
 ";
 pub fn main<T: Iterator<Item = String>>(mut args: T) -> Result<(), String> {
     echo!(
-        "touchHLE {}{}{} — https://touchhle.org/",
+        "HyperHLE {}{}{} — https://github.com/j92580498-max/HyperHLE",
         branding(),
         if branding().is_empty() { "" } else { " " },
         VERSION,
@@ -131,7 +131,7 @@ pub fn main<T: Iterator<Item = String>>(mut args: T) -> Result<(), String> {
 
     {
         let base_path = paths::user_data_base_path();
-        log!("Base path for touchHLE files: {}", base_path.display());
+        log!("Base path for HyperHLE files: {}", base_path.display());
         paths::prepopulate_user_data_dir();
     }
 

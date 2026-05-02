@@ -219,7 +219,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // =========================================================================
 // MARK: - Presentation
-// touchHLE has no popover UI.
+// HyperHLE has no popover UI.
 // We immediately fire the delegate's
 // popoverControllerDidDismissPopover: so the app can clean up, matching
 // the pattern used for other picker/sheet controllers.

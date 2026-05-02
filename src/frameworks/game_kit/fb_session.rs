@@ -1,5 +1,5 @@
 /*
- * FBSession stub for touchHLE
+ * FBSession stub for HyperHLE
  */
 
 use crate::objc::{

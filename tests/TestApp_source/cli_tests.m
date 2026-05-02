@@ -4051,10 +4051,10 @@ int test_NSString_stringByReplacingOccurrencesOfString() {
   // Simple replacement
   NSString *str = [NSString stringWithUTF8String:"hello world"];
   NSString *target = [NSString stringWithUTF8String:"world"];
-  NSString *replacement = [NSString stringWithUTF8String:"touchHLE"];
+  NSString *replacement = [NSString stringWithUTF8String:"HyperHLE"];
   NSString *res = [str stringByReplacingOccurrencesOfString:target
                                                  withString:replacement];
-  NSString *expected = [NSString stringWithUTF8String:"hello touchHLE"];
+  NSString *expected = [NSString stringWithUTF8String:"hello HyperHLE"];
   if (![res isEqualToString:expected]) {
     [pool drain];
     return -1;

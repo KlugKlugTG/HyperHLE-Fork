@@ -239,7 +239,7 @@ fn gethostbyname(env: &mut Environment, name: ConstPtr<u8>) -> MutPtr<u8> {
         octets
     } else {
                 match hostname.as_str() {
-            "localhost" | "loopback" | "touchHLE" => [127, 0, 0, 1],
+            "localhost" | "loopback" | "HyperHLE" => [127, 0, 0, 1],
             "broadcasthost"          => [255, 255, 255, 255],
             _ => {
                 if !env.options.network_access {
@@ -407,7 +407,7 @@ fn getaddrinfo(
     if !env.options.network_access && !node_name.is_null() {
         let hn = env.mem.cstr_at_utf8(node_name.cast_const()).unwrap_or_default().to_owned();
                 // Allow localhost even without network access.
-        if hn != "localhost" && hn != "127.0.0.1" && hn != "touchHLE" && parse_ipv4(&hn).is_none() {
+        if hn != "localhost" && hn != "127.0.0.1" && hn != "HyperHLE" && parse_ipv4(&hn).is_none() {
             log_dbg!("getaddrinfo: network disabled (node={}) -> EAI_FAIL", hn);
             return EAI_FAIL;
         }
@@ -448,7 +448,7 @@ fn getaddrinfo(
             octets
         } else {
             match hostname.as_str() {
-                "localhost" | "loopback" | "touchHLE" => [127, 0, 0, 1],
+                "localhost" | "loopback" | "HyperHLE" => [127, 0, 0, 1],
                 _ => {
                     log!("getaddrinfo: hostname \"{}\" not resolvable -> EAI_FAIL", hostname);
                     return EAI_FAIL;

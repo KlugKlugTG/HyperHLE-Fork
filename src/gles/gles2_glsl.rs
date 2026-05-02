@@ -5,7 +5,7 @@
  */
 //! GLSL ES 1.00 → desktop GLSL 1.20 source translator.
 //!
-//! touchHLE's OpenGL ES 2.0 layer is implemented on top of OpenGL 2.1, which
+//! HyperHLE's OpenGL ES 2.0 layer is implemented on top of OpenGL 2.1, which
 //! does not understand the GLSL ES dialect that ES 2.0 apps ship. The
 //! translation is intentionally minimal — just enough to make the test corpus
 //! we have at hand compile:

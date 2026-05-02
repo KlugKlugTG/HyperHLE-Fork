@@ -153,7 +153,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // MARK: - Class-level animation block API
 //
-// touchHLE does not currently animate the visual side of these UIView
+// HyperHLE does not currently animate the visual side of these UIView
 // animation blocks (positions/opacity/transforms snap immediately to their
 // final value). However, a correct implementation **must** still call the
 // configured `setAnimationDidStopSelector:` on the configured
@@ -222,7 +222,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     if !block.in_block { return; }
 
     // Fire `setAnimationWillStartSelector:` synchronously. This is good enough
-    // for the apps that touchHLE supports; iOS would normally fire it at the
+    // for the apps that HyperHLE supports; iOS would normally fire it at the
     // start of the next display frame.
     if block.delegate != nil {
         if let Some(sel) = block.will_start_selector {
@@ -253,10 +253,10 @@ pub const CLASSES: ClassExports = objc_classes! {
     let context_bits = block.context.to_bits();
     let context_num: id = msg_class![env; NSNumber numberWithUnsignedInt:context_bits];
 
-    let key_delegate: id = get_static_str(env, "_touchHLE_uiview_anim_delegate");
-    let key_sel: id = get_static_str(env, "_touchHLE_uiview_anim_sel");
-    let key_anim_id: id = get_static_str(env, "_touchHLE_uiview_anim_id");
-    let key_context: id = get_static_str(env, "_touchHLE_uiview_anim_context");
+    let key_delegate: id = get_static_str(env, "_HyperHLE_uiview_anim_delegate");
+    let key_sel: id = get_static_str(env, "_HyperHLE_uiview_anim_sel");
+    let key_anim_id: id = get_static_str(env, "_HyperHLE_uiview_anim_id");
+    let key_context: id = get_static_str(env, "_HyperHLE_uiview_anim_context");
 
     // NSDictionary cannot store nil values; substitute NSNull for a missing
     // animationID.
@@ -276,8 +276,8 @@ pub const CLASSES: ClassExports = objc_classes! {
         ],
     );
 
-    let fire_sel = env.objc.lookup_selector("_touchHLE_animationDidStopFireMethod:")
-        .expect("UIView _touchHLE_animationDidStopFireMethod: not registered");
+    let fire_sel = env.objc.lookup_selector("_HyperHLE_animationDidStopFireMethod:")
+        .expect("UIView _HyperHLE_animationDidStopFireMethod: not registered");
     let ui_view_class: Class = env.objc.get_known_class("UIView", &mut env.mem);
     let _: id = msg_class![env;
         NSTimer scheduledTimerWithTimeInterval:total_delay
@@ -293,12 +293,12 @@ pub const CLASSES: ClassExports = objc_classes! {
     if block.animation_id != nil { release(env, block.animation_id); }
 }
 
-+ (())_touchHLE_animationDidStopFireMethod:(id)which_timer {
++ (())_HyperHLE_animationDidStopFireMethod:(id)which_timer {
     let dict: id = msg![env; which_timer userInfo];
-    let key_delegate: id = get_static_str(env, "_touchHLE_uiview_anim_delegate");
-    let key_sel: id = get_static_str(env, "_touchHLE_uiview_anim_sel");
-    let key_anim_id: id = get_static_str(env, "_touchHLE_uiview_anim_id");
-    let key_context: id = get_static_str(env, "_touchHLE_uiview_anim_context");
+    let key_delegate: id = get_static_str(env, "_HyperHLE_uiview_anim_delegate");
+    let key_sel: id = get_static_str(env, "_HyperHLE_uiview_anim_sel");
+    let key_anim_id: id = get_static_str(env, "_HyperHLE_uiview_anim_id");
+    let key_context: id = get_static_str(env, "_HyperHLE_uiview_anim_context");
 
     let delegate: id = msg![env; dict objectForKey:key_delegate];
     let sel_str_id: id = msg![env; dict objectForKey:key_sel];
@@ -330,7 +330,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     let _: () = msg_send_no_type_checking(env, (delegate, sel, animation_id, finished, context));
 }
 
-// Visual properties of animation blocks that touchHLE does not animate.
+// Visual properties of animation blocks that HyperHLE does not animate.
 // These are intentionally no-ops, but they must remain present so that the
 // app's calls don't fall through to the dynamic dispatcher's "unimplemented
 // selector" path.

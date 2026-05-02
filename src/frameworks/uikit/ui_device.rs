@@ -144,7 +144,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     ns_string::get_static_str(env, "2.0")
 }
 - (id)uniqueIdentifier {
-    ns_string::get_static_str(env, "touchHLEdevice..........................")
+    ns_string::get_static_str(env, "HyperHLEdevice..........................")
 }
 
 // MARK: - Idiom

@@ -27,7 +27,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // CGContext seems to be a CFType-based type, but in our implementation those
 // are just Objective-C types, so we need a class for it, but its name is not
 // visible anywhere.
-@implementation _touchHLE_CGContext: NSObject
+@implementation _HyperHLE_CGContext: NSObject
 
 - (())dealloc {
     let host_obj = env.objc.borrow::<CGContextHostObject>(this);

@@ -79,7 +79,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (id)initWithTabBarSystemItem:(NSInteger)_system_item tag:(NSInteger)tag {
-    // В touchHLE отрисовка системных иконок пока может быть не реализована,
+    // В HyperHLE отрисовка системных иконок пока может быть не реализована,
     // но мы обязаны корректно сохранить tag и вернуть рабочий объект.
     env.objc.borrow_mut::<UITabBarItemHostObject>(this).tag = tag;
     this

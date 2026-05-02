@@ -126,9 +126,9 @@ pub const CLASSES: ClassExports = objc_classes!
 
 // resetSystemTimeZone clears the cached system time zone so that the next
 // call to systemTimeZone re-reads it from the OS / user preferences.
-// Since touchHLE always uses UTC we just log and no-op.
+// Since HyperHLE always uses UTC we just log and no-op.
 + (())resetSystemTimeZone {
-    log_dbg!("NSTimeZone resetSystemTimeZone — ignored (touchHLE uses UTC)");
+    log_dbg!("NSTimeZone resetSystemTimeZone — ignored (HyperHLE uses UTC)");
 }
 
 + (id)defaultTimeZone {

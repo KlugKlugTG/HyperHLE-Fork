@@ -167,10 +167,10 @@ pub enum TextInputEvent {
 pub enum Event {
     /// User requested quit.
     Quit,
-    /// OS has informed touchHLE it will soon become inactive.
+    /// OS has informed HyperHLE it will soon become inactive.
     /// (iOS `applicationWillResignActive:`, Android `onPause()`)
     AppWillResignActive,
-    /// OS has informed touchHLE it will soon terminate.
+    /// OS has informed HyperHLE it will soon terminate.
     /// (iOS `applicationWillTerminate:`, Android `onDestroy()`)
     AppWillTerminate,
     TouchesDown(HashMap<FingerId, Coords>),
@@ -268,7 +268,7 @@ pub struct Window {
 }
 
 impl Window {
-    /// Returns [true] if touchHLE is running on a device where we should always
+    /// Returns [true] if HyperHLE is running on a device where we should always
     /// display fullscreen, but SDL2 will let us control the orientation, i.e.
     /// Android devices.
     pub fn rotatable_fullscreen() -> bool {
@@ -287,7 +287,7 @@ impl Window {
         // is available, but we don't want to enable SDL's HIDAPI controller
         // drivers because they cause duplicated controllers on macOS
         // (https://github.com/libsdl-org/SDL/issues/7479). Once that's fixed,
-        // remove this (https://github.com/touchHLE/touchHLE/issues/85).
+        // remove this (https://github.com/HyperHLE/HyperHLE/issues/85).
         sdl2::hint::set("SDL_JOYSTICK_HIDAPI", "0");
 
         if env::consts::OS == "android" {
@@ -437,7 +437,7 @@ impl Window {
     }
 
     /// Poll for events from the OS. This needs to be done reasonably often
-    /// (60Hz is probably fine) so that the host OS doesn't consider touchHLE
+    /// (60Hz is probably fine) so that the host OS doesn't consider HyperHLE
     /// to be unresponsive. Note that events are not returned by this function,
     /// since we often need to defer actually handling them.
     ///
@@ -766,7 +766,7 @@ impl Window {
                     // For some reason, if we don't pause event polling, we will
                     // never finish handling the event.
                     // TODO: Add a mechanism for re-enabling polling, if at some
-                    // point we support returning touchHLE to the foreground.
+                    // point we support returning HyperHLE to the foreground.
                     self.enable_event_polling = false;
                     continue;
                 }
@@ -866,7 +866,7 @@ impl Window {
                     keycode: Some(sdl2::keyboard::Keycode::F12),
                     ..
                 } => {
-                    // Log this so you can tell when touchHLE has received
+                    // Log this so you can tell when HyperHLE has received
                     // the event but it's stuck in the queue.
                     echo!("F12 pressed, EnterDebugger event queued.");
                     Event::EnterDebugger
@@ -1517,7 +1517,7 @@ pub fn show_error_messagebox(window: Option<&Window>, error_message: &str) {
         messagebox::ButtonData {
             flags: messagebox::MessageBoxButtonFlag::NOTHING,
             button_id: 0,
-            text: "Open touchHLE directory",
+            text: "Open HyperHLE directory",
         },
         messagebox::ButtonData {
             flags: messagebox::MessageBoxButtonFlag::NOTHING,
@@ -1529,8 +1529,8 @@ pub fn show_error_messagebox(window: Option<&Window>, error_message: &str) {
     let Ok(clicked_button) = messagebox::show_message_box(
         messagebox::MessageBoxFlag::ERROR,
         &mbox,
-        "touchHLE crashed!",
-        &format!("touchHLE crashed with the following error: {error_message}"),
+        "HyperHLE crashed!",
+        &format!("HyperHLE crashed with the following error: {error_message}"),
         window.map(|win| &win.window),
         None,
     ) else {

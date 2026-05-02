@@ -45,7 +45,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
     // Создаем внутренний таймер, но его целью делаем НАШ display_link.
     // Таймер удержит (retain) display_link, предотвращая его удаление и Use-After-Free.
-    let fire_sel = env.objc.lookup_selector("_touchHLE_displayLinkFired:").unwrap();
+    let fire_sel = env.objc.lookup_selector("_HyperHLE_displayLinkFired:").unwrap();
     let ns_timer = msg_class![env; NSTimer timerWithTimeInterval:(1.0/60.0)
                      target:display_link
                    selector:fire_sel
@@ -63,7 +63,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 // Внутренний трамплин: вызывается таймером, перенаправляет вызов в игру
-- (())_touchHLE_displayLinkFired:(id)_timer {
+- (())_HyperHLE_displayLinkFired:(id)_timer {
     // Берем данные и сразу отпускаем заимствование (borrow), 
     // чтобы игра могла безопасно взаимодействовать с CADisplayLink.
     let (target, sel, paused) = {

@@ -370,7 +370,7 @@ pub fn run_run_loop(
             media_player::handle_players(env);
         }
 
-        // Unfortunately, touchHLE has to poll for certain things repeatedly;
+        // Unfortunately, HyperHLE has to poll for certain things repeatedly;
         // it can't just wait until the next event appears.
         //
         // For optimal responsiveness we could poll as often as possible, but

@@ -35,7 +35,7 @@ fn uname(env: &mut Environment, name: MutPtr<utsname>) -> i32 {
     let sysname = b"Darwin\0";
     uts_name.sysname[..sysname.len()].copy_from_slice(sysname);
     // Same as sysctlbyname 'kern.hostname'
-    let nodename = b"touchHLE\0";
+    let nodename = b"HyperHLE\0";
     uts_name.nodename[..nodename.len()].copy_from_slice(nodename);
     // Same as sysctlbyname 'kern.osrelease'
     let release = b"10.0.0d3\0";

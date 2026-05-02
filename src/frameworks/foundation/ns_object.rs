@@ -109,7 +109,7 @@ NSMethodSignature signatureWithObjCTypes:(MutVoidPtr::null())];
     let sel_str = selector.as_str(&env.mem);
     let explicit_args = sel_str.chars().filter(|&c| c == ':').count() as NSUInteger;
 let total_args = explicit_args + 2;
-    () = msg![env; sig _touchHLE_setNumberOfArguments:total_args];
+    () = msg![env; sig _HyperHLE_setNumberOfArguments:total_args];
 sig
 }
 
@@ -349,7 +349,7 @@ NSMethodSignature signatureWithObjCTypes:(MutVoidPtr::null())];
     let sel_str = selector.as_str(&env.mem);
     let explicit_args = sel_str.chars().filter(|&c| c == ':').count() as NSUInteger;
 let total_args = explicit_args + 2;
-    () = msg![env; sig _touchHLE_setNumberOfArguments:total_args];
+    () = msg![env; sig _HyperHLE_setNumberOfArguments:total_args];
 sig
 }
     
@@ -379,7 +379,7 @@ let sel_key: id = get_static_str(env, "SEL");
     let arg_key: id = get_static_str(env, "arg");
 let dict = dict_from_keys_and_objects(env, &[(sel_key, sel_str), (arg_key, arg)]);
 
-    let selector = env.objc.lookup_selector("_touchHLE_timerFireMethod:").unwrap();
+    let selector = env.objc.lookup_selector("_HyperHLE_timerFireMethod:").unwrap();
     let timer:id = msg_class![env;
 NSTimer timerWithTimeInterval:delay
                                target:this
@@ -440,7 +440,7 @@ let run_loop: id = msg_class![env; NSRunLoop mainRunLoop];
 
     // Background thread → schedule on main thread via run loop.
     // `wait:YES` from a background thread would require thread
-    // synchronisation which touchHLE doesn't support;
+    // synchronisation which HyperHLE doesn't support;
     // we schedule without waiting and log once at debug level.
     log_dbg!(
         "performSelectorOnMainThread:{} from background thread {} (wait={}) — scheduling",
@@ -449,7 +449,7 @@ let run_loop: id = msg_class![env; NSRunLoop mainRunLoop];
     msg![env; this performSelector:sel withObject:arg afterDelay:0.0]
 }
 
-- (())_touchHLE_timerFireMethod:(id)which { 
+- (())_HyperHLE_timerFireMethod:(id)which { 
     let dict: id = msg![env; which userInfo];
 let sel_key: id = get_static_str(env, "SEL");
     let sel_str_id: id = msg![env; dict objectForKey:sel_key];

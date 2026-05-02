@@ -169,12 +169,12 @@ pub const CLASSES: ClassExports = objc_classes! {
             }
         }
         
-        log!("touchHLE Warning: IBFilesOwner requested but file_owner is nil! Returning dummy.");
+        log!("HyperHLE Warning: IBFilesOwner requested but file_owner is nil! Returning dummy.");
         let ns_object_class = env.objc.get_known_class("NSObject", &mut env.mem);
         let dummy: id = msg![env; ns_object_class alloc];
         msg![env; dummy init]
     } else if id == "IBFirstResponder" {
-        log!("touchHLE: Bypassing IBFirstResponder replacement with dummy NSObject");
+        log!("HyperHLE: Bypassing IBFirstResponder replacement with dummy NSObject");
         let proxy_class = env.objc.get_known_class("NSObject", &mut env.mem);
         let dummy: id = msg![env; proxy_class alloc];
         let dummy_init: id = msg![env; dummy init];
@@ -292,7 +292,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         if let Some(action) = env.objc.lookup_selector(&selector) {
             () = msg![env; source addTarget:destination action:action forControlEvents:event_mask];
         } else {
-            log!("touchHLE Warning: UIRuntimeEventConnection missing selector '{}', skipping.", selector);
+            log!("HyperHLE Warning: UIRuntimeEventConnection missing selector '{}', skipping.", selector);
         }
     }
 }
@@ -326,7 +326,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         // Предотвращаем краш KVC (Key-Value Coding), если source — это просто заглушка NSObject
         if source_class == ns_object_class {
             let label_str = to_rust_string(env, label);
-            log!("touchHLE NIB: Skipping outlet '{}' connection because source is an unhandled NSObject", label_str);
+            log!("HyperHLE NIB: Skipping outlet '{}' connection because source is an unhandled NSObject", label_str);
             return;
         }
 
@@ -373,8 +373,8 @@ fn load_nib_file(env: &mut Environment, ui_nib: id, path: GuestPathBuf) -> Resul
     // ... дальше без изменений, начиная с let unarchiver = ...
 
     let unarchiver = if env.mem.bytes_at(bytes.cast(), 10) == b"NIBArchive" {
-        let decoder: id = msg_class![env; _touchHLE_NIBArchiveDecoder alloc];
-        msg![env; decoder _touchHLE_initForReadingWithData:ns_data]
+        let decoder: id = msg_class![env; _HyperHLE_NIBArchiveDecoder alloc];
+        msg![env; decoder _HyperHLE_initForReadingWithData:ns_data]
     } else {
         let unarchiver = msg_class![env; NSKeyedUnarchiver alloc];
         msg![env; unarchiver initForReadingWithData:ns_data]

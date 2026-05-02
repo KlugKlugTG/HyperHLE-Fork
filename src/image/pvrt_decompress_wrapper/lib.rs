@@ -7,7 +7,7 @@
 //! PVRTDecompress more often than necessary, and to improve build-time
 //! parallelism.
 
-// Allow the crate to have a non-snake-case name (touchHLE).
+// Allow the crate to have a non-snake-case name (HyperHLE).
 // This also allows items in the crate to have non-snake-case names.
 #![allow(non_snake_case)]
 
@@ -15,7 +15,7 @@ use std::ffi::c_void;
 
 // See build.rs, lib.cpp and ../../../vendor/PVRTDecompress/PVRTDecompress.h
 extern "C" {
-    pub fn touchHLE_decompress_pvrtc(
+    pub fn HyperHLE_decompress_pvrtc(
         pvrtc_data: *const c_void,
         is_2bit: bool,
         width: u32,

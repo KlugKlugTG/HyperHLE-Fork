@@ -1,12 +1,12 @@
-# Building touchHLE
+# Building HyperHLE
 
 ## Platform support
 
-A list of supported target platforms (platforms you can build touchHLE _for_) can be found in `README.md`. However, that's not the whole story, because you should also know supported host platforms when building (platforms you can build touchHLE _on_).
+A list of supported target platforms (platforms you can build HyperHLE _for_) can be found in `README.md`. However, that's not the whole story, because you should also know supported host platforms when building (platforms you can build HyperHLE _on_).
 
 Things tend to be easiest when the target and host platforms are the same. When they aren't the same, it's called “cross-compilation”.
 
-These three platforms are [used by our GitHub Actions CI](../.github/workflows/touchHLE_release.yml)
+These three platforms are [used by our GitHub Actions CI](../.github/workflows/HyperHLE_release.yml)
 
 * Building for x64 Windows on x64 Windows
 * Building for x64 macOS on x64 macOS
@@ -24,8 +24,8 @@ These should also work but aren't regularly tested:
 
 Some pairings that have been tried and apparently **don't work**:
 
-* [Building for x64 macOS on AArch64 macOS](https://github.com/touchHLE/touchHLE/issues/71)
-* [Building for AArch64 Android on x64 Windows](https://github.com/touchHLE/touchHLE/issues/107)
+* [Building for x64 macOS on AArch64 macOS](https://github.com/HyperHLE/HyperHLE/issues/71)
+* [Building for AArch64 Android on x64 Windows](https://github.com/HyperHLE/HyperHLE/issues/107)
 
 Of course, we aspire to have cross-compilation work cleanly for all platforms, but alas we're not there yet. Contributions are of course encouraged, and if you hit an issue when cross-compiling targeting a supported platform, please do tell us about it, though no promises can be made about whether your issue will be fixed.
 
@@ -62,9 +62,9 @@ This has been tested on macOS 12.7.6 with Android Studio 2024.3.2 Patch 1 and ND
 
 ### Non-Android platforms
 
-With the prerequisites installed, `cargo run --release` (for a release build) or `cargo run` (for a debug build) should be enough to build and run touchHLE. On an underpowered, passively-cooled, 2-core laptop (2017 Retina MacBook), a clean release build takes a bit less than 9 minutes.
+With the prerequisites installed, `cargo run --release` (for a release build) or `cargo run` (for a debug build) should be enough to build and run HyperHLE. On an underpowered, passively-cooled, 2-core laptop (2017 Retina MacBook), a clean release build takes a bit less than 9 minutes.
 
-touchHLE can also be dynamically linked (which means instead of using the bundled dependencies, it will use the dependencies provided by your system). To build a dynamically linked version of touchHLE, you will need to have the SDL2 and OpenAL shared libraries installed, and then you can append `--no-default-features` (this flag is passed in to disable static linking, which is the default) to the end of the cargo build command. For macOS users: Apple's OpenAL.framework is not supported, only OpenAL Soft, and you need to add it to the linker path yourself.
+HyperHLE can also be dynamically linked (which means instead of using the bundled dependencies, it will use the dependencies provided by your system). To build a dynamically linked version of HyperHLE, you will need to have the SDL2 and OpenAL shared libraries installed, and then you can append `--no-default-features` (this flag is passed in to disable static linking, which is the default) to the end of the cargo build command. For macOS users: Apple's OpenAL.framework is not supported, only OpenAL Soft, and you need to add it to the linker path yourself.
 
 ### Android
 
@@ -84,7 +84,7 @@ gradle installDebug
 
 #### Troubleshooting
 
-- Gradle build uses [cargo-ndk-plugin](https://github.com/willir/cargo-ndk-android-gradle) to build touchHLE lib automatically during Android build.
+- Gradle build uses [cargo-ndk-plugin](https://github.com/willir/cargo-ndk-android-gradle) to build HyperHLE lib automatically during Android build.
 If this step fails, try to debug first lib build only:
 
 ```
@@ -98,6 +98,6 @@ cargo ndk -t arm64-v8a build
 
 ## Other considerations
 
-The `touchHLE_dylibs` and `touchHLE_fonts` directories contain files that the resulting binary will need at runtime, so you'll need to copy them if you want to distribute the result. You also should include the license files.
+The `HyperHLE_dylibs` and `HyperHLE_fonts` directories contain files that the resulting binary will need at runtime, so you'll need to copy them if you want to distribute the result. You also should include the license files.
 
-If you're building touchHLE for the purpose of contributing, you might want to generate HTML documentation with `cargo doc --workspace --no-deps --open`. The code has been extensively commented with `cargo doc` in mind.
+If you're building HyperHLE for the purpose of contributing, you might want to generate HTML documentation with `cargo doc --workspace --no-deps --open`. The code has been extensively commented with `cargo doc` in mind.

@@ -313,7 +313,7 @@ fn CFRunLoopAddTimer(
         return;
     }
 
-    // Как сказано в заголовке файла: в touchHLE CFRunLoop и NSRunLoop — это один и тот же тип.
+    // Как сказано в заголовке файла: в HyperHLE CFRunLoop и NSRunLoop — это один и тот же тип.
     // Поэтому мы честно пробрасываем вызов напрямую в NSRunLoop, который умеет работать с таймерами.
     let _: () = msg![env; rl addTimer:timer forMode:mode];
 }
@@ -357,7 +357,7 @@ fn CFRunLoopTimerCreate(
     };
 
     // 3. Выделяем реальный объект, чтобы игра не получила null.
-    // Используем базовый класс NSObject (или если в touchHLE есть NSTimer, то его)
+    // Используем базовый класс NSObject (или если в HyperHLE есть NSTimer, то его)
     let class = env.objc.get_known_class("NSObject", &mut env.mem);
     
     // Возвращаем настоящий валидный указатель на созданный объект

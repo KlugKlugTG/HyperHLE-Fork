@@ -132,7 +132,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 // MARK: - UIViewController overrides
-// The picker has no real UI in touchHLE. When presented we immediately notify
+// The picker has no real UI in HyperHLE. When presented we immediately notify
 // the delegate that the user cancelled, which is the safest no-op behaviour.
 
 - (())viewDidLoad {

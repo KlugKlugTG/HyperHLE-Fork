@@ -16,12 +16,12 @@ View options:
         --landscape-left means rotate 90° counterclockwise from portrait.
         --landscape-right means rotate 90° clockwise from portrait.
 
-        Usually apps that require landscape mode will tell touchHLE about this,
+        Usually apps that require landscape mode will tell HyperHLE about this,
         and it will automatically rotate the window, but some apps neglect to
         do this. These options may be useful in that case.
 
     --scale-hack=...
-        Set a scaling factor for the window. touchHLE will attempt to run the
+        Set a scaling factor for the window. HyperHLE will attempt to run the
         app with an increased internal resolution. This is a hack and there's
         no guarantee it will work correctly for all apps.
 
@@ -55,7 +55,7 @@ Game controller options:
         Disables mapping of analog stick input to simulated rotation of the
         device.
 
-        By default, if touchHLE detects a game controller, its analog sticks
+        By default, if HyperHLE detects a game controller, its analog sticks
         will be used for simulated accelerometer tilt controls. When this
         happens, the real accelerometer (e.g. on an Android phone), if present,
         is ignored. By setting this option, the real accelerometer can be used
@@ -63,7 +63,7 @@ Game controller options:
         that integrates both an accelerometer and a game controller, or if you
         do not want to disconnect your game controller.
 
-        Note that touchHLE does not currently support accelerometers contained
+        Note that HyperHLE does not currently support accelerometers contained
         within game controllers.
 
     --x-tilt-range=...
@@ -119,7 +119,7 @@ Game controller options:
         For example, --button-to-touch=A,470,310 will make the A button simulate
         tapping in the bottom-right corner of the screen, for a landscape game.
 
-        Except where specified in touchHLE_default_options.txt, this is not used
+        Except where specified in HyperHLE_default_options.txt, this is not used
         by default. There is however a virtual cursor that is controlled by the
         right analog stick (tap/hold by pressing the stick or right shoulder
         button).
@@ -140,7 +140,7 @@ Game controller options:
         Note that this option takes precedence over any D-pad buttons defined
         with --button-to-touch.
 
-        Except where specified in touchHLE_default_options.txt, this is not used
+        Except where specified in HyperHLE_default_options.txt, this is not used
         by default. There is however a virtual cursor that is controlled by the
         right analog stick (tap/hold by pressing the stick or right shoulder
         button).
@@ -159,7 +159,7 @@ Game controller options:
         stick to control a touch within a 100x100 pixel region starting at
         (10,10) on the screen.
 
-        Except where specified in touchHLE_default_options.txt, this is not used
+        Except where specified in HyperHLE_default_options.txt, this is not used
         by default. There is however a virtual cursor that is controlled by the
         right analog stick (tap/hold by pressing the stick or right shoulder
         button).
@@ -187,13 +187,13 @@ Game controller options:
 
 Graphics driver options:
     --gles1=...
-        Force touchHLE to use a particular OpenGL ES 1.1 implementation.
+        Force HyperHLE to use a particular OpenGL ES 1.1 implementation.
         This may be useful for troubleshooting graphics driver issues.
 
-        --gles1=gles1_on_gl2 will use touchHLE's GLES1-on-GL2 layer.
+        --gles1=gles1_on_gl2 will use HyperHLE's GLES1-on-GL2 layer.
         --gles1=gles1_native will use native OpenGL ES 1.1.
 
-        When this option isn't in use, touchHLE will try each in order and use
+        When this option isn't in use, HyperHLE will try each in order and use
         the first one that works.
 
 Debugging options:
@@ -202,10 +202,10 @@ Debugging options:
         callbacks, rather than using the fast direct access path (page tables).
 
     --gdb=...
-        Starts touchHLE in debugging mode, listening for GDB remote serial
+        Starts HyperHLE in debugging mode, listening for GDB remote serial
         protocol connections over TCP on the specified host and port.
 
-        You can then connect to touchHLE with GDB and make use of its features
+        You can then connect to HyperHLE with GDB and make use of its features
         to inspect memory and registers, set up software breakpoints, and
         continue or step execution.
 
@@ -242,14 +242,14 @@ Other options:
         language is supported, is determined entirely by the app.
 
     --headless
-        Run in headless mode. touchHLE will not create a window, so there will
+        Run in headless mode. HyperHLE will not create a window, so there will
         be no graphical output and no input. Only useful for command-line apps.
         Implies --no-error-popup.
 
     --args
         All arguments following this option will be passed to the app (via C's
-        argc/argv) rather than processed by touchHLE. This option can't be used
-        via touchHLE_options.txt or touchHLE_default_options.txt.
+        argc/argv) rather than processed by HyperHLE. This option can't be used
+        via HyperHLE_options.txt or HyperHLE_default_options.txt.
 
     --print-fps
         Logs the current framerate (FPS) to the console once per second.
@@ -257,7 +257,7 @@ Other options:
     --fps-limit=...
         Modify or disable the framerate (FPS) limit.
 
-        By default, touchHLE limits the framerate of an app to 60fps, because
+        By default, HyperHLE limits the framerate of an app to 60fps, because
         this is required for accurate emulation. Some apps can however run
         correctly at a higher framerate than normal.
 
@@ -276,7 +276,7 @@ Other options:
         a performance hit which is undesirable in most of the cases.
 
     --allow-network-access
-        Allow apps running in touchHLE to access the Internet and the local network.
+        Allow apps running in HyperHLE to access the Internet and the local network.
 
     --ignore-gl-errors
         Ignore host OpenGL errors as queried by glGetError function.

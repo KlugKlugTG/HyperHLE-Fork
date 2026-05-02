@@ -74,7 +74,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setNetworkActivityIndicatorVisible:(bool)visible {
-    // touchHLE doesn't render the iOS status bar, so we just stub this
+    // HyperHLE doesn't render the iOS status bar, so we just stub this
     // and ignore the request to show/hide the spinner.
     log_dbg!("Stubbed setNetworkActivityIndicatorVisible: {}", visible);
 }

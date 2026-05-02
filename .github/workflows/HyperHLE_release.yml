@@ -1,4 +1,4 @@
-name: Build touchHLE
+name: Build HyperHLE
 
 on:
   push:
@@ -15,11 +15,11 @@ jobs:
     runs-on: macos-latest  
 
     steps:  
-      - name: Checkout touchHLE  
+      - name: Checkout HyperHLE  
         shell: bash
         run: |
           mkdir -p "$GITHUB_WORKSPACE"  
-          git clone https://github.com/j92580498-max/touchHLE "$GITHUB_WORKSPACE"  
+          git clone https://github.com/j92580498-max/HyperHLE "$GITHUB_WORKSPACE"  
           cd "$GITHUB_WORKSPACE"  
           git fetch origin "$GITHUB_REF"  
           git checkout "$GITHUB_SHA"
@@ -70,7 +70,7 @@ jobs:
         name: Extract LLVM  
         run: tar -xf clang+llvm-12.0.0-x86_64-apple-darwin.tar.xz && mkdir tests/llvm && mv clang+llvm-12.0.0-x86_64-apple-darwin/* tests/llvm  
       - name: Get copy of common-3.0-sdk  
-        run: cd ${{ github.workspace }}/tests && curl -L https://github.com/touchHLE/common-3.0-sdk/releases/latest/download/common-3.0.sdk-macOS-universal.tar.gz | tar xzv  
+        run: cd ${{ github.workspace }}/tests && curl -L https://github.com/HyperHLE/common-3.0-sdk/releases/latest/download/common-3.0.sdk-macOS-universal.tar.gz | tar xzv  
       - name: Install x86_64 toolchain  
         run: rustup target add x86_64-apple-darwin  
       - name: Test  
@@ -84,11 +84,11 @@ jobs:
         env:  
           CMAKE: ${{ github.workspace }}/vendor/cmake/bin/cmake  
       - name: Create .app bundle  
-        run: cd dev-scripts && ./make-macos-bundle.sh ../target/x86_64-apple-darwin/release/touchHLE "`cargo run --package touchHLE_version`" "`cargo run --package touchHLE_version -- --branding`" && mkdir touchHLE-dmg-src && mv *.app touchHLE-dmg-src/ && hdiutil create -volname touchHLE -srcfolder touchHLE-dmg-src touchHLE.dmg && mv touchHLE.dmg ..  
+        run: cd dev-scripts && ./make-macos-bundle.sh ../target/x86_64-apple-darwin/release/HyperHLE "`cargo run --package HyperHLE_version`" "`cargo run --package HyperHLE_version -- --branding`" && mkdir HyperHLE-dmg-src && mv *.app HyperHLE-dmg-src/ && hdiutil create -volname HyperHLE -srcfolder HyperHLE-dmg-src HyperHLE.dmg && mv HyperHLE.dmg ..  
       - uses: actions/upload-artifact@v4  
         with:  
-          name: touchHLE_macOS_x86_64  
-          path: touchHLE.dmg  
+          name: HyperHLE_macOS_x86_64  
+          path: HyperHLE.dmg  
       - uses: actions/upload-artifact@v4  
         with:  
           name: TestApp_built_on_macOS  
@@ -98,11 +98,11 @@ jobs:
     runs-on: ubuntu-latest  
 
     steps:  
-    - name: Checkout touchHLE  
+    - name: Checkout HyperHLE  
       shell: bash
       run: |
         mkdir -p "$GITHUB_WORKSPACE"  
-        git clone https://github.com/j92580498-max/touchHLE "$GITHUB_WORKSPACE"  
+        git clone https://github.com/j92580498-max/HyperHLE "$GITHUB_WORKSPACE"  
         cd "$GITHUB_WORKSPACE"  
         git fetch origin "$GITHUB_REF"  
         git checkout "$GITHUB_SHA"
@@ -175,24 +175,24 @@ jobs:
     - name: Generate local.properties file  
       run: echo 'sdk.dir='$ANDROID_SDK_ROOT > android/local.properties  
     - name: Build for Android  
-      run: cd android && ../gradle/gradle-8.11.1/bin/gradle assembleRelease && mv app/build/outputs/apk/release/app-release.apk ../touchHLE.apk  
+      run: cd android && ../gradle/gradle-8.11.1/bin/gradle assembleRelease && mv app/build/outputs/apk/release/app-release.apk ../HyperHLE.apk  
       env:  
         ANDROID_NDK_ROOT: '/usr/local/lib/android/sdk/ndk/25.2.9519653'  
         CMAKE: ${{ github.workspace }}/vendor/cmake/bin/cmake  
     - uses: actions/upload-artifact@v4  
       with:  
-        name: touchHLE_Android_AArch64  
-        path: touchHLE.apk
+        name: HyperHLE_Android_AArch64  
+        path: HyperHLE.apk
 
   build-win:
     runs-on: windows-latest  
 
     steps:  
-    - name: Checkout touchHLE  
+    - name: Checkout HyperHLE  
       shell: bash
       run: |
         mkdir -p "$GITHUB_WORKSPACE"  
-        git clone https://github.com/j92580498-max/touchHLE "$GITHUB_WORKSPACE"  
+        git clone https://github.com/j92580498-max/HyperHLE "$GITHUB_WORKSPACE"  
         cd "$GITHUB_WORKSPACE"  
         git fetch origin "$GITHUB_REF"  
         git checkout "$GITHUB_SHA"
@@ -238,8 +238,8 @@ jobs:
         CMAKE: ${{ github.workspace }}\vendor\cmake\bin\cmake  
     - name: Create bundle  
       shell: bash  
-      run: cd dev-scripts && ./make-windows-bundle.sh ../target/release/touchHLE.exe && mv touchHLE_windows_bundle/ ..  
+      run: cd dev-scripts && ./make-windows-bundle.sh ../target/release/HyperHLE.exe && mv HyperHLE_windows_bundle/ ..  
     - uses: actions/upload-artifact@v4  
       with:  
-        name: touchHLE_Windows_x86_64  
-        path: touchHLE_windows_bundle/
+        name: HyperHLE_Windows_x86_64  
+        path: HyperHLE_windows_bundle/

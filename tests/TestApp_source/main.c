@@ -5,7 +5,7 @@
  */
 
 // This file contains the entry-point for TestApp, which is used for integration
-// testing of touchHLE. Depending on the passed arguments, it will run as a
+// testing of HyperHLE. Depending on the passed arguments, it will run as a
 // command-line app that runs automated tests (see cli_tests.m) or as a UIKit
 // app that is used for manual interactive testing (see gui_tests.m).
 // See also tests/README.md and tests/integration.rs for the details of how it

@@ -49,7 +49,7 @@ fn make_network_error(env: &mut crate::Environment) -> id {
     let desc_val = from_rust_string(
         env,
         "The network connection was lost. \
-         (touchHLE: networking not supported)"
+         (HyperHLE: networking not supported)"
             .to_string(),
     );
     autorelease(env, desc_val);
@@ -193,7 +193,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         // without the network data.
         log!(
             "NSURLConnection: request will silently fail \
-             (networking not supported in touchHLE)"
+             (networking not supported in HyperHLE)"
         );
     }
 
@@ -205,7 +205,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (())start {
     log!(
         "NSURLConnection start: silently dropping \
-         (networking not supported in touchHLE)"
+         (networking not supported in HyperHLE)"
     );
 }
 

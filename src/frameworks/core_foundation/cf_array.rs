@@ -124,7 +124,7 @@ pub fn CFArrayCreateMutable(
     let _ = capacity;
     
     if callbacks.is_null() {
-        msg_class![env; _touchHLE_NSMutableArray_non_retaining new]
+        msg_class![env; _HyperHLE_NSMutableArray_non_retaining new]
     } else {
         // Non-null callbacks → use a retaining mutable array.
         msg_class![env; NSMutableArray new]

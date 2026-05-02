@@ -1,5 +1,5 @@
 // Client-side enhancements: localised <time> formatting, sortable / searchable
-// tables (matches the behaviour of appdb.touchhle.org).
+// tables (matches the behaviour of hyperhle-appdb-kupykrhh.fly.dev).
 (function () {
   "use strict";
 

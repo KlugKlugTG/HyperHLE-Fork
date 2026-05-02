@@ -1,5 +1,5 @@
 /*
- * Implementation of UIImage for iOS 2.0 - 4.3.5 targeting TouchHLE.
+ * Implementation of UIImage for iOS 2.0 - 4.3.5 targeting HyperHLE.
  */
 
 use crate::dyld::{export_c_func, FunctionExports};

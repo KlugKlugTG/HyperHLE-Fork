@@ -129,7 +129,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 //
 // On real iOS, UIWindow's frame matches UIScreen.bounds and touches always
 // land inside it, so the standard UIView hitTest implementation is fine.
-// In touchHLE, however, the host window can be larger than the iPhone's
+// In HyperHLE, however, the host window can be larger than the iPhone's
 // virtual screen (Android phones, large desktop windows). Even with the
 // touch-coordinate clamp in `transform_input_coords`, edge cases such as
 // the rootViewController's view being rotated for landscape orientation

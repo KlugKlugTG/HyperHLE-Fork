@@ -7,7 +7,7 @@
 //!
 //! Atomic operations.
 //!
-//! touchHLE is a single-host-thread application, so host functions cannot be
+//! HyperHLE is a single-host-thread application, so host functions cannot be
 //! interrupted by other threads. All operations are therefore trivially atomic.
 
 use crate::dyld::FunctionExports;

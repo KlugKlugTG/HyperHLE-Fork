@@ -6,7 +6,7 @@
  */
 //! Quick-and-dirty decoding of miscellaneous formats (MP3, AAC, CAF) to linear PCM.
 //!
-//! This should be the only module in touchHLE that makes use of [symphonia].
+//! This should be the only module in HyperHLE that makes use of [symphonia].
 
 use std::io::Cursor;
 use symphonia::core::audio::AudioSpec;

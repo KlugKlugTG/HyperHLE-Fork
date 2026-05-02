@@ -44,7 +44,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 (env, this, _cmd);
 
-@implementation _touchHLE_CFSocket: NSObject
+@implementation _HyperHLE_CFSocket: NSObject
 - (())dealloc {
     env.objc.dealloc_object(this, &mut env.mem)
 }
@@ -55,7 +55,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // MARK: - Helpers
 
 fn alloc_socket(env: &mut Environment, fd: CFSocketNativeHandle) -> CFSocketRef {
-    let class = env.objc.get_known_class("_touchHLE_CFSocket", &mut env.mem);
+    let class = env.objc.get_known_class("_HyperHLE_CFSocket", &mut env.mem);
     env.objc.alloc_object(
         class,
         Box::new(CFSocketHostObject { native_handle: fd }),

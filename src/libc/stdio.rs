@@ -665,7 +665,7 @@ fn tmpfile(env: &mut Environment) -> MutPtr<FILE> {
         std::sync::atomic::AtomicU32::new(0);
     let count = TMPFILE_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let tmp_path = format!(
-        "/tmp/touchHLE_tmp_{}_{}\0",
+        "/tmp/HyperHLE_tmp_{}_{}\0",
         std::process::id(),
         count
     );

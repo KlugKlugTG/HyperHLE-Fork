@@ -367,7 +367,7 @@ let device_family = match device_family_array.len() {
             };
             Some(Box::new(window::Window::new(
                 &format!(
-                    "{} (touchHLE {}{}{})",
+                    "{} (HyperHLE {}{}{})",
                     bundle.display_name(),
                     super::branding(),
                     if super::branding().is_empty() {
@@ -401,7 +401,7 @@ let device_family = match device_family_array.len() {
 
         let mut dylibs = Vec::new();
         for dylib in &executable.dynamic_libraries {
-            // There are some Free Software libraries bundled with touchHLE and
+            // There are some Free Software libraries bundled with HyperHLE and
             // exposed via the guest file system (see Fs::new()).
             let dylib_path = fs::GuestPath::new(dylib);
             if fs.is_file(dylib_path) {
@@ -684,7 +684,7 @@ let device_family = match device_family_array.len() {
         assert!(!options.headless);
         let window = Some(Box::new(window::Window::new(
             &format!(
-                "touchHLE {}{}{}",
+                "HyperHLE {}{}{}",
                 super::branding(),
                 if super::branding().is_empty() {
                     ""
@@ -856,19 +856,19 @@ let device_family = match device_family_array.len() {
         }
     }
 
-    /// Get a shared reference to the window. Panics if touchHLE is running in
+    /// Get a shared reference to the window. Panics if HyperHLE is running in
     /// headless mode.
     pub fn window(&self) -> &window::Window {
         self.window.as_ref().expect(
-            "Tried to do something that needs a window, but touchHLE is running in headless mode!",
+            "Tried to do something that needs a window, but HyperHLE is running in headless mode!",
         )
     }
 
-    /// Get a mutable reference to the window. Panics if touchHLE is running
+    /// Get a mutable reference to the window. Panics if HyperHLE is running
     /// in headless mode.
     pub fn window_mut(&mut self) -> &mut window::Window {
         self.window.as_mut().expect(
-            "Tried to do something that needs a window, but touchHLE is running in headless mode!",
+            "Tried to do something that needs a window, but HyperHLE is running in headless mode!",
         )
     }
 

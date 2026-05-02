@@ -128,7 +128,7 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(BZ2_bzBuffToBuffDecompress(_, _, _, _, _, _)),
 ];
 
-// Добавляем объявление DYLIB прямо сюда, как это принято в других модулях touchHLE
+// Добавляем объявление DYLIB прямо сюда, как это принято в других модулях HyperHLE
 pub const DYLIB: HostDylib = HostDylib {
     path: "/usr/lib/libbz2.1.0.dylib",
     aliases: &["/usr/lib/libbz2.dylib"], // На всякий случай добавим алиас

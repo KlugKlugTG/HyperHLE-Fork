@@ -112,7 +112,7 @@ class Report(Base):
     minimum_ios_version: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     # Report-level info.
-    touchhle_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    hyperhle_version: Mapped[str] = mapped_column(String(80), nullable=False)
     operating_system: Mapped[str] = mapped_column(String(120), nullable=False)
     gpu: Mapped[str | None] = mapped_column(String(120), nullable=True)
     scale_hack: Mapped[str | None] = mapped_column(String(40), nullable=True)

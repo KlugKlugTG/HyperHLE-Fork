@@ -174,13 +174,13 @@ fn NSHomeDirectory(env: &mut Environment) -> id {
 
 fn NSUserName(_env: &mut Environment) -> id {
     // Return a default username
-    let username = ns_string::from_rust_string(_env, String::from("touchHLE_user"));
+    let username = ns_string::from_rust_string(_env, String::from("HyperHLE_user"));
     autorelease(_env, username)
 }
 
 fn NSFullUserName(_env: &mut Environment) -> id {
     // Return a default full user name
-    let full_name = ns_string::from_rust_string(_env, String::from("touchHLE User"));
+    let full_name = ns_string::from_rust_string(_env, String::from("HyperHLE User"));
     autorelease(_env, full_name)
 }
 
@@ -556,7 +556,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         return nil;
     }
 
-    // 2. В виртуальной ФС touchHLE реальных симлинков нет (они либо резолвятся при распаковке, 
+    // 2. В виртуальной ФС HyperHLE реальных симлинков нет (они либо резолвятся при распаковке, 
     // либо не поддерживаются). По документации Apple, если файл существует, 
     // но НЕ является симлинком, метод возвращает nil и ошибку (обычно код 256 - NSFileReadUnknownError 
     // или POSIX EINVAL 22). Эмулируем этот легальный отказ:

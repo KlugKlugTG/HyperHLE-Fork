@@ -104,7 +104,7 @@ pub fn CGBitmapContextCreate(
 
     let isa = env
         .objc
-        .get_known_class("_touchHLE_CGContext", &mut env.mem);
+        .get_known_class("_HyperHLE_CGContext", &mut env.mem);
     env.objc
         .alloc_object(isa, Box::new(host_object), &mut env.mem)
 }

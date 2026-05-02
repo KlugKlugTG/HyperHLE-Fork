@@ -1,26 +1,26 @@
-# Contributing to touchHLE
+# Contributing to HyperHLE
 
 Please also read the [code of conduct](CODE_OF_CONDUCT.md).
 
 ## Issues
 
-Please bear in mind that there are infinitely many apps that do not work in touchHLE right now, so please don't open issues about broken apps unless one of these applies:
+Please bear in mind that there are infinitely many apps that do not work in HyperHLE right now, so please don't open issues about broken apps unless one of these applies:
 
-- You know that this specific version of the app worked in a previous version of touchHLE and you can reproduce this.
+- You know that this specific version of the app worked in a previous version of HyperHLE and you can reproduce this.
 - The app is partially working (e.g. loaded up to the menu but the main game doesn't work). The fact that an app's splash screen (Default.png) shows up doesn't mean it's partially working.
 
 ## Source control and review
 
 ### Setting up the repo
 
-touchHLE uses git source control. You can get the source code from GitHub like this:
+HyperHLE uses git source control. You can get the source code from GitHub like this:
 
 ```
-$ git clone https://github.com/touchHLE/touchHLE.git
-$ cd touchHLE
+$ git clone https://github.com/HyperHLE/HyperHLE.git
+$ cd HyperHLE
 ```
 
-touchHLE uses Gerrit for code review. [The touchHLE repo on GerritHub](https://review.gerrithub.io/admin/repos/touchHLE/touchHLE) is where you can submit patches.
+HyperHLE uses Gerrit for code review. [The HyperHLE repo on GerritHub](https://review.gerrithub.io/admin/repos/HyperHLE/HyperHLE) is where you can submit patches.
 
 If you're unfamiliar with Gerrit or GerritHub, please read [Working with Gerrit: An example](https://gerrithub.io/Documentation/intro-gerrit-walkthrough.html) first to get an overview of the expected workflow.
 
@@ -29,7 +29,7 @@ Log into GerritHub with your GitHub account. (If that fails with some server err
 You can then add GerritHub as a “remote” (replace `your-github-username-here` with your username):
 
 ```
-$ git remote add gerrit "ssh://your-github-username-here@review.gerrithub.io:29418/touchHLE/touchHLE"
+$ git remote add gerrit "ssh://your-github-username-here@review.gerrithub.io:29418/HyperHLE/HyperHLE"
 ```
 
 Gerrit requires your commit messages to have a `Change-Id:` line in them. Gerrit provides a git hook that adds this line to your commit messages automatically. You can install it like this (Windows users may need to use git bash for this):
@@ -50,7 +50,7 @@ $ git push gerrit HEAD:refs/for/trunk
 
 Then go to GerritHub, make sure you didn't push anything you didn't intend to, and add `hikari_no_yume` and `ciciplusplus` as reviewers.
 
-If you're submitting a large number of changes with a common theme, e.g. improving compatibility with some app, it is recommended to _also_ create a GitHub pull request. This improves visibility and ensures your changes are tested by the GitHub CI. You can then tag the Gerrit reviews with a “topic” named like `touchHLE/pull/xxx` where xxx is the pull request number. You can bulk-tag things using the checkboxes on the GerritHub homepage.
+If you're submitting a large number of changes with a common theme, e.g. improving compatibility with some app, it is recommended to _also_ create a GitHub pull request. This improves visibility and ensures your changes are tested by the GitHub CI. You can then tag the Gerrit reviews with a “topic” named like `HyperHLE/pull/xxx` where xxx is the pull request number. You can bulk-tag things using the checkboxes on the GerritHub homepage.
 
 Please also see the following guidelines for what to do with code changes.
 
@@ -72,13 +72,13 @@ The developer documentation can be found in [the `dev-docs` directory](dev-docs/
 
 Please run [`dev-scripts/format.sh`](dev-scripts/format.sh) and [`dev-scripts/lint.sh`](dev-scripts/lint.sh) on your changes before committing.
 
-You should also run `cargo test`. [Building the integration tests requires downloading LLVM and a custom toolchain](tests/README.md), so it's understandable if you want to skip them (`cargo test -- --skip test_app`) and let the GitHub Actions CI catch any issues when you submit your pull request. Alternatively, you can download a pre-built version of the integration tests app (TestApp) from GitHub Actions CI and run it in touchHLE.
+You should also run `cargo test`. [Building the integration tests requires downloading LLVM and a custom toolchain](tests/README.md), so it's understandable if you want to skip them (`cargo test -- --skip test_app`) and let the GitHub Actions CI catch any issues when you submit your pull request. Alternatively, you can download a pre-built version of the integration tests app (TestApp) from GitHub Actions CI and run it in HyperHLE.
 
 If you're going to open a pull request with non-trivial changes, please talk to us first so we can figure out if we're likely to accept them. It would be a shame if your effort had to be wasted.
 
 Avoid sending everything as big commit(s) - we prefer to have smaller self-mergeable commits which could be reviewed and submitted independently.
 
-Please also understand that we maintain a certain code quality standards and your contribution would be accepted _only_ if it does meet them. If your don't have time or willingness to be involved in the review process to attain those, please avoid contributing. You could check [past merged patch sets](https://review.gerrithub.io/q/project:touchHLE/touchHLE+status:merged) to get an idea what is expected.
+Please also understand that we maintain a certain code quality standards and your contribution would be accepted _only_ if it does meet them. If your don't have time or willingness to be involved in the review process to attain those, please avoid contributing. You could check [past merged patch sets](https://review.gerrithub.io/q/project:HyperHLE/HyperHLE+status:merged) to get an idea what is expected.
 
 ### Copyright and reverse engineering
 

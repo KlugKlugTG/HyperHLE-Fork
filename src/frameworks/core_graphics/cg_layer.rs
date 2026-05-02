@@ -30,7 +30,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 (env, this, _cmd);
 
-@implementation _touchHLE_CGLayer: NSObject
+@implementation _HyperHLE_CGLayer: NSObject
 
 - (())dealloc {
     let context = env.objc.borrow::<CGLayerHostObject>(this).context;
@@ -101,7 +101,7 @@ fn CGLayerCreateWithContext(
 
     let class = env
         .objc
-        .get_known_class("_touchHLE_CGLayer", &mut env.mem);
+        .get_known_class("_HyperHLE_CGLayer", &mut env.mem);
     env.objc.alloc_object(
         class,
         Box::new(CGLayerHostObject {

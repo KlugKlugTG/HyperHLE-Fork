@@ -1,14 +1,14 @@
 /*
  * SPDX-License-Identifier: MPL-2.0
  * Copyright © 2022 Skyline Team and Contributors (https://github.com/skyline-emu/)
- * Copyright © 2023 hikari_no_yume and touchHLE contributors
+ * Copyright © 2023 hikari_no_yume and HyperHLE contributors
  *
  * This file is originally from the Skyline emulator project:
  * https://github.com/skyline-emu/skyline/blob/dc20a615275f66bee20a4fd851ef0231daca4f14/app/src/main/java/emu/skyline/provider/DocumentsProvider.kt
  */
 
 //package emu.skyline.provider
-package org.touchhle.android;
+package org.hyperhle.android;
 
 import android.database.Cursor
 import android.database.MatrixCursor
@@ -26,7 +26,7 @@ import java.io.*
 class DocumentsProvider : DocumentsProvider() {
     //private val baseDirectory = File(SkylineApplication.instance.getPublicFilesDir().canonicalPath)
     //private val baseDirectory = Environment.getExternalStorageDirectory()
-   // private val baseDirectory = touchHLEApplication.getContext().getExternalFilesDir(null)!!
+   // private val baseDirectory = HyperHLEApplication.getContext().getExternalFilesDir(null)!!
     //private val applicationName = SkylineApplication.instance.applicationInfo.loadLabel(SkylineApplication.instance.packageManager).toString()
     private val applicationName = BuildConfig.APP_NAME
 

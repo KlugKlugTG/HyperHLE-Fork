@@ -35,7 +35,7 @@ pub fn sqlite3_open(env: &mut Environment, filename_ptr: u32, ppDb: u32) -> u32 
     // Заменяем слэши, чтобы файл создавался в локальной директории эмулятора безопасно
     let safe_name = filename.replace("/", "_");
     // Сохраняем базу в директорию приложения
-    let path = format!("/storage/emulated/0/Android/data/org.touchhle.android.unofficial/files/touchHLE_apps/{}", safe_name);
+    let path = format!("/storage/emulated/0/Android/data/org.hyperhle.android.unofficial/files/HyperHLE_apps/{}", safe_name);
 
     match Connection::open(&path) {
         Ok(conn) => {
@@ -80,7 +80,7 @@ pub fn sqlite3_open_v2(env: &mut Environment, filename_ptr: u32, ppDb: u32) -> u
     // Заменяем слэши, чтобы файл создавался в локальной директории эмулятора безопасно
     let safe_name = filename.replace("/", "_");
     // Сохраняем базу в директорию приложения
-    let path = format!("/storage/emulated/0/Android/data/org.touchhle.android.unofficial/files/touchHLE_apps/{}", safe_name);
+    let path = format!("/storage/emulated/0/Android/data/org.hyperhle.android.unofficial/files/HyperHLE_apps/{}", safe_name);
 
     match Connection::open(&path) {
         Ok(conn) => {

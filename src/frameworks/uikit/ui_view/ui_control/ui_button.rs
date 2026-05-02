@@ -246,7 +246,7 @@ pub const CLASSES: ClassExports = objc_classes! {
             () = msg![env; button setTitle:title forState:UIControlStateNormal];
         }
         _ => {
-            log!("touchHLE::frameworks::uikit::ui_view::ui_control::ui_button: Warning: Unhandled UIButtonType {}", button_type);
+            log!("HyperHLE::frameworks::uikit::ui_view::ui_control::ui_button: Warning: Unhandled UIButtonType {}", button_type);
         }
     }
 

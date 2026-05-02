@@ -44,14 +44,14 @@ pub const CLASSES: ClassExports = objc_classes! {
     // allocWithZone: to have the normal behaviour. Unimplemented: call
     // superclass alloc then.
     assert!(this == env.objc.get_known_class("NSScanner", &mut env.mem));
-    msg_class![env; _touchHLE_NSScanner allocWithZone:zone]
+    msg_class![env; _HyperHLE_NSScanner allocWithZone:zone]
 }
 
 @end
 
 // Our private subclass that is the single implementation of NSScanner for
 // the time being.
-@implementation _touchHLE_NSScanner: NSScanner
+@implementation _HyperHLE_NSScanner: NSScanner
 
 + (id)allocWithZone:(NSZonePtr)_zone {
     let host_object = Box::new(NSScannerHostObject::default());

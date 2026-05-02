@@ -5,7 +5,7 @@
  */
 //! `asl.h` — Apple System Log stubs.
 //!
-//! touchHLE does not forward logs to a syslog-style facility; the guest's
+//! HyperHLE does not forward logs to a syslog-style facility; the guest's
 //! messages are silently accepted. Just enough surface is provided to keep
 //! apps like Google Mobile iOS 2.0 (which calls `asl_open` at startup and
 //! `asl_log` opportunistically) from crashing or tripping a dyld lookup
@@ -61,7 +61,7 @@ fn asl_log(
     _level: i32,
     _format: ConstPtr<u8>,
 ) -> i32 {
-    // Ignore; touchHLE already logs app warnings at a higher level.
+    // Ignore; HyperHLE already logs app warnings at a higher level.
     0
 }
 
@@ -95,7 +95,7 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(asl_free(_)),
     export_c_func!(asl_set(_, _, _)),
     export_c_func!(asl_set_query(_, _, _, _)),
-    // asl_log / asl_vlog are variadic in C; touchHLE ignores the payload,
+    // asl_log / asl_vlog are variadic in C; HyperHLE ignores the payload,
     // so we only register the fixed arguments.
     export_c_func!(asl_log(_, _, _, _)),
     export_c_func!(asl_vlog(_, _, _, _, _)),

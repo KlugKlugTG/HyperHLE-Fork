@@ -76,7 +76,7 @@ pub fn CFHash(env: &mut Environment, object: CFTypeRef) -> CFHashCode {
     msg![env; object hash]
 }
 
-/// Returns the type ID for a CF object. touchHLE uses the class pointer as a
+/// Returns the type ID for a CF object. HyperHLE uses the class pointer as a
 /// stable unique-per-class value so that CFGetTypeID(x) == CFStringGetTypeID()
 /// works correctly when x is an NSString/CFString.
 pub fn CFGetTypeID(env: &mut Environment, cf: CFTypeRef) -> CFTypeID {

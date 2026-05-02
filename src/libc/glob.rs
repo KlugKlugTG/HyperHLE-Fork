@@ -1,5 +1,5 @@
 /*
- * Реализация POSIX glob для TouchHLE
+ * Реализация POSIX glob для HyperHLE
  */
 
 use crate::dyld::FunctionExports;

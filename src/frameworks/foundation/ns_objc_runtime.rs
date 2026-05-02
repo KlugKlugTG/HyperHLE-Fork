@@ -34,7 +34,7 @@ fn NSClassFromString(env: &mut Environment, string: id) -> Class {
     let string = ns_string::to_rust_string(env, string);
 
     // While this method is supposed to return nil if the class is not found,
-    // touchHLE is missing many classes that apps might expect to be present,
+    // HyperHLE is missing many classes that apps might expect to be present,
     // so this could be troublesome. So, let's use get_known_class, which panics
     // when it can't find the class. We could except certain classes or apps if
     // we need to.

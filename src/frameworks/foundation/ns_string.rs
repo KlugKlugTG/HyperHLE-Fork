@@ -279,7 +279,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 + (id)allocWithZone:(NSZonePtr)zone {
     assert!(this == env.objc.get_known_class("NSString", &mut env.mem));
-    msg_class![env; _touchHLE_NSString allocWithZone:zone]
+    msg_class![env; _HyperHLE_NSString allocWithZone:zone]
 }
 
 + (bool)supportsSecureCoding { true }
@@ -716,7 +716,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         }
     }
     components.push(current_component);
-    let class = env.objc.get_known_class("_touchHLE_NSString", &mut env.mem);
+    let class = env.objc.get_known_class("_HyperHLE_NSString", &mut env.mem);
     let component_ns_strings: Vec<id> = components.drain(..).map(|utf16| {
         let host_object = Box::new(StringHostObject::Utf16(utf16));
         env.objc.alloc_object(class, host_object, &mut env.mem)
@@ -786,7 +786,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     let cap = (to as usize).min(1024); 
     let mut res_utf16: Utf16String = Vec::with_capacity(cap);
     for_each_code_unit(env, this, |idx, c| { if idx < to { res_utf16.push(c); } });
-    let res = msg_class![env; _touchHLE_NSString alloc];
+    let res = msg_class![env; _HyperHLE_NSString alloc];
     *env.objc.borrow_mut(res) = StringHostObject::Utf16(res_utf16);
     autorelease(env, res)
 }
@@ -794,7 +794,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (id)substringFromIndex:(NSUInteger)from {
     let mut res_utf16: Utf16String = Vec::new();
     for_each_code_unit(env, this, |idx, c| { if idx >= from { res_utf16.push(c); } });
-    let res = msg_class![env; _touchHLE_NSString alloc];
+    let res = msg_class![env; _HyperHLE_NSString alloc];
     *env.objc.borrow_mut(res) = StringHostObject::Utf16(res_utf16);
     autorelease(env, res)
 }
@@ -833,7 +833,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         cursor += 1;
         if cursor >= pad_length { cursor = 0; }
     }
-    let res = msg_class![env; _touchHLE_NSString alloc];
+    let res = msg_class![env; _HyperHLE_NSString alloc];
     *env.objc.borrow_mut(res) = StringHostObject::Utf16(res_utf16);
     autorelease(env, res)
 }
@@ -892,7 +892,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     let mut new_utf16 = Vec::with_capacity((this_len + other_len) as usize);
     for_each_code_unit(env, this, |_idx, c| { new_utf16.push(c); });
     for_each_code_unit(env, other, |_idx, c| { new_utf16.push(c); });
-    let class = env.objc.get_known_class("_touchHLE_NSString", &mut env.mem);
+    let class = env.objc.get_known_class("_HyperHLE_NSString", &mut env.mem);
     let host_object = Box::new(StringHostObject::Utf16(new_utf16));
     env.objc.alloc_object(class, host_object, &mut env.mem)
 }
@@ -1133,7 +1133,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 + (id)allocWithZone:(NSZonePtr)zone {
     assert!(this == env.objc.get_known_class("NSMutableString", &mut env.mem));
-    msg_class![env; _touchHLE_NSMutableString allocWithZone:zone]
+    msg_class![env; _HyperHLE_NSMutableString allocWithZone:zone]
 }
 
 + (bool)supportsSecureCoding { true }
@@ -1255,7 +1255,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 @end
 
-@implementation _touchHLE_NSString: NSString
+@implementation _HyperHLE_NSString: NSString
 
 + (id)allocWithZone:(NSZonePtr)_zone {
     let host_object = Box::new(StringHostObject::Utf8(Cow::Borrowed("")));
@@ -1266,11 +1266,11 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (id)initWithCoder:(id)coder {
     let class: Class = msg![env; coder class];
-    let nib_archive_class: Class = msg_class![env; _touchHLE_NIBArchiveDecoder class];
+    let nib_archive_class: Class = msg_class![env; _HyperHLE_NIBArchiveDecoder class];
     let new_str = if env.objc.class_is_subclass_of(class, nib_archive_class) {
         _nib_archive_decoder::decode_current_string(env, coder)
     } else {
-        println!("Warning: _touchHLE_NSString initWithCoder: unsupported coder class, returning empty string");
+        println!("Warning: _HyperHLE_NSString initWithCoder: unsupported coder class, returning empty string");
         get_static_str(env, "")
     };
     release(env, this);
@@ -1502,7 +1502,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         release(env, content);
         release(env, key);
     } else {
-        println!("Warning: _touchHLE_NSString encodeWithCoder: unsupported coder class, skipping");
+        println!("Warning: _HyperHLE_NSString encodeWithCoder: unsupported coder class, skipping");
     }
 }
     
@@ -1589,7 +1589,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 @end
 
-@implementation _touchHLE_NSString_Static: _touchHLE_NSString
+@implementation _HyperHLE_NSString_Static: _HyperHLE_NSString
 
 + (id)allocWithZone:(NSZonePtr)_zone {
     let host_object = Box::new(StringHostObject::Utf8(Cow::Borrowed("")));
@@ -1603,7 +1603,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 @end
 
-@implementation _touchHLE_NSString_CFConstantString_UTF8: _touchHLE_NSString_Static
+@implementation _HyperHLE_NSString_CFConstantString_UTF8: _HyperHLE_NSString_Static
 
 - (ConstPtr<u8>)UTF8String {
     let cfstringStruct { bytes, .. } = env.mem.read(this.cast());
@@ -1645,7 +1645,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         release(env, content);
         release(env, key);
     } else {
-        println!("Warning: _touchHLE_NSString_CFConstantString_UTF8 encodeWithCoder: unsupported coder class, skipping");
+        println!("Warning: _HyperHLE_NSString_CFConstantString_UTF8 encodeWithCoder: unsupported coder class, skipping");
     }
 }
 
@@ -1668,10 +1668,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 @end
 
-@implementation _touchHLE_NSString_CFConstantString_UTF16: _touchHLE_NSString_Static
+@implementation _HyperHLE_NSString_CFConstantString_UTF16: _HyperHLE_NSString_Static
 @end
 
-@implementation _touchHLE_NSMutableString: NSMutableString
+@implementation _HyperHLE_NSMutableString: NSMutableString
 
 + (id)allocWithZone:(NSZonePtr)_zone {
     let host_object = Box::new(StringHostObject::Utf8(Cow::Borrowed("")));
@@ -1688,7 +1688,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     // becomes nil, which on Minecraft PE shows up as empty Create World
     // text fields and a non-functional keyboard.
     let class: Class = msg![env; coder class];
-    let nib_archive_class: Class = msg_class![env; _touchHLE_NIBArchiveDecoder class];
+    let nib_archive_class: Class = msg_class![env; _HyperHLE_NIBArchiveDecoder class];
     if env.objc.class_is_subclass_of(class, nib_archive_class) {
         let decoded = _nib_archive_decoder::decode_current_string(env, coder);
         if decoded != nil {
@@ -1696,7 +1696,7 @@ pub const CLASSES: ClassExports = objc_classes! {
             release(env, decoded);
         }
     } else {
-        println!("Warning: _touchHLE_NSMutableString initWithCoder: unsupported coder class, returning empty string");
+        println!("Warning: _HyperHLE_NSMutableString initWithCoder: unsupported coder class, returning empty string");
     }
     this
 }
@@ -1824,10 +1824,10 @@ pub fn register_constant_strings(bin: &MachO, mem: &mut Mem, objc: &mut ObjC) {
         let cfstringStruct { _isa, flags, bytes, length } = mem.read(cfstr_ptr);
         let (host_object, class_name) = if flags == 0x7C8 {
             let decoded = String::from_utf8_lossy(mem.bytes_at(bytes, length)).into_owned();
-            (StringHostObject::Utf8(Cow::Owned(decoded)), "_touchHLE_NSString_CFConstantString_UTF8")
+            (StringHostObject::Utf8(Cow::Owned(decoded)), "_HyperHLE_NSString_CFConstantString_UTF8")
         } else if flags == 0x7D0 {
             let decoded = mem.bytes_at(bytes, length * 2).chunks(2).map(|chunk| u16::from_le_bytes(chunk.try_into().unwrap())).collect();
-            (StringHostObject::Utf16(decoded), "_touchHLE_NSString_CFConstantString_UTF16")
+            (StringHostObject::Utf16(decoded), "_HyperHLE_NSString_CFConstantString_UTF16")
         } else {
             panic!("Bad CFTypeID for constant string: {flags:#x}");
         };
@@ -1842,7 +1842,7 @@ pub fn get_static_str(env: &mut Environment, from: &'static str) -> id {
     if let Some(&existing) = State::get(env).static_str_pool.get(from) {
         existing
     } else {
-        let new = msg_class![env; _touchHLE_NSString_Static alloc];
+        let new = msg_class![env; _HyperHLE_NSString_Static alloc];
         *env.objc.borrow_mut(new) = StringHostObject::Utf8(Cow::Borrowed(from));
         State::get(env).static_str_pool.insert(from, new);
         new
@@ -1850,21 +1850,21 @@ pub fn get_static_str(env: &mut Environment, from: &'static str) -> id {
 }
 
 pub fn from_rust_string(env: &mut Environment, from: String) -> id {
-    let string: id = msg_class![env; _touchHLE_NSString alloc];
+    let string: id = msg_class![env; _HyperHLE_NSString alloc];
     let host_object: &mut StringHostObject = env.objc.borrow_mut(string);
     *host_object = StringHostObject::Utf8(Cow::Owned(from));
     string
 }
 
 pub fn mutable_from_rust_string(env: &mut Environment, from: String) -> id {
-    let string: id = msg_class![env; _touchHLE_NSMutableString alloc];
+    let string: id = msg_class![env; _HyperHLE_NSMutableString alloc];
     let host_object: &mut StringHostObject = env.objc.borrow_mut(string);
     *host_object = StringHostObject::Utf8(Cow::Owned(from));
     string
 }
 
 pub fn from_u16_vec(env: &mut Environment, from: Vec<u16>) -> id {
-    let string: id = msg_class![env; _touchHLE_NSString alloc];
+    let string: id = msg_class![env; _HyperHLE_NSString alloc];
     let host_object: &mut StringHostObject = env.objc.borrow_mut(string);
     *host_object = StringHostObject::Utf16(from);
     string
@@ -2100,7 +2100,7 @@ fn string_by_replacing_occurrences_inner(
             }
         }
     }
-    let result_ns_string = msg_class![env; _touchHLE_NSString alloc];
+    let result_ns_string = msg_class![env; _HyperHLE_NSString alloc];
     *env.objc.borrow_mut(result_ns_string) = StringHostObject::Utf16(result);
     autorelease(env, result_ns_string)
 }
@@ -2127,7 +2127,7 @@ fn size_with_font_min_font_size_actual_font_size_for_width_line_break_mode(
 pub fn CFStringGetCharactersPtr(env: &mut Environment, the_string: id) -> ConstPtr<unichar> {
     if the_string == nil { return Ptr::null(); }
     let class: Class = msg![env; the_string class];
-    let constant_utf16_class = env.objc.get_known_class("_touchHLE_NSString_CFConstantString_UTF16", &mut env.mem);
+    let constant_utf16_class = env.objc.get_known_class("_HyperHLE_NSString_CFConstantString_UTF16", &mut env.mem);
     if class == constant_utf16_class {
         let cfstr: cfstringStruct = env.mem.read(the_string.cast());
         cfstr.bytes.cast()

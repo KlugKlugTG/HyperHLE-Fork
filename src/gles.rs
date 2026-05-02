@@ -5,18 +5,18 @@
  */
 //! OpenGL ES abstraction and implementations.
 //!
-//! touchHLE uses OpenGL ES for several things. OpenGL ES is part of iPhone OS's
+//! HyperHLE uses OpenGL ES for several things. OpenGL ES is part of iPhone OS's
 //! API surface and can be used by apps for rendering, so there must be an
 //! implementation of it to expose to the app. Beyond that, there are various
 //! internal uses for which any graphics API would work, but using the same one
 //! makes things simpler:
 //! - Presenting frames rendered by the app to the screen, with appropriate
 //!   rotation and scaling.
-//! - Drawing touchHLE's virtual cursor.
+//! - Drawing HyperHLE's virtual cursor.
 //! - Drawing the app's splash screen.
 //! - Compositing the app's Core Animation layers (usually for UIKit views).
 //!
-//! touchHLE's OpenGL ES implementation consists of a series of layers. This
+//! HyperHLE's OpenGL ES implementation consists of a series of layers. This
 //! module contains the layers that aren't specific to a particular use:
 //!
 //! - [gles_generic] provides an abstraction over OpenGL ES implementations.
@@ -70,9 +70,9 @@ pub mod gles2_native;
 mod gles_generic;
 pub mod present;
 mod util;
-use touchHLE_gl_bindings::gl21compat as gl21compat_raw;
-pub use touchHLE_gl_bindings::gles11 as gles11_raw;
-pub use touchHLE_gl_bindings::gles2 as gles2_raw;
+use HyperHLE_gl_bindings::gl21compat as gl21compat_raw;
+pub use HyperHLE_gl_bindings::gles11 as gles11_raw;
+pub use HyperHLE_gl_bindings::gles2 as gles2_raw;
 
 use crate::environment::Environment;
 use gles1_native::GLES1NativeContext;
@@ -134,7 +134,7 @@ pub fn create_gles1_ctx(env: &mut Environment) -> Box<dyn GLESContext> {
 /// Try to create an OpenGL ES 2.0 context using the [GLES1OnGL2] backend,
 /// panicking on failure.
 ///
-/// touchHLE does not have a dedicated native ES 2.0 backend on most desktop
+/// HyperHLE does not have a dedicated native ES 2.0 backend on most desktop
 /// hosts. Instead, ES 2.0 entry points are provided by [GLES1OnGL2], which is
 /// based on a desktop OpenGL 2.1 compatibility profile context. Desktop GL 2.1
 /// has all the shader-related entry points (`glCreateShader`,

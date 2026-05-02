@@ -31,7 +31,7 @@ UIView *mainView;
 
 // This is a clumsy way to swap out views to switch between different sections
 // of the app. A proper implementation would probably involve UIViewController,
-// but touchHLE's implementation of it is quite incomplete. This'll do for now.
+// but HyperHLE's implementation of it is quite incomplete. This'll do for now.
 - (void)setMainView:(UIView *)view {
   [view retain];
   [mainView removeFromSuperview];

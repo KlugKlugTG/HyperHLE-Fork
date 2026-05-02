@@ -130,7 +130,7 @@ pub const CLASSES: ClassExports = objc_classes!
         // Примечание: Для честного вызова Objective-C блока (вместо делегата) из Rust нужно использовать 
         // внутреннее FFI эмулятора (вызов указателя функции).
         // Чтобы избежать паник компилятора из-за
-        // разницы в версиях touchHLE, мы оставляем логирование.
+        // разницы в версиях HyperHLE, мы оставляем логирование.
         // Игра не зависнет, так как 
         // окно будет считаться "закрытым" через базовый UIViewController.
         log!("TWTweetComposeViewController: Completion handler is present. Simulating result 'Done'.");

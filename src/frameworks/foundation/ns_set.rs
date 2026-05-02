@@ -16,7 +16,7 @@ use crate::objc::{
     autorelease, id, msg, msg_class, nil, objc_classes, retain, ClassExports, HostObject, NSZonePtr,
 };
 
-/// Belongs to _touchHLE_NSSet
+/// Belongs to _HyperHLE_NSSet
 #[derive(Debug, Default)]
 struct SetHostObject {
     dict: DictionaryHostObject,
@@ -32,14 +32,14 @@ pub const CLASSES: ClassExports = objc_classes! {
 // - (id)member:(id)object;
 // - (NSEnumerator*)objectEnumerator;
 // We can pick whichever subclass we want for the various alloc methods.
-// For the time being, that will always be _touchHLE_NSSet.
+// For the time being, that will always be _HyperHLE_NSSet.
 @implementation NSSet: NSObject
 
 + (id)allocWithZone:(NSZonePtr)zone {
     // NSSet might be subclassed by something which needs allocWithZone:
     // to have the normal behaviour. Unimplemented: call superclass alloc then.
     assert!(this == env.objc.get_known_class("NSSet", &mut env.mem));
-    msg_class![env; _touchHLE_NSSet allocWithZone:zone]
+    msg_class![env; _HyperHLE_NSSet allocWithZone:zone]
 }
 
 + (id)set {
@@ -119,7 +119,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     // NSSet might be subclassed by something which needs allocWithZone:
     // to have the normal behaviour. Unimplemented: call superclass alloc then.
     assert!(this == env.objc.get_known_class("NSMutableSet", &mut env.mem));
-    msg_class![env; _touchHLE_NSMutableSet allocWithZone:zone]
+    msg_class![env; _HyperHLE_NSMutableSet allocWithZone:zone]
 }
 
 + (id)setWithCapacity:(NSUInteger)numItems {
@@ -145,7 +145,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // Our private subclass that is the single implementation of NSSet for the
 // time being.
-@implementation _touchHLE_NSSet: NSSet
+@implementation _HyperHLE_NSSet: NSSet
 
 + (id)allocWithZone:(NSZonePtr)_zone {
     let host_object = Box::new(SetHostObject {
@@ -226,7 +226,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // Our private subclass that is the single implementation of NSMutableSet for
 // the time being.
-@implementation _touchHLE_NSMutableSet: NSMutableSet
+@implementation _HyperHLE_NSMutableSet: NSMutableSet
 
 + (id)allocWithZone:(NSZonePtr)_zone {
     let host_object = Box::new(SetHostObject {
@@ -367,8 +367,8 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 };
 
-/// Helper method shared between `initWithObjects:` of `_touchHLE_NSSet` and
-/// `_touchHLE_NSMutableSet`
+/// Helper method shared between `initWithObjects:` of `_HyperHLE_NSSet` and
+/// `_HyperHLE_NSMutableSet`
 fn set_from_objects(env: &mut Environment, first_obj: id, args: DotDotDot) -> DictionaryHostObject {
     let null: id = msg_class![env; NSNull null];
 
@@ -385,8 +385,8 @@ fn set_from_objects(env: &mut Environment, first_obj: id, args: DotDotDot) -> Di
     dict
 }
 
-/// Helper method shared between `initWithArray:` of `_touchHLE_NSSet` and
-/// `_touchHLE_NSMutableSet`. Iterates the given array (which may be `nil`)
+/// Helper method shared between `initWithArray:` of `_HyperHLE_NSSet` and
+/// `_HyperHLE_NSMutableSet`. Iterates the given array (which may be `nil`)
 /// and inserts each object into a fresh dictionary, mirroring the semantics
 /// of `-[NSSet initWithArray:]` documented by Apple.
 fn set_from_array(env: &mut Environment, array: id) -> DictionaryHostObject {

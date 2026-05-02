@@ -76,7 +76,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
     let player_id = ns_string::from_rust_string(
         env,
-        "GKLocalPlayer:touchHLE".to_string(),
+        "GKLocalPlayer:HyperHLE".to_string(),
     );
     let alias   = ns_string::from_rust_string(env, "Player".to_string());
     let display = ns_string::from_rust_string(env, "Player".to_string());

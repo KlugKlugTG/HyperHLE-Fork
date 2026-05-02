@@ -412,7 +412,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 /// Implement framerate limiting.
 ///
 /// The real iPhone OS seems to force 60Hz v-sync in `presentRenderbuffer:`.
-/// touchHLE does not force v-sync, and its users might not have 60Hz monitors
+/// HyperHLE does not force v-sync, and its users might not have 60Hz monitors
 /// in any case, so to avoid excessive FPS or games running too fast, we need
 /// to simulate it.
 ///

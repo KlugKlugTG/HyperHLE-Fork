@@ -3,10 +3,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
-// Allow the crate to have a non-snake-case name (touchHLE).
+// Allow the crate to have a non-snake-case name (HyperHLE).
 // This also allows items in the crate to have non-snake-case names.
 #![allow(non_snake_case)]
 
 fn main() -> Result<(), String> {
-    touchHLE::main(std::env::args())
+    HyperHLE::main(std::env::args())
 }

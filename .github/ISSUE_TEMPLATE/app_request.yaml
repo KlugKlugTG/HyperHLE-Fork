@@ -5,10 +5,10 @@ body:
   - type: markdown
     attributes:
       value: |
-        This fork of touchHLE **does** accept requests to fix specific games or
+        This fork of HyperHLE **does** accept requests to fix specific games or
         apps, but we use a different form for them. Please close this form and
         open the
-        [**Request a fix for a specific game / app**](https://github.com/j92580498-max/touchHLE/issues/new?template=game_fix_request.yml)
+        [**Request a fix for a specific game / app**](https://github.com/j92580498-max/HyperHLE/issues/new?template=game_fix_request.yml)
         form instead, which has all the fields needed to investigate the issue.
   - type: checkboxes
     attributes:

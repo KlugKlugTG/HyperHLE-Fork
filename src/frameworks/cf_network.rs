@@ -14,7 +14,7 @@
 //! Note: CFHost* functions are implemented in
 //! [crate::frameworks::core_foundation::cf_host] and are registered with
 //! CoreFoundation's HostDylib. On a real device they live in CFNetwork, but
-//! touchHLE's dyld searches all frameworks so the binding resolves regardless
+//! HyperHLE's dyld searches all frameworks so the binding resolves regardless
 //! of which framework the app links against. Keeping them only in one place
 //! avoids `no_duplicate_functions` test failures.
 

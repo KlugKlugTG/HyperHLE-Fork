@@ -39,7 +39,7 @@ fn malloc(env: &mut Environment, mut size: GuestUSize) -> MutVoidPtr {
     // =========================================================================
     if size > 0xF000_0000 {
         let actual_size = (-(size as i32)) as GuestUSize;
-        log!("TouchHLE::libc::stdlib: Hack! malloc passed negative size {:#x} ({}). Allocating {} bytes instead.", size, size as i32, actual_size);
+        log!("HyperHLE::libc::stdlib: Hack! malloc passed negative size {:#x} ({}). Allocating {} bytes instead.", size, size as i32, actual_size);
         size = actual_size;
     }
 
@@ -49,10 +49,10 @@ fn malloc(env: &mut Environment, mut size: GuestUSize) -> MutVoidPtr {
         // return either NULL or a unique pointer; we choose unique...
     }
 
-    // Твой стандартный лимит TouchHLE (обычно 128 МБ - 0x0800_0000)
+    // Твой стандартный лимит HyperHLE (обычно 128 МБ - 0x0800_0000)
     // Если в твоем файле лимит другой - оставь свою цифру.
     if size > 0x0800_0000 {
-        log!("TouchHLE::libc::stdlib: malloc({:#x}) refused as out of range — returning NULL", size);
+        log!("HyperHLE::libc::stdlib: malloc({:#x}) refused as out of range — returning NULL", size);
         set_errno(env, crate::libc::errno::ENOMEM);
         return MutVoidPtr::null();
     }
@@ -907,7 +907,7 @@ fn putenv(env: &mut Environment, string: MutPtr<u8>) -> i32 {
         }
     };
     log_dbg!("putenv({:?})", s);
-    // putenv is a no-op in touchHLE — we have no real environment block.
+    // putenv is a no-op in HyperHLE — we have no real environment block.
     // Return 0 (success) so apps that call it to set e.g. timezone or locale
     // hints don't abort on the return code.
     0
@@ -945,7 +945,7 @@ fn setxattr(
         "setxattr({:?}, {:?}, size={}, position={}, options={:#x}) — ignored",
         path_str, name_str, size, position, options
     );
-    // Return 0 (success). touchHLE has no extended attribute storage;
+    // Return 0 (success). HyperHLE has no extended attribute storage;
     // returning success prevents apps from treating missing xattr support
     // as a fatal error.
     0

@@ -15,7 +15,7 @@ use std::sync::LazyLock;
 /// who don't have access to ADB, so we also write to a log file.
 pub fn get_log_file() -> &'static File {
     static LOG_FILE: LazyLock<File> = LazyLock::new(|| {
-        File::create(crate::paths::user_data_base_path().join("touchHLE_log.txt")).unwrap()
+        File::create(crate::paths::user_data_base_path().join("HyperHLE_log.txt")).unwrap()
     });
 
     &LOG_FILE
@@ -63,7 +63,7 @@ macro_rules! log_once {
 }
 
 /// Print a message (with implicit newline). This should be used for all
-/// touchHLE output that isn't coming from the app itself.
+/// HyperHLE output that isn't coming from the app itself.
 ///
 /// Prefer use [log] or [log_dbg] for errors and warnings during emulation.
 macro_rules! echo {
@@ -111,6 +111,6 @@ macro_rules! echo_no_panic {
     }
 }
 
-/// Put modules to enable [log_dbg] for here, e.g. "touchHLE::mem" to see when
+/// Put modules to enable [log_dbg] for here, e.g. "HyperHLE::mem" to see when
 /// memory is allocated and freed.
 pub const ENABLED_MODULES: &[&str] = &[];

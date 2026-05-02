@@ -71,7 +71,7 @@ fn CFDictionaryCreateMutable(
     assert!(allocator == kCFAllocatorDefault || env.mem.read(allocator).is_system_default());
     // capacity hint ignored — NSMutableDictionary grows dynamically.
     let _ = capacity;
-    let new = msg_class![env; _touchHLE_NSMutableDictionary_non_retaining alloc];
+    let new = msg_class![env; _HyperHLE_NSMutableDictionary_non_retaining alloc];
     msg![env; new initWithKeyCallbacks:key_callbacks andValueCallbacks:value_callbacks]
 }
 
@@ -278,7 +278,7 @@ fn CFDictionaryCreateWithCopy(
 
 // MARK: - Default callbacks (unchanged from original)
 
-fn _touchHLE_CFDictionary_retain(
+fn _HyperHLE_CFDictionary_retain(
     env: &mut Environment,
     allocator: CFAllocatorRef,
     value: ConstVoidPtr,
@@ -286,7 +286,7 @@ fn _touchHLE_CFDictionary_retain(
     assert!(allocator == kCFAllocatorDefault || env.mem.read(allocator).is_system_default());
     CFRetain(env, value.cast_mut().cast()).cast_const().cast()
 }
-fn _touchHLE_CFDictionary_release(
+fn _HyperHLE_CFDictionary_release(
     env: &mut Environment,
     allocator: CFAllocatorRef,
     value: ConstVoidPtr,
@@ -294,20 +294,20 @@ fn _touchHLE_CFDictionary_release(
     assert!(allocator == kCFAllocatorDefault || env.mem.read(allocator).is_system_default());
     CFRelease(env, value.cast_mut().cast());
 }
-fn _touchHLE_CFDictionary_copyDescription(
+fn _HyperHLE_CFDictionary_copyDescription(
     _env: &mut Environment,
     _value: ConstVoidPtr,
 ) -> CFStringRef {
     todo!()
 }
-fn _touchHLE_CFDictionary_equal(
+fn _HyperHLE_CFDictionary_equal(
     env: &mut Environment,
     value1: ConstVoidPtr,
     value2: ConstVoidPtr,
 ) -> bool {
     CFEqual(env, value1.cast_mut().cast(), value2.cast_mut().cast())
 }
-fn _touchHLE_CFDictionary_hash(env: &mut Environment, value: ConstVoidPtr) -> CFHashCode {
+fn _HyperHLE_CFDictionary_hash(env: &mut Environment, value: ConstVoidPtr) -> CFHashCode {
     CFHash(env, value.cast_mut().cast())
 }
 
@@ -326,20 +326,20 @@ fn create_default_callback_functions(mem: &mut Mem, dyld: &mut Dyld) -> DefaultC
         }};
     }
     DefaultCallbackFunctions {
-        retain:    make_gf!("__touchHLE_CFDictionary_retain",
-                            _touchHLE_CFDictionary_retain,
+        retain:    make_gf!("__HyperHLE_CFDictionary_retain",
+                            _HyperHLE_CFDictionary_retain,
                             fn(&mut Environment, _, _) -> _),
-        release:   make_gf!("__touchHLE_CFDictionary_release",
-                            _touchHLE_CFDictionary_release,
+        release:   make_gf!("__HyperHLE_CFDictionary_release",
+                            _HyperHLE_CFDictionary_release,
                             fn(&mut Environment, _, _)),
-        copy_desc: make_gf!("__touchHLE_CFDictionary_copyDescription",
-                            _touchHLE_CFDictionary_copyDescription,
+        copy_desc: make_gf!("__HyperHLE_CFDictionary_copyDescription",
+                            _HyperHLE_CFDictionary_copyDescription,
                             fn(&mut Environment, _) -> _),
-        equal:     make_gf!("__touchHLE_CFDictionary_equal",
-                            _touchHLE_CFDictionary_equal,
+        equal:     make_gf!("__HyperHLE_CFDictionary_equal",
+                            _HyperHLE_CFDictionary_equal,
                             fn(&mut Environment, _, _) -> _),
-        hash:      make_gf!("__touchHLE_CFDictionary_hash",
-                            _touchHLE_CFDictionary_hash,
+        hash:      make_gf!("__HyperHLE_CFDictionary_hash",
+                            _HyperHLE_CFDictionary_hash,
                             fn(&mut Environment, _) -> _),
     }
 }

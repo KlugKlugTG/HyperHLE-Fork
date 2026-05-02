@@ -12,16 +12,16 @@ apply plugin: 'com.android.application'
 apply plugin: "com.github.willir.rust.cargo-ndk-android"
 apply plugin: 'org.jetbrains.kotlin.android'
 
-static def runTouchHLEVersionTool(boolean wantBranding) {
-    return ('cargo run --package touchHLE_version' + (wantBranding ? ' -- --branding' : '')).execute().text.trim()
+static def runHyperHLEVersionTool(boolean wantBranding) {
+    return ('cargo run --package HyperHLE_version' + (wantBranding ? ' -- --branding' : '')).execute().text.trim()
 }
 
-static def getTouchHLEBranding() {
-    return runTouchHLEVersionTool(/* wantBranding: */ true)
+static def getHyperHLEBranding() {
+    return runHyperHLEVersionTool(/* wantBranding: */ true)
 }
 
-static def getTouchHLEVersionName() {
-    return runTouchHLEVersionTool(/* wantBranding: */ false)
+static def getHyperHLEVersionName() {
+    return runHyperHLEVersionTool(/* wantBranding: */ false)
 }
 
 static def join(String prefix, String separator, String branding) {
@@ -36,16 +36,16 @@ android {
     ndkVersion "25.2.9519653"
     compileSdkVersion 31
     defaultConfig {
-        def branding = getTouchHLEBranding()
-        applicationId 'org.touchhle.android'
+        def branding = getHyperHLEBranding()
+        applicationId 'org.hyperhle.android'
         applicationIdSuffix(branding.isEmpty() ? null : branding.toLowerCase())
-        resValue 'string', 'app_name', join('touchHLE', ' ', branding)
-        buildConfigField 'String', 'APP_NAME', ('"' + join('touchHLE', ' ', branding) + '"')
+        resValue 'string', 'app_name', join('HyperHLE', ' ', branding)
+        buildConfigField 'String', 'APP_NAME', ('"' + join('HyperHLE', ' ', branding) + '"')
         manifestPlaceholders = [
                 icon: join('@drawable/icon', '_', branding.toLowerCase())
         ]
         buildConfigField 'int', 'APP_ICON', join('R.drawable.icon', '_', branding.toLowerCase())
-        versionName join(getTouchHLEVersionName(), ' ', branding)
+        versionName join(getHyperHLEVersionName(), ' ', branding)
 
         minSdkVersion 21 // first version with AArch64
         targetSdkVersion 31
@@ -54,10 +54,10 @@ android {
                 arguments "APP_PLATFORM=android-21"
                 // abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
                 // Only 'arm64-v8a' and 'x86_64' are supported by dynarmic
-                // and hence touchHLE. The 'x86_64' build works, but the main
+                // and hence HyperHLE. The 'x86_64' build works, but the main
                 // use for that would be the emulator in Android Studio, and
                 // its OpenGL ES implementations don't seem to work properly
-                // with touchHLE, so we disable it to reduce build time and
+                // with HyperHLE, so we disable it to reduce build time and
                 // avoid shipping stuff we haven't meaningfully tested.
                 // Make sure this matches the cargoNdk targets below.
                 abiFilters 'arm64-v8a'
@@ -106,14 +106,14 @@ android {
     lintOptions {
         abortOnError false
     }
-    namespace 'org.touchhle.android'
+    namespace 'org.hyperhle.android'
 }
 
 cargoNdk {
     // Make sure this matches the android abiFilters above.
     targets = ["arm64"]
     module = ".."
-    librariesNames = ["libtouchHLE.so", "libSDL2.so", "libc++_shared.so"]
+    librariesNames = ["libHyperHLE.so", "libSDL2.so", "libc++_shared.so"]
     extraCargoEnv = ["ANDROID_NDK": android.ndkDirectory, "ANDROID_NDK_HOME": android.ndkDirectory]
     if (DefaultNativePlatform.host().operatingSystem.isWindows()) {
         def binPath = android.ndkDirectory.toPath().resolve("toolchains/llvm/prebuilt/windows-x86_64/bin")
@@ -138,7 +138,7 @@ cargoNdk {
     }
     // The default feature, "static", makes us use static linking for SDL2 and OpenAL Soft.
     // For Android, we need dynamic linking for SDL2, but static linking for OpenAL Soft.
-    extraCargoBuildArguments = ["--lib", "--no-default-features", "--features", "touchHLE_openal_soft_wrapper/static,sdl2/bundled"]
+    extraCargoBuildArguments = ["--lib", "--no-default-features", "--features", "HyperHLE_openal_soft_wrapper/static,sdl2/bundled"]
 }
 
 dependencies {

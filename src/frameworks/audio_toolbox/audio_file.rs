@@ -993,7 +993,7 @@ pub fn AudioFormatGetPropertyInfo(
 /// Устанавливает режим offline-рендеринга и формат для очереди воспроизведения.
 /// inFormat == NULL — возврат в обычный режим (вывод на устройство).
 /// inLayout == NULL — не используется при отключении offline-режима.
-/// Реализация-заглушка: offline-рендеринг в touchHLE не поддерживается,
+/// Реализация-заглушка: offline-рендеринг в HyperHLE не поддерживается,
 /// функция всегда возвращает успех, чтобы не блокировать инициализацию.
 fn AudioQueueSetOfflineRenderFormat(
     _env: &mut Environment,

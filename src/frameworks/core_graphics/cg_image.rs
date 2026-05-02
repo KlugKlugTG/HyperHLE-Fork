@@ -46,7 +46,7 @@ pub const kCGBitmapByteOrderMask: CGBitmapInfo = kCGImageByteOrderMask;
 pub const CLASSES: ClassExports = objc_classes! {
 (env, this, _cmd);
 
-@implementation _touchHLE_CGImage: NSObject
+@implementation _HyperHLE_CGImage: NSObject
 
 - (id)systemUptime {
     nil
@@ -82,7 +82,7 @@ pub fn CGImageRetain(env: &mut Environment, c: CGImageRef) -> CGImageRef {
 
 pub fn from_image(env: &mut Environment, image: Image) -> CGImageRef {
     let host_obj = Box::new(CGImageHostObject { image });
-    let class = env.objc.get_known_class("_touchHLE_CGImage", &mut env.mem);
+    let class = env.objc.get_known_class("_HyperHLE_CGImage", &mut env.mem);
     env.objc.alloc_object(class, host_obj, &mut env.mem)
 }
 

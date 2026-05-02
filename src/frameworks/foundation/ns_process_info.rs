@@ -93,7 +93,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (id)hostName {
     assert_process_info_singleton(env, this);
-    ns_string::get_static_str(env, "touchHLE-host.local")
+    ns_string::get_static_str(env, "HyperHLE-host.local")
 }
 
 - (id)arguments {

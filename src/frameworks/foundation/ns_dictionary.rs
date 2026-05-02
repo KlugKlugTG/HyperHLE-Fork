@@ -32,7 +32,7 @@ use std::collections::HashMap;
 /// Alias for the return type of the `hash` method of the `NSObject` protocol.
 type Hash = NSUInteger;
 
-/// Belongs to _touchHLE_NSDictionary, also used by _touchHLE_NSSet
+/// Belongs to _HyperHLE_NSDictionary, also used by _HyperHLE_NSSet
 #[derive(Debug, Default)]
 pub(super) struct DictionaryHostObject {
     /// Since we need custom hashing and custom equality, and these both need a
@@ -397,7 +397,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // - (id)objectForKey:(id)
 // - (NSEnumerator*)keyEnumerator
 // We can pick whichever subclass we want for the various alloc methods.
-// For the time being, that will always be _touchHLE_NSDictionary.
+// For the time being, that will always be _HyperHLE_NSDictionary.
 
 @implementation NSDictionary: NSObject
 
@@ -405,7 +405,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     // NSDictionary might be subclassed by something which needs allocWithZone:
     // to have the normal behaviour. Unimplemented: call superclass alloc then.
     assert!(this == env.objc.get_known_class("NSDictionary", &mut env.mem));
-    msg_class![env; _touchHLE_NSDictionary allocWithZone:zone]
+    msg_class![env; _HyperHLE_NSDictionary allocWithZone:zone]
 }
 
 + (id)dictionary {
@@ -559,7 +559,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     // NSDictionary might be subclassed by something which needs allocWithZone:
     // to have the normal behaviour. Unimplemented: call superclass alloc then.
     assert!(this == env.objc.get_known_class("NSMutableDictionary", &mut env.mem));
-    msg_class![env; _touchHLE_NSMutableDictionary allocWithZone:zone]
+    msg_class![env; _HyperHLE_NSMutableDictionary allocWithZone:zone]
 }
 
 + (id)dictionaryWithCapacity:(NSUInteger)capacity {
@@ -616,7 +616,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // Our private subclass that is the single implementation of NSDictionary for
 // the time being.
-@implementation _touchHLE_NSDictionary: NSDictionary
+@implementation _HyperHLE_NSDictionary: NSDictionary
 
 + (id)allocWithZone:(NSZonePtr)_zone {
     let host_object = Box::<DictionaryHostObject>::default();
@@ -722,7 +722,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // Our private subclass that is the single implementation of
 // NSMutableDictionary for the time being.
-@implementation _touchHLE_NSMutableDictionary: NSMutableDictionary
+@implementation _HyperHLE_NSMutableDictionary: NSMutableDictionary
 
 + (id)allocWithZone:(NSZonePtr)_zone {
     let host_object = Box::<DictionaryHostObject>::default();
@@ -760,7 +760,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (id)initWithCoder:(id)coder {
     let class: Class = msg![env; coder class];
     let keyed_unarch_class: Class = msg_class![env; NSKeyedUnarchiver class];
-    let nib_archive_class: Class = msg_class![env; _touchHLE_NIBArchiveDecoder class];
+    let nib_archive_class: Class = msg_class![env; _HyperHLE_NIBArchiveDecoder class];
     let tuples = if env.objc.class_is_subclass_of(class, keyed_unarch_class) {
         // It seems that every NSDictionary item in an NSKeyedArchiver plist
         // looks like:
@@ -992,7 +992,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // Special variant for use by CFDictionary with NULL callbacks: objects aren't
 // necessarily Objective-C objects and won't be retained/released.
 // TODO: refactor with lookup/insert methods to use callbacks
-@implementation _touchHLE_NSMutableDictionary_non_retaining: _touchHLE_NSMutableDictionary
+@implementation _HyperHLE_NSMutableDictionary_non_retaining: _HyperHLE_NSMutableDictionary
 
 + (id)allocWithZone:(NSZonePtr)_zone {
     let host_object = Box::<CFDictionaryHostObject>::default();
@@ -1036,7 +1036,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (id)valueForKey:(id)_key {
-    panic!("Unexpected call to valueForKey: for _touchHLE_NSMutableDictionary_non_retaining object {this:?}");
+    panic!("Unexpected call to valueForKey: for _HyperHLE_NSMutableDictionary_non_retaining object {this:?}");
 }
 
 - (())setObject:(id)object
@@ -1059,7 +1059,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     let keys: Vec<id> = host_obj.map.values().flatten().map(|&(key, _value)| key).collect();
     *env.objc.borrow_mut(this) = host_obj;
 
-    let array: id = msg_class![env; _touchHLE_NSArray_non_retaining alloc];
+    let array: id = msg_class![env; _HyperHLE_NSArray_non_retaining alloc];
     env.objc.borrow_mut::<ArrayHostObject>(array).array = keys;
     array
 }

@@ -16,7 +16,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 (env, this, _cmd);
 
-@implementation _touchHLE_CGColorSpace: NSObject
+@implementation _HyperHLE_CGColorSpace: NSObject
 
 - (id)systemUptime {
     nil
@@ -62,7 +62,7 @@ pub type CGColorSpaceRef = CFTypeRef;
 fn alloc_color_space(env: &mut Environment, name: &'static str) -> CGColorSpaceRef {
     let isa = env
         .objc
-        .get_known_class("_touchHLE_CGColorSpace", &mut env.mem);
+        .get_known_class("_HyperHLE_CGColorSpace", &mut env.mem);
     env.objc.alloc_object(
         isa,
         Box::new(CGColorSpaceHostObject { name }),
@@ -219,7 +219,7 @@ fn CGColorSpaceCopyName(env: &mut Environment, cs: CGColorSpaceRef) -> CFStringR
 }
 
 fn CGColorSpaceIsWideGamutRGB(_env: &mut Environment, _cs: CGColorSpaceRef) -> bool {
-    // touchHLE only models sRGB-equivalent spaces — never wide gamut.
+    // HyperHLE only models sRGB-equivalent spaces — never wide gamut.
     false
 }
 

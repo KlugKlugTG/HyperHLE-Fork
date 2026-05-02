@@ -1,4 +1,4 @@
-//! Host-side libxml2 implementation for touchHLE.
+//! Host-side libxml2 implementation for HyperHLE.
 //!
 //! Uses a built-in minimal XML parser; all document/reader
 //! state lives in a global host-side table keyed by opaque
@@ -1376,7 +1376,7 @@ fn xmlSaveFile(env: &mut Environment, filename_ptr: u32, doc: u32) -> i32 {
             
             // Фолбэк для Android
             let safe_name = filename.replace("/", "_");
-            let fallback_path = format!("/storage/emulated/0/Android/data/org.touchhle.android.unofficial/files/{}", safe_name);
+            let fallback_path = format!("/storage/emulated/0/Android/data/org.hyperhle.android.unofficial/files/{}", safe_name);
             log!("xmlSaveFile: trying fallback path: {}", fallback_path);
             
             match std::fs::write(&fallback_path, &out) {

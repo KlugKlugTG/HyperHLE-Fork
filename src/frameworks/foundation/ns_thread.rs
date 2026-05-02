@@ -162,7 +162,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 + (())exit {
-    // Terminate the current thread. In touchHLE this is a best-effort stub;
+    // Terminate the current thread. In HyperHLE this is a best-effort stub;
     // we log and let the thread function return naturally.
     log!("TODO: [NSThread exit] — thread will finish at next natural return point");
 }
@@ -225,8 +225,8 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (())start {
     log_once!("First [NSThread start] (app spawned a worker thread)");
 
-    let symb = "__touchHLE_NSThreadInvocationHelper";
-    let hf: HostFunction = &(_touchHLE_NSThreadInvocationHelper as fn(&mut Environment, _) -> _);
+    let symb = "__HyperHLE_NSThreadInvocationHelper";
+    let hf: HostFunction = &(_HyperHLE_NSThreadInvocationHelper as fn(&mut Environment, _) -> _);
     let gf = env.dyld.create_guest_function(&mut env.mem, symb, hf);
 
     let attr: MutPtr<pthread_attr_t> = env.mem.alloc(guest_size_of::<pthread_attr_t>()).cast();
@@ -380,11 +380,11 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 type NSThreadRef = CFTypeRef;
 
-pub fn _touchHLE_NSThreadInvocationHelper(env: &mut Environment, ns_thread_obj: NSThreadRef) {
+pub fn _HyperHLE_NSThreadInvocationHelper(env: &mut Environment, ns_thread_obj: NSThreadRef) {
     let class: Class = msg![env; ns_thread_obj class];
     let thread_class = env.objc.get_known_class("NSThread", &mut env.mem);
     if !env.objc.class_is_subclass_of(class, thread_class) {
-        log!("Warning: _touchHLE_NSThreadInvocationHelper called with unexpected class, skipping");
+        log!("Warning: _HyperHLE_NSThreadInvocationHelper called with unexpected class, skipping");
         return;
     }
 
@@ -406,7 +406,7 @@ pub fn _touchHLE_NSThreadInvocationHelper(env: &mut Environment, ns_thread_obj: 
     let pthread = pthread_self(env);
     if State::get(env).ns_threads.remove(&pthread).is_none() {
         log!(
-            "Warning: _touchHLE_NSThreadInvocationHelper: pthread {:?} \
+            "Warning: _HyperHLE_NSThreadInvocationHelper: pthread {:?} \
              not found in ns_threads map",
             pthread
         );

@@ -5,7 +5,7 @@
  */
 //! Grand Central Dispatch (GCD) — `dispatch/dispatch.h`
 //!
-//! touchHLE is single-threaded from the guest's perspective, so most
+//! HyperHLE is single-threaded from the guest's perspective, so most
 //! concurrency primitives can be dramatically simplified:
 //!   - `dispatch_once` just calls the block once and marks the token.
 //!   - `dispatch_async` / `dispatch_sync` call the block immediately.

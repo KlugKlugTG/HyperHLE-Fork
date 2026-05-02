@@ -1,11 +1,11 @@
 /target
 /vendor/boost
-/touchHLE_sandbox
+/HyperHLE_sandbox
 /DCIM
-/touchHLE_apps/*.ipa
-/touchHLE_apps/*.app
-touchHLE_log.txt
-touchHLE_wallpaper.*
+/HyperHLE_apps/*.ipa
+/HyperHLE_apps/*.app
+HyperHLE_log.txt
+HyperHLE_wallpaper.*
 
 # Xcode (integration testing app)
 

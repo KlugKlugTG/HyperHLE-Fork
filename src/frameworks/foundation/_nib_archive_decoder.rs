@@ -36,7 +36,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 (env, this, _cmd);
 
-@implementation _touchHLE_NIBArchiveDecoder: NSCoder
+@implementation _HyperHLE_NIBArchiveDecoder: NSCoder
 
 + (id)allocWithZone:(NSZonePtr)_zone { // struct _NSZone*
     let unarchiver = Box::new(NIBArchiveDecoderHostObject {
@@ -50,7 +50,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     env.objc.alloc_object(this, unarchiver, &mut env.mem)
 }
 
-- (id)_touchHLE_initForReadingWithData:(id)data {
+- (id)_HyperHLE_initForReadingWithData:(id)data {
     if data == nil {
         return nil;
     }

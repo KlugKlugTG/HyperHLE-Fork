@@ -44,7 +44,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 (env, this, _cmd);
 
-@implementation _touchHLE_CGPath: NSObject
+@implementation _HyperHLE_CGPath: NSObject
 
 - (())dealloc {
     env.objc.dealloc_object(this, &mut env.mem)
@@ -57,7 +57,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // MARK: - Helpers
 
 fn alloc_path(env: &mut Environment, mutable: bool) -> CGPathRef {
-    let class = env.objc.get_known_class("_touchHLE_CGPath", &mut env.mem);
+    let class = env.objc.get_known_class("_HyperHLE_CGPath", &mut env.mem);
     env.objc.alloc_object(
         class,
         Box::new(CGPathHostObject {
@@ -93,7 +93,7 @@ fn CGPathCreateCopy(env: &mut Environment, path: CGPathRef) -> CGPathRef {
         return path;
     }
     let elements = env.objc.borrow::<CGPathHostObject>(path).elements.clone();
-    let class = env.objc.get_known_class("_touchHLE_CGPath", &mut env.mem);
+    let class = env.objc.get_known_class("_HyperHLE_CGPath", &mut env.mem);
     env.objc.alloc_object(
         class,
         Box::new(CGPathHostObject {
@@ -109,7 +109,7 @@ fn CGPathCreateMutableCopy(env: &mut Environment, path: CGPathRef) -> CGMutableP
         return alloc_path(env, true);
     }
     let elements = env.objc.borrow::<CGPathHostObject>(path).elements.clone();
-    let class = env.objc.get_known_class("_touchHLE_CGPath", &mut env.mem);
+    let class = env.objc.get_known_class("_HyperHLE_CGPath", &mut env.mem);
     env.objc.alloc_object(
         class,
         Box::new(CGPathHostObject {

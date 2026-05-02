@@ -535,7 +535,7 @@ impl MachO {
                 LoadCommand::EncryptionInfo { id, .. } => {
                     if id != 0 {
                         return Err(
-                            "The executable is encrypted. touchHLE can't run encrypted apps!",
+                            "The executable is encrypted. HyperHLE can't run encrypted apps!",
                         );
                     }
                 }

@@ -11,9 +11,9 @@
 //!
 //! ### On `raise`
 //! In real Objective-C, `-[NSException raise]` unwinds the call stack via
-//! C++ exceptions.  touchHLE does not emulate ObjC exception unwinding, so we
+//! C++ exceptions.  HyperHLE does not emulate ObjC exception unwinding, so we
 //! instead call `panic!` which terminates the guest with a clear diagnostic.
-//! This is the same behaviour as the original touchHLE approach for unhandled
+//! This is the same behaviour as the original HyperHLE approach for unhandled
 //! guest panics, and is far better than silently continuing past a `raise`
 //! (which produces mysterious NULL-deref crashes later, as seen in the
 //! KamiChallenge log).
@@ -90,7 +90,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // `+raise:format:` — convenience that creates and immediately raises.
 // The `format` parameter is treated as a plain reason string (no printf
-// substitution) because varargs are not supported in touchHLE HLE stubs.
+// substitution) because varargs are not supported in HyperHLE HLE stubs.
 + (())raise:(id)name   // NSString*  (exception name)
        format:(id)fmt  // NSString*  (reason / format string)
 {
@@ -290,7 +290,7 @@ pub const CONSTANTS: ConstantExports = &[
 // C function: NSSetUncaughtExceptionHandler
 // ---------------------------------------------------------------------------
 
-/// Registers a last-chance exception handler. In touchHLE all unhandled
+/// Registers a last-chance exception handler. In HyperHLE all unhandled
 /// exceptions are already converted to Rust panics or bypassed, but we 
 /// save the handler address to maintain accurate guest state.
 fn NSSetUncaughtExceptionHandler(env: &mut Environment, handler: MutVoidPtr) {

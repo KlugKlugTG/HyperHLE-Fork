@@ -153,7 +153,7 @@ fn run_test_app(
         sources,
         extra_compile_args,
     )?;
-    let binary_name = "touchHLE";
+    let binary_name = "HyperHLE";
     let binary_path = target_dir().join(format!("{}{}", binary_name, env::consts::EXE_SUFFIX));
     let mut cmd = Command::new(binary_path);
     let output = cmd
@@ -166,7 +166,7 @@ fn run_test_app(
         .arg("--args")
         .arg("--cli-tests")
         .output()
-        .expect("failed to execute touchHLE process");
+        .expect("failed to execute HyperHLE process");
     std::io::stdout().write_all(&output.stdout).unwrap();
     std::io::stderr().write_all(&output.stderr).unwrap();
     assert!(output.status.success());
@@ -214,7 +214,7 @@ fn test_app() -> Result<(), Box<dyn Error>> {
     std::fs::create_dir(&stubs_dir).unwrap();
 
     let bundled_libs_search_arg =
-        "-L".to_owned() + current_dir()?.join("touchHLE_dylibs").to_str().unwrap();
+        "-L".to_owned() + current_dir()?.join("HyperHLE_dylibs").to_str().unwrap();
     let stubs_lib_search_arg = "-L".to_owned() + stubs_lib_dir.to_str().unwrap();
     let stubs_frameworks_search_arg = "-F".to_owned() + stubs_frameworks_dir.to_str().unwrap();
     let mut extra_linker_args = Vec::<String>::new();
@@ -237,13 +237,13 @@ fn test_app() -> Result<(), Box<dyn Error>> {
     let symbols_path = stubs_dir.join("SYMBOLS.txt");
     let dump_file_option = format!("--dump-file={}", symbols_path.to_str().unwrap());
     let dump_run_args = ["--dump=symbols", dump_file_option.as_str(), "--headless"];
-    let binary_name = "touchHLE";
+    let binary_name = "HyperHLE";
     let binary_path = target_dir().join(format!("{}{}", binary_name, env::consts::EXE_SUFFIX));
     let mut cmd = Command::new(binary_path);
     let output = cmd
         .args(dump_run_args)
         .output()
-        .expect("failed to execute touchHLE process");
+        .expect("failed to execute HyperHLE process");
     assert!(output.status.success());
 
     // Split SYMBOLS.txt into individual source files.
@@ -277,7 +277,7 @@ fn test_app() -> Result<(), Box<dyn Error>> {
     // Build the stub libraries and ensure TestApp will link to them.
 
     for (dylib_path, stub_src_path) in files_to_compile {
-        if dylib_path.starts_with("/.touchHLE") {
+        if dylib_path.starts_with("/.HyperHLE") {
             // skip the fake app picker library
             continue;
         }

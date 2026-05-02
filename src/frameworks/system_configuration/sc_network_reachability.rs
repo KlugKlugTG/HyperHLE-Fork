@@ -28,7 +28,7 @@ const kSCNetworkReachabilityFlagsIsWWAN:               SCNetworkReachabilityFlag
 
 pub const CLASSES: ClassExports = objc_classes! {
     (env, this, _cmd);
-    @implementation _touchHLE_SCNetworkReachability: NSObject
+    @implementation _HyperHLE_SCNetworkReachability: NSObject
     - (())dealloc {
         env.objc.dealloc_object(this, &mut env.mem)
     }
@@ -54,21 +54,21 @@ pub fn SCNetworkReachabilityRelease(env: &mut Environment, target: SCNetworkReac
 
 fn SCNetworkReachabilityCreateWithName(env: &mut Environment, _allocator: CFAllocatorRef, name: ConstPtr<u8>) -> SCNetworkReachabilityRef {
     let name_str = env.mem.cstr_at_utf8(name).unwrap_or("").to_string();
-    let isa = env.objc.get_known_class("_touchHLE_SCNetworkReachability", &mut env.mem);
+    let isa = env.objc.get_known_class("_HyperHLE_SCNetworkReachability", &mut env.mem);
     env.objc.alloc_object(isa, Box::new(SCNetworkReachabilityHostObject {
         name: Some(name_str), callout: None, context: MutVoidPtr::null(),
     }), &mut env.mem)
 }
 
 fn SCNetworkReachabilityCreateWithAddress(env: &mut Environment, _allocator: CFAllocatorRef, _address: ConstPtr<u8>) -> SCNetworkReachabilityRef {
-    let isa = env.objc.get_known_class("_touchHLE_SCNetworkReachability", &mut env.mem);
+    let isa = env.objc.get_known_class("_HyperHLE_SCNetworkReachability", &mut env.mem);
     env.objc.alloc_object(isa, Box::new(SCNetworkReachabilityHostObject {
         name: None, callout: None, context: MutVoidPtr::null(),
     }), &mut env.mem)
 }
 
 fn SCNetworkReachabilityCreateWithAddressPair(env: &mut Environment, _allocator: CFAllocatorRef, _local: ConstPtr<u8>, _remote: ConstPtr<u8>) -> SCNetworkReachabilityRef {
-    let isa = env.objc.get_known_class("_touchHLE_SCNetworkReachability", &mut env.mem);
+    let isa = env.objc.get_known_class("_HyperHLE_SCNetworkReachability", &mut env.mem);
     env.objc.alloc_object(isa, Box::new(SCNetworkReachabilityHostObject {
         name: None, callout: None, context: MutVoidPtr::null(),
     }), &mut env.mem)

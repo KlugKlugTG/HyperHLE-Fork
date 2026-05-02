@@ -391,7 +391,7 @@ fn unarchive_key(env: &mut Environment, unarchiver: id, key: Uid) -> id {
     new_object
 }
 
-/// Shortcut for use by `[_touchHLE_NSArray initWithCoder:]`.
+/// Shortcut for use by `[_HyperHLE_NSArray initWithCoder:]`.
 ///
 /// The objects are to be considered retained by the `Vec`.
 pub fn decode_current_array(env: &mut Environment, unarchiver: id) -> Vec<id> {
@@ -406,7 +406,7 @@ pub fn decode_current_array(env: &mut Environment, unarchiver: id) -> Vec<id> {
         .collect()
 }
 
-/// Shortcut for use by `[_touchHLE_NSMutableDictionary initWithCoder:]`.
+/// Shortcut for use by `[_HyperHLE_NSMutableDictionary initWithCoder:]`.
 ///
 /// Similar to `decode_current_array`, but for dictionaries.
 /// The keys and objects are not retained!

@@ -51,7 +51,7 @@ fn __cxa_finalize(_env: &mut Environment, d: MutVoidPtr) {
         }
     }
     for (_func, _p, _d) in to_run.into_iter().rev() {
-        // touchHLE relies on host-process exit for cleanup; we just drop
+        // HyperHLE relies on host-process exit for cleanup; we just drop
         // the registered destructors.
     }
 }
@@ -63,7 +63,7 @@ fn __cxa_finalize(_env: &mut Environment, d: MutVoidPtr) {
 // successful initialisation the caller invokes `__cxa_guard_release`.
 //
 // On 32-bit ARM the guard is a 64-bit object whose first byte is the
-// "initialised" flag. touchHLE is single-threaded for static init so
+// "initialised" flag. HyperHLE is single-threaded for static init so
 // we don't need locking. We pre-mark it 1 so a re-entrant call sees
 // "already done".
 
@@ -87,7 +87,7 @@ fn __cxa_guard_abort(env: &mut Environment, guard: MutPtr<u8>) {
 
 // === SjLj exception bypass ===
 //
-// touchHLE has no real C++ unwinder. Implementing one means parsing
+// HyperHLE has no real C++ unwinder. Implementing one means parsing
 // .gcc_except_table LSDAs, walking the SjLj jmpbuf chain and dispatching
 // to the right `catch` clause. That's a multi-week project.
 //
@@ -134,7 +134,7 @@ fn unwind_to_app_frame(env: &mut Environment) -> bool {
         let prev_fp: u32 = env.mem.read(ConstPtr::<u32>::from_bits(fp));
         let lr: u32 = env.mem.read(ConstPtr::<u32>::from_bits(fp + 4));
         let lr_no_thumb = lr & !1;
-        // Skip frames where LR is one of touchHLE's host trampoline
+        // Skip frames where LR is one of HyperHLE's host trampoline
         // sentinels (return-to-host / thread-exit). Those mark the
         // boundary between host and guest code; unwinding past them
         // would dump us back into the wrong place.
@@ -220,7 +220,7 @@ fn __cxa_throw(
     if count <= 3 || count.is_multiple_of(64) {
         log!(
             "Guest threw a C++ exception of type {:?} (consecutive #{}): \
-             touchHLE has no real unwinder, so we unwind to the nearest \
+             HyperHLE has no real unwinder, so we unwind to the nearest \
              app-level frame via the frame-pointer chain.",
             type_name,
             count
@@ -228,7 +228,7 @@ fn __cxa_throw(
     }
     if count >= THROW_LOOP_LIMIT {
         panic!(
-            "Exception loop detected: {} threw {} times in a row. touchHLE's \
+            "Exception loop detected: {} threw {} times in a row. HyperHLE's \
              SjLj bypass is returning into a caller that re-throws every \
              iteration; giving up instead of spinning forever.",
             type_name, count

@@ -150,7 +150,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (id)textFieldAtIndex:(NSInteger)_index { nil }
 
 - (())addSubview:(id)_view {
-    // UIAlertView doesn't support subviews in touchHLE (SDL2 dialog implementation)
+    // UIAlertView doesn't support subviews in HyperHLE (SDL2 dialog implementation)
     log_dbg!("UIAlertView addSubview: ignored");
 }
 - (())removeFromSuperview {
@@ -168,7 +168,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (CGSize)sizeThatFits:(CGSize)size {
     // В iOS этот метод возвращает оптимальный размер на основе содержимого.
-    // Так как touchHLE выводит SDL2-диалог, размер контролируется самой ОС,
+    // Так как HyperHLE выводит SDL2-диалог, размер контролируется самой ОС,
     // поэтому мы пробрасываем текущий запрошенный размер дальше.
     size
 }

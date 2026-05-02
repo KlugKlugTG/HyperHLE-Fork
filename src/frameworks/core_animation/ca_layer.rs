@@ -323,7 +323,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (CGColorRef)backgroundColor {
     if let Some(bg_color) = env.objc.borrow::<CALayerHostObject>(this).background_color {
-        let class = env.objc.get_known_class("_touchHLE_CGColor", &mut env.mem);
+        let class = env.objc.get_known_class("_HyperHLE_CGColor", &mut env.mem);
         let obj = env.objc.alloc_object(class, Box::new(bg_color), &mut env.mem);
         autorelease(env, obj)
     } else { nil }
@@ -341,7 +341,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (CGColorRef)borderColor {
     if let Some(border_color) = env.objc.borrow::<CALayerHostObject>(this).border_color {
-        let class = env.objc.get_known_class("_touchHLE_CGColor", &mut env.mem);
+        let class = env.objc.get_known_class("_HyperHLE_CGColor", &mut env.mem);
         let obj = env.objc.alloc_object(class, Box::new(border_color), &mut env.mem);
         autorelease(env, obj)
     } else { nil }

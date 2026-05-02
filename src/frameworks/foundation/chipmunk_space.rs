@@ -4,7 +4,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 //! `ChipmunkHastySpace` — a subclass of `ChipmunkSpace` that uses multiple
-//! threads for simulation. Since touchHLE is single-threaded we just treat it
+//! threads for simulation. Since HyperHLE is single-threaded we just treat it
 //! identically to `ChipmunkSpace`.
 
 use crate::objc::{id, msg, msg_class, nil, objc_classes, release, retain, ClassExports, HostObject, NSZonePtr};

@@ -206,27 +206,27 @@ destructiveButtonTitle:(id)destructive_title // NSString*
 }
 
 // MARK: - Presentation
-// touchHLE has no sheet UI. We immediately fire the cancel callback so the
+// HyperHLE has no sheet UI. We immediately fire the cancel callback so the
 // app's delegate can clean up, matching the MPMediaPickerController pattern.
 
 - (())showInView:(id)_view {
-    let _: () = msg![env; this _touchHLE_dismiss];
+    let _: () = msg![env; this _HyperHLE_dismiss];
 }
 
 - (())showFromToolbar:(id)_toolbar {
-    let _: () = msg![env; this _touchHLE_dismiss];
+    let _: () = msg![env; this _HyperHLE_dismiss];
 }
 
 - (())showFromTabBar:(id)_tab_bar {
-    let _: () = msg![env; this _touchHLE_dismiss];
+    let _: () = msg![env; this _HyperHLE_dismiss];
 }
 
 - (())showFromBarButtonItem:(id)_item animated:(bool)_animated {
-    let _: () = msg![env; this _touchHLE_dismiss];
+    let _: () = msg![env; this _HyperHLE_dismiss];
 }
 
 - (())showFromRect:(id)_rect inView:(id)_view animated:(bool)_animated {
-    let _: () = msg![env; this _touchHLE_dismiss];
+    let _: () = msg![env; this _HyperHLE_dismiss];
 }
 
 // MARK: - Dismissal
@@ -295,7 +295,7 @@ destructiveButtonTitle:(id)destructive_title // NSString*
 }
 
 // Private helper — dismiss via cancel button (or index 0 as fallback).
-- (())_touchHLE_dismiss {
+- (())_HyperHLE_dismiss {
     env.objc.borrow_mut::<UIActionSheetHostObject>(this).visible = false;
 
     let delegate = env.objc.borrow::<UIActionSheetHostObject>(this).delegate;

@@ -37,7 +37,7 @@ UILabel *lastTappedGlobalFrameLabel;
                 action:@selector(prevTest)
       forControlEvents:UIControlEventTouchUpInside];
   [self addSubview:button1];
-  [button1 layoutSubviews]; // FIXME: workaround for touchHLE not calling this
+  [button1 layoutSubviews]; // FIXME: workaround for HyperHLE not calling this
 
   UIButton *button2 = [UIButton buttonWithType:UIButtonTypeRoundedRect];
   [button2 setTitle:[NSString stringWithUTF8String:"→"]
@@ -47,7 +47,7 @@ UILabel *lastTappedGlobalFrameLabel;
                 action:@selector(nextTest)
       forControlEvents:UIControlEventTouchUpInside];
   [self addSubview:button2];
-  [button2 layoutSubviews]; // FIXME: workaround for touchHLE not calling this
+  [button2 layoutSubviews]; // FIXME: workaround for HyperHLE not calling this
 
   lastTappedLocalFrameLabel =
       [[UILabel alloc] initWithFrame:CGRectMake(10, 340, 300, 20)];

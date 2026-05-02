@@ -32,7 +32,7 @@ pub struct ifaddrs {
     pub ifa_data: u32,
 }
 // SAFETY: the struct is plain data; every field is either a scalar or a guest
-// pointer that touchHLE's pointer type already validates.
+// pointer that HyperHLE's pointer type already validates.
 unsafe impl SafeRead for ifaddrs {}
 
 // ---------------------------------------------------------------------------
@@ -52,7 +52,7 @@ fn getifaddrs(env: &mut Environment, ifap: MutPtr<MutPtr<ifaddrs>>) -> i32 {
 
     // EOPNOTSUPP = 102 on Darwin; reuse the closest available errno constant.
     // Using set_errno with literal 102 keeps us independent of whether
-    // touchHLE has EOPNOTSUPP defined yet.
+    // HyperHLE has EOPNOTSUPP defined yet.
     set_errno(env, 102 /* EOPNOTSUPP */);
     log!("TODO: getifaddrs() – returning error (not implemented)");
     -1

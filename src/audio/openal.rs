@@ -6,8 +6,8 @@
 //! Wrapper for OpenAL usage.
 use al_sys::alc_types::{ALCcontext, ALCdevice};
 use std::marker::PhantomData;
-use touchHLE_openal_soft_wrapper as al_sys;
-use touchHLE_openal_soft_wrapper::alc_types::ALCint;
+use HyperHLE_openal_soft_wrapper as al_sys;
+use HyperHLE_openal_soft_wrapper::alc_types::ALCint;
 
 pub use al_sys::al_defines::*;
 pub use al_sys::al_types;

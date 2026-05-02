@@ -13,16 +13,16 @@ if [[ "$PHASE" = "--prepare-files" ]]; then
     rm -rf new_release
     mkdir new_release
 
-    cp -r ../touchHLE_dylibs new_release/
-    pandoc -s new_release/touchHLE_dylibs/README.md -o new_release/touchHLE_dylibs/README.html
-    rm new_release/touchHLE_dylibs/README.md
+    cp -r ../HyperHLE_dylibs new_release/
+    pandoc -s new_release/HyperHLE_dylibs/README.md -o new_release/HyperHLE_dylibs/README.html
+    rm new_release/HyperHLE_dylibs/README.md
 
-    cp -r ../touchHLE_fonts new_release/
-    pandoc -s new_release/touchHLE_fonts/README.md -o new_release/touchHLE_fonts/README.html
-    rm new_release/touchHLE_fonts/README.md
+    cp -r ../HyperHLE_fonts new_release/
+    pandoc -s new_release/HyperHLE_fonts/README.md -o new_release/HyperHLE_fonts/README.html
+    rm new_release/HyperHLE_fonts/README.md
 
-    mkdir new_release/touchHLE_apps/
-    cp ../touchHLE_apps/README.txt new_release/touchHLE_apps/
+    mkdir new_release/HyperHLE_apps/
+    cp ../HyperHLE_apps/README.txt new_release/HyperHLE_apps/
 
     pandoc -s ../README.md -o new_release/README.html
 
@@ -31,8 +31,8 @@ if [[ "$PHASE" = "--prepare-files" ]]; then
     cp -r gpl-3.0.txt new_release/COPYING.txt
 
     cp ../OPTIONS_HELP.txt new_release/
-    cp ../touchHLE_default_options.txt new_release/
-    cp ../touchHLE_options.txt new_release/
+    cp ../HyperHLE_default_options.txt new_release/
+    cp ../HyperHLE_options.txt new_release/
 elif [[ "$PHASE" = "--create-zip-windows" || "$PHASE" = "--create-zip-macos" || "$PHASE" = "--create-zip-android" ]]; then
     shift
 
@@ -84,8 +84,8 @@ else
     echo
     echo "Usage, phase 2:"
     echo
-    echo "  ./prepare-release.sh --create-zip-macos path/to/touchHLE.dmg -o touchHLE_vX.Y.Z_macOS_x86_x64.zip"
-    echo "  ./prepare-release.sh --create-zip-windows path/to/touchHLE.exe -o touchHLE_vX.Y.Z_Windows_x86_64.zip"
-    echo "  ./prepare-release.sh --create-zip-android path/to/touchHLE.apk -o touchHLE_vX.Y.Z_Android_AArch64.zip"
+    echo "  ./prepare-release.sh --create-zip-macos path/to/HyperHLE.dmg -o HyperHLE_vX.Y.Z_macOS_x86_x64.zip"
+    echo "  ./prepare-release.sh --create-zip-windows path/to/HyperHLE.exe -o HyperHLE_vX.Y.Z_Windows_x86_64.zip"
+    echo "  ./prepare-release.sh --create-zip-android path/to/HyperHLE.apk -o HyperHLE_vX.Y.Z_Android_AArch64.zip"
     exit 1
 fi
