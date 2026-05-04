@@ -42,10 +42,7 @@ pub const CONSTANTS: ConstantExports = &[
         HostConstant::NSString(ADBannerContentSizeIdentifierLandscape),
     ),
     // ADErrorDomain — apps that bind to iAd at link time pull this in.
-    (
-        "_ADErrorDomain",
-        HostConstant::NSString("ADErrorDomain"),
-    ),
+    ("_ADErrorDomain", HostConstant::NSString("ADErrorDomain")),
 ];
 
 type ADAdType = NSInteger;

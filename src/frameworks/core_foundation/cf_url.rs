@@ -1125,14 +1125,8 @@ pub const FUNCTIONS: FunctionExports = &[
 // that link with `-framework CoreFoundation` and reference (but don't call)
 // the keys can load.
 pub const CONSTANTS: ConstantExports = &[
-    (
-        "_kCFURLFileLength",
-        HostConstant::NSString("NSURLFileSize"),
-    ),
-    (
-        "_kCFURLFileSize",
-        HostConstant::NSString("NSURLFileSize"),
-    ),
+    ("_kCFURLFileLength", HostConstant::NSString("NSURLFileSize")),
+    ("_kCFURLFileSize", HostConstant::NSString("NSURLFileSize")),
     (
         "_kCFURLFileSizeKey",
         HostConstant::NSString("NSURLFileSizeKey"),
@@ -1145,10 +1139,7 @@ pub const CONSTANTS: ConstantExports = &[
         "_kCFURLIsRegularFileKey",
         HostConstant::NSString("NSURLIsRegularFileKey"),
     ),
-    (
-        "_kCFURLNameKey",
-        HostConstant::NSString("NSURLNameKey"),
-    ),
+    ("_kCFURLNameKey", HostConstant::NSString("NSURLNameKey")),
     (
         "_kCFURLLocalizedNameKey",
         HostConstant::NSString("NSURLLocalizedNameKey"),

@@ -188,14 +188,8 @@ pub const CONSTANTS: ConstantExports = &[
         HostConstant::NSString("kCFErrorDomainCFNetwork"),
     ),
     // CFHTTPMessage / CFHTTPAuthentication property keys (kCFHTTP*).
-    (
-        "_kCFHTTPVersion1_0",
-        HostConstant::NSString("HTTP/1.0"),
-    ),
-    (
-        "_kCFHTTPVersion1_1",
-        HostConstant::NSString("HTTP/1.1"),
-    ),
+    ("_kCFHTTPVersion1_0", HostConstant::NSString("HTTP/1.0")),
+    ("_kCFHTTPVersion1_1", HostConstant::NSString("HTTP/1.1")),
     (
         "_kCFHTTPAuthenticationSchemeBasic",
         HostConstant::NSString("Basic"),
