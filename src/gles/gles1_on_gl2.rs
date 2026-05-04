@@ -757,8 +757,17 @@ impl GLES for GLES1OnGL2<'_> {
                 "Tolerating glEnableClientState({:#x}) of a capability",
                 array
             );
-        } else {
-            assert!(ARRAYS.iter().any(|&ArrayInfo { name, .. }| name == array));
+        } else if !ARRAYS.iter().any(|&ArrayInfo { name, .. }| name == array) {
+            // Some apps call glEnableClientState with arrays from extensions
+            // that we advertise but only stub out (e.g.
+            // GL_MATRIX_INDEX_ARRAY_OES and GL_WEIGHT_ARRAY_OES from
+            // GL_OES_matrix_palette). Per the GLES spec, an invalid enum
+            // should set GL_INVALID_ENUM, never crash.
+            log!(
+                "Warning: Tolerating glEnableClientState({:#x}) of unrecognized array",
+                array
+            );
+            return;
         }
         gl21::EnableClientState(array);
     }
@@ -768,8 +777,12 @@ impl GLES for GLES1OnGL2<'_> {
                 "Tolerating glDisableClientState({:#x}) of a capability",
                 array
             );
-        } else {
-            assert!(ARRAYS.iter().any(|&ArrayInfo { name, .. }| name == array));
+        } else if !ARRAYS.iter().any(|&ArrayInfo { name, .. }| name == array) {
+            log!(
+                "Warning: Tolerating glDisableClientState({:#x}) of unrecognized array",
+                array
+            );
+            return;
         }
         gl21::DisableClientState(array);
     }
