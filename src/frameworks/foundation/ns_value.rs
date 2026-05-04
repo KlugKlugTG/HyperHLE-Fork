@@ -6,7 +6,7 @@
 //! The `NSValue` class cluster, including `NSNumber`.
 
 use super::ns_string::{from_rust_ordering, from_rust_string};
-use super::{NSComparisonResult, NSOrderedSame, NSRange, NSUInteger, _nib_archive_decoder};
+use super::{_nib_archive_decoder, NSComparisonResult, NSOrderedSame, NSRange, NSUInteger};
 use crate::frameworks::core_foundation::cf_number::{
     kCFNumberCharType,
     kCFNumberDoubleType, // <-- ИСПРАВЛЕНИЕ: Добавлены наши новые типы

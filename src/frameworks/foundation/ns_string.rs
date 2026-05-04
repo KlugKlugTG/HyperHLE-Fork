@@ -12,11 +12,11 @@
 
 mod path_algorithms;
 
+use super::{_nib_archive_decoder, ns_array, unichar, NSInteger};
 use super::{
     NSComparisonResult, NSNotFound, NSOrderedAscending, NSOrderedDescending, NSOrderedSame,
     NSRange, NSUInteger,
 };
-use super::{_nib_archive_decoder, ns_array, unichar, NSInteger};
 use crate::abi::VaList;
 use crate::frameworks::core_graphics::{CGFloat, CGPoint, CGRect, CGSize};
 use crate::frameworks::foundation::ns_string;
