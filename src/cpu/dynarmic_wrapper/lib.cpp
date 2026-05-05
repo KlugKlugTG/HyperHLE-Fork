@@ -513,16 +513,20 @@ public:
 
   // Sync Dynarmic -> Flat Array
   void sync_to_flat() {
-    auto& regs = cpu->Regs();
-    for (int i = 0; i < 31; ++i) flat_regs[i] = regs[i];
-    flat_regs[31] = cpu->SP();
-    flat_regs[32] = cpu->PC();
+    // 🏎️ A64 requires explicit GetRegister(), GetSP(), and GetPC() calls!
+    for (size_t i = 0; i < 31; ++i) {
+        flat_regs[i] = cpu->GetRegister(i);
+    }
+    flat_regs[31] = cpu->GetSP();
+    flat_regs[32] = cpu->GetPC();
   }
 
   // Sync Flat Array -> Dynarmic
   void sync_from_flat() {
-    auto& regs = cpu->Regs();
-    for (int i = 0; i < 31; ++i) regs[i] = flat_regs[i];
+    // 🏎️ A64 requires explicit SetRegister(), SetSP(), and SetPC() calls!
+    for (size_t i = 0; i < 31; ++i) {
+        cpu->SetRegister(i, flat_regs[i]);
+    }
     cpu->SetSP(flat_regs[31]);
     cpu->SetPC(flat_regs[32]);
   }
