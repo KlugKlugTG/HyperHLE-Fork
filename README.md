@@ -62,17 +62,25 @@ Additional support and tested:
 N.o.v.a. 3: 1.0.0 (Good performance)
 
 GT racing motor academy:
-  Normal: 1.3.7 (sounds and tilt working)
+  Normal: 
+  >1.3.7 (sounds and tilt working)
           
-          1.5.6 (no sounds, no tilt working and crashes when selecting car)
+  >1.5.6 (no sounds, no tilt working and crashes when selecting car)
 
-  Free+: 1.3.2 (Touch not working)
+  Free+: 
+  
+  >1.3.2 (Touch not working)
          
-         1.3.4 redbull (crashes when selecting car, iphone 4 high graphics not supported yet)
+  >1.3.4 redbull (crashes when selecting car, iphone 4 high graphics not supported yet)
 
 
 GT racing 2: 1.0.0 (Good performance but no tilt support)
 
+
+Currently working:
+Asphalt 8 1.6.0
+NFS shift2, NFS most wanted
+Real Racing 2 and Real racing 3
 
 ///
 
