@@ -22,7 +22,10 @@ Audi RS3: 1.0.0, 1.0.1 (Missing buttons, screens, textures)
 
 =Retina and its scaling support
 
-=Asphalt 8 (IOS 5.0 Only) support: 🕐
+=Asphalt Overdrive (IOS 6.0) 1.0.2 ver support  🕐
+
+=Asphalt 8 (IOS 5.0 Only): 1.0.0 (stable)
+tested only 1.1.0 & 1.6.0 (stucks in loading screen)
 
 =Asphalt 7 (IOS 4.0-5.0) support: ✅
 
@@ -42,7 +45,7 @@ iPad: 1.0.0p, 1.1.8a
 
 1.3.4f (Freeze on some cars changing in car selection, perfomance better then 1.3.7y and 1.3.8h but still worse then 1.3.3j and older versions)
 
-1.3.7y and 1.3.8h (Freezes on some cars changing in car selection, random freezes in main menu, garage and in race (because of this you cant even finish any race), also bad perfomance)
+1.3.7y and 1.3.8h (bad performance on high graphics)
 
 -Working on fixes right now: Others versions not in the list, searching in web right now, if you can help with finding them, it will be cool
 
@@ -52,6 +55,21 @@ iPad: 1.0.0p, 1.1.8a
 1.0.0, 1.0.1
 
 =More Asphalt 5 versions support: ❌
+
+
+Additional support and tested:
+N.o.v.a. 3: 1.0.0 (Good performance)
+
+GT racing motor academy:
+  Normal: 1.3.7 (sounds and tilt working)
+          1.5.6 (no sounds, no tilt working and crashes when selecting car)
+
+  Free+: 1.3.2 (Touch not working)
+         1.3.4 redbull (crashes when selecting car, iphone 4 high graphics not supported yet)
+
+
+GT racing 2: 1.0.0 (Good performance but no tilt support)
+
 
 ///
 
