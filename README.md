@@ -58,6 +58,7 @@ iPad: 1.0.0p, 1.1.8a
 
 
 Additional support and tested:
+
 N.o.v.a. 3: 1.0.0 (Good performance)
 
 GT racing motor academy:
