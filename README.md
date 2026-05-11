@@ -63,9 +63,11 @@ N.o.v.a. 3: 1.0.0 (Good performance)
 
 GT racing motor academy:
   Normal: 1.3.7 (sounds and tilt working)
+          
           1.5.6 (no sounds, no tilt working and crashes when selecting car)
 
   Free+: 1.3.2 (Touch not working)
+         
          1.3.4 redbull (crashes when selecting car, iphone 4 high graphics not supported yet)
 
 
