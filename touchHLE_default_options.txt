@@ -248,3 +248,20 @@ com.chillingo.redball3hd: --landscape-left
 # --trace-gl-errors stays so any remaining 0x500 noise is logged with a
 # pointer to the calling host site.
 com.lego.NinjagoSpinjitzuScavengerHunt: --landscape-left --fix-texture-min-filter --trace-gl-errors
+
+# Resident Evil Degeneration (jp.co.capcom.residentevil.en)
+# Ported from touchHLE upstream commit 1bd22431 ("Default options for
+# Resident Evil Degeneration"). The game runs in landscape but its
+# UIWindow does not request landscape orientation, so without
+# --landscape-left the window stays portrait and the game's rendering
+# ends up rotated relative to it (the visible result is a black
+# screen). The game-controller mappings below mirror the on-screen
+# controls so the game is playable with a controller.
+jp.co.capcom.residentevil.en: --landscape-left --stabilize-virtual-cursor=0.1,10 --button-to-touch=A,430,280 --button-to-touch=B,440,200 --button-to-touch=Y,440,100 --button-to-touch=Start,30,30 --dpad-to-touch=25,200,95,100 --stick-to-touch=25,200,95,100
+
+# Call of Duty: Zombies (com.activision.callofduty)
+# Ported from touchHLE upstream's default options for Call of Duty:
+# Zombies. The game is landscape and uses an accelerometer-based aim
+# offset; --x-tilt-offset and the controller mapping below make it
+# playable with a game controller (matches upstream).
+com.activision.callofduty: --x-tilt-offset=-10 --dpad-to-touch=30,215,80,80 --stick-to-touch=30,215,80,80 --button-to-touch=A,387,210 --button-to-touch=B,455,185 --button-to-touch=X,455,25 --button-to-touch=Y,440,95 --button-to-touch=LeftShoulder,240,310 --button-to-touch=Start,20,25
