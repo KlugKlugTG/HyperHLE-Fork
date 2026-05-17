@@ -139,7 +139,25 @@ impl Default for Options {
             dumping_file: crate::paths::user_data_base_path().join("DUMP.txt"),
             ignore_gl_errors: false,
             trace_gl_errors: false,
-            fix_texture_min_filter: false,
+            // On Android the host GLES driver is essentially always
+            // ARM Mali / Qualcomm Adreno / something equally strict,
+            // and apps shipped for iOS overwhelmingly upload PVRTC and
+            // RGBA textures at level 0 only without ever setting a
+            // non-mipmap `GL_TEXTURE_MIN_FILTER`. Real iOS PowerVR
+            // drivers were lenient about this; strict Android drivers
+            // sample such an "incomplete" texture as opaque black or
+            // white, which makes textured geometry render as flat
+            // black/white shapes (Temple Run on Mali-G57 is a textbook
+            // case). Default the fix-up to ON so games work out of the
+            // box on Android — users can still disable it via
+            // `--fix-texture-min-filter=false` in
+            // `touchHLE_options.txt` if they hit a game that genuinely
+            // depends on mipmap minification (rare among iOS 2.x/3.x
+            // titles). On desktop hosts (where the user is likely
+            // running Mesa / Apple PowerVR / NVIDIA / AMD, all
+            // historically lenient) we leave it off so we don't change
+            // pixel output for the common case.
+            fix_texture_min_filter: cfg!(target_os = "android"),
             zero_stack_after_guest_to_host_call: None,
         }
     }
@@ -302,6 +320,11 @@ impl Options {
             self.trace_gl_errors = true;
         } else if arg == "--fix-texture-min-filter" {
             self.fix_texture_min_filter = true;
+        } else if arg == "--no-fix-texture-min-filter" {
+            // Off-switch for the Android default. Useful when an iOS
+            // title actually relies on mipmap minification and the
+            // forced `GL_LINEAR` would visibly degrade quality.
+            self.fix_texture_min_filter = false;
         } else if let Some(value) = arg.strip_prefix("--zero-stack-after-guest-to-host-call=") {
             self.zero_stack_after_guest_to_host_call = Some(value.parse().map_err(|_| {
                 "Invalid value for --zero-stack-after-guest-to-host-call=".to_string()

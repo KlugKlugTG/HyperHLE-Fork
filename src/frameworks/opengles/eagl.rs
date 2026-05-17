@@ -92,6 +92,38 @@ pub(super) struct EAGLContextHostObject {
 }
 impl HostObject for EAGLContextHostObject {}
 
+/// Log the effective state of the `fix_texture_min_filter` option once,
+/// the first time an EAGL context is created. This makes it easy to
+/// diagnose "geometry rendering as flat black/white textures" reports
+/// from a single log file: if the option is on we say so, if it's off
+/// (e.g. because the user explicitly disabled it via
+/// `--no-fix-texture-min-filter`) we say that too along with the
+/// suggested switch to enable it. The log fires only once per process.
+fn log_fix_min_filter_status(enabled: bool) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static SEEN: AtomicBool = AtomicBool::new(false);
+    if SEEN.swap(true, Ordering::Relaxed) {
+        return;
+    }
+    if enabled {
+        log!(
+            "fix_texture_min_filter: ON (after every level-0 texture upload, \
+             GL_TEXTURE_MIN_FILTER will be forced to GL_LINEAR if the guest \
+             never set it). This avoids flat-black/white-textured geometry on \
+             strict drivers (Mali, Adreno) for iOS games that don't ship \
+             mipmaps. Disable with --no-fix-texture-min-filter if a game \
+             genuinely needs mipmap minification."
+        );
+    } else {
+        log!(
+            "fix_texture_min_filter: OFF. If textured geometry renders as \
+             flat black or white shapes on this device, enable the fix-up \
+             with --fix-texture-min-filter (or remove \
+             --no-fix-texture-min-filter from your options)."
+        );
+    }
+}
+
 pub const CLASSES: ClassExports = objc_classes! {
 
 (env, this, _cmd);
@@ -170,6 +202,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     {
         let gles_ctx = gles_ins.make_current(window);
         log!("Driver info: {}", unsafe { gles_ctx.driver_description() });
+        log_fix_min_filter_status(env.options.fix_texture_min_filter);
     }
 
     env.objc.borrow_mut::<EAGLContextHostObject>(this).gles_ctx = Some(gles_ins);
@@ -202,6 +235,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     {
         let gles_ctx = gles_ins.make_current(window);
         log!("Driver info: {}", unsafe { gles_ctx.driver_description() });
+        log_fix_min_filter_status(env.options.fix_texture_min_filter);
     }
 
     env.objc.borrow_mut::<EAGLContextHostObject>(this).gles_ctx = Some(gles_ins);
