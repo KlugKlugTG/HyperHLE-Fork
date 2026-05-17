@@ -43,6 +43,7 @@ mod libc;
 mod licenses;
 mod mach_o;
 mod matrix;
+pub mod media;
 mod mem;
 mod objc;
 mod options;

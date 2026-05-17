@@ -9,6 +9,7 @@
 use crate::dyld::{ConstantExports, HostConstant};
 use crate::frameworks::foundation::{ns_string, ns_url, NSInteger};
 use crate::frameworks::uikit::ui_device::UIDeviceOrientation;
+use crate::media::{self, MovieBackend, PlayerEvent};
 use crate::objc::{
     id, msg, msg_class, nil, objc_classes, release, retain, todo_objc_setter, ClassExports,
     HostObject, NSZonePtr,
@@ -132,11 +133,100 @@ struct MPMoviePlayerControllerHostObject {
     should_autoplay: bool,
     initial_playback_time: f64,
     playback_state: MPMoviePlaybackState,
+    /// Real (or no-op) movie backend. Lifecycle is driven by play / pause /
+    /// stop and by [`handle_players`]. The backend pulls decoded frames /
+    /// audio off bounded queues and emits a [`PlayerEvent::Finished`] event
+    /// when end-of-stream is reached, at which point we synthesize the same
+    /// `MPMoviePlayerPlaybackDidFinishNotification` the existing stub
+    /// produced. When `--feature ffmpeg` is enabled this is a real FFmpeg
+    /// pipeline; otherwise it is a `NullBackend` that mirrors the legacy
+    /// "fake-finish-after-150ms" behaviour.
+    backend: Option<Box<dyn MovieBackend + Send>>,
+    /// Set once we have already emitted the finish notification via the
+    /// backend driver, so we don't double-fire when the existing
+    /// `pending_notifications` queue also reaches the same player.
+    backend_finish_emitted: bool,
 }
 impl HostObject for MPMoviePlayerControllerHostObject {}
 
 /// Ensure the player has a valid dummy view, creating one lazily if needed.
 /// Returns the view id (always non-nil after this call).
+/// Materialize the guest movie file referenced by `url` to a host-side
+/// temporary file and open it with the best available [`MovieBackend`].
+///
+/// Returns `None` if anything along the way fails – the caller falls back
+/// to the historical "fake-finish-after-150ms" behaviour, so missing /
+/// undecodable videos behave exactly like they used to.
+///
+/// In default builds (no `ffmpeg` feature) this is a cheap no-op that
+/// returns `None`, so the legacy stub path is preserved bit-for-bit.
+fn try_open_backend(env: &mut Environment, url: id) -> Option<Box<dyn MovieBackend + Send>> {
+    if cfg!(not(feature = "ffmpeg")) {
+        return None;
+    }
+
+    use std::io::Write;
+
+    let guest_path = ns_url::to_rust_path(env, url);
+    let bytes = match env.fs.read(&*guest_path) {
+        Ok(b) => b,
+        Err(()) => {
+            log!(
+                "MPMoviePlayerController: could not read guest file {:?}; \
+                 falling back to stub backend.",
+                guest_path
+            );
+            return None;
+        }
+    };
+
+    // Use the file_name only as a hint so FFmpeg's format probing keeps
+    // working (some demuxers sniff the extension). Place under a stable
+    // host directory rather than std::env::temp_dir() so we can clean up
+    // on emulator restart.
+    let file_name = guest_path
+        .as_str()
+        .rsplit('/')
+        .next()
+        .unwrap_or("movie.bin");
+    let host_dir = crate::paths::user_data_base_path().join("touchHLE_movie_tmp");
+    if let Err(e) = std::fs::create_dir_all(&host_dir) {
+        log!(
+            "MPMoviePlayerController: could not create temp dir {:?}: {}; \
+             falling back to stub backend.",
+            host_dir,
+            e
+        );
+        return None;
+    }
+    let host_path = host_dir.join(file_name);
+
+    match std::fs::File::create(&host_path).and_then(|mut f| f.write_all(&bytes)) {
+        Ok(()) => {}
+        Err(e) => {
+            log!(
+                "MPMoviePlayerController: could not stage movie to {:?}: {}; \
+                 falling back to stub backend.",
+                host_path,
+                e
+            );
+            return None;
+        }
+    }
+
+    let backend = media::open_movie(&host_path);
+    if backend.video_config().is_none() && backend.audio_config().is_none() {
+        // The NullBackend is fine, but log once so it's clear we are in
+        // fallback mode.
+        log!(
+            "MPMoviePlayerController: no real movie backend available for \
+             {:?}; playback will be stubbed.",
+            guest_path
+        );
+    }
+    Some(backend)
+}
+
 fn ensure_view(env: &mut Environment, this: id) -> id {
     let existing = env
         .objc
@@ -192,6 +282,8 @@ pub const CLASSES: ClassExports = objc_classes! {
 
         initial_playback_time: -1.0,
         playback_state: MPMoviePlaybackStateStopped,
+        backend: None,
+        backend_finish_emitted: false,
     });
     env.objc.alloc_object(this, host_object, &mut env.mem)
 }
@@ -217,6 +309,21 @@ pub const CLASSES: ClassExports = objc_classes! {
     ensure_view(env, this);
     ensure_background_view(env, this);
 
+    // Try to open a real backend for the supplied URL. If this fails for
+    // any reason (missing file, unsupported format, FFmpeg disabled) we
+    // fall back to the legacy "fake finish after 150ms" stub so the host
+    // game can still progress past the cut-scene.
+    let backend = try_open_backend(env, url);
+    let backend_opened_real_stream = backend
+        .as_ref()
+        .map(|b| b.video_config().is_some() || b.audio_config().is_some())
+        .unwrap_or(false);
+    {
+        let mut host = env.objc.borrow_mut::<MPMoviePlayerControllerHostObject>(this);
+        host.backend = backend;
+        host.backend_finish_emitted = false;
+    }
+
     // Act as if loading immediately completed (Spore Origins waits for this).
     // Retain this so the object stays alive until handle_players fires.
     retain(env, this);
@@ -226,17 +333,18 @@ pub const CLASSES: ClassExports = objc_classes! {
         Instant::now(),
     ));
 
-    // ХАК ДЛЯ ЗАГЛУШКИ: Автоматически завершаем видео через 150мс.
-    // Если игра не может вызвать `play` (например, из-за наших заглушек в
-    // ns_object),
-    // этот код все равно сымитирует конец видеоролика, чтобы игра загрузила
-    // главное меню.
-    retain(env, this);
-    State::get(env).pending_notifications.push_back((
-        MPMoviePlayerPlaybackDidFinishNotification,
-        this,
-        Instant::now() + std::time::Duration::from_millis(150),
-    ));
+    if !backend_opened_real_stream {
+        // ХАК ДЛЯ ЗАГЛУШКИ: автоматически завершаем «видео» через 150мс,
+        // только если реальный backend недоступен. С реальным backend
+        // финиш-нотификацию сгенерирует [`handle_players`] по событию
+        // `PlayerEvent::Finished`.
+        retain(env, this);
+        State::get(env).pending_notifications.push_back((
+            MPMoviePlayerPlaybackDidFinishNotification,
+            this,
+            Instant::now() + std::time::Duration::from_millis(150),
+        ));
+    }
 
     this
 }
@@ -259,6 +367,18 @@ pub const CLASSES: ClassExports = objc_classes! {
         .borrow::<MPMoviePlayerControllerHostObject>(this)
         .background_view;
     release(env, bg_view);
+
+    // Stop and drop the backend before deallocating the host object so its
+    // worker thread joins cleanly.
+    if let Some(mut backend) = env
+        .objc
+        .borrow_mut::<MPMoviePlayerControllerHostObject>(this)
+        .backend
+        .take()
+    {
+        backend.stop();
+        drop(backend);
+    }
 
     env.objc.dealloc_object(this, &mut env.mem);
 }
@@ -443,32 +563,55 @@ UIColor blackColor] // TODO
 
 // MPMediaPlayback implementation
 - (())play {
-    log!("TODO: [(MPMoviePlayerController*){:?} play]", this);
-    env.objc
-        .borrow_mut::<MPMoviePlayerControllerHostObject>(this)
-        .playback_state = MPMoviePlaybackStatePlaying;
-    // Retain this so the object stays alive until handle_players fires and
-    // we release it after posting the notification.
-    retain(env, this);
-    State::get(env).pending_notifications.push_back((
-        MPMoviePlayerPlaybackDidFinishNotification,
-        this,
-        Instant::now() + std::time::Duration::from_millis(50),
-    ));
+    log!("[(MPMoviePlayerController*){:?} play]", this);
+    let has_real_backend = {
+        let mut host = env.objc.borrow_mut::<MPMoviePlayerControllerHostObject>(this);
+        host.playback_state = MPMoviePlaybackStatePlaying;
+        match host.backend.as_mut() {
+            Some(b) => {
+                b.play();
+                b.video_config().is_some() || b.audio_config().is_some()
+            }
+            None => false,
+        }
+    };
+
+    if !has_real_backend {
+        // Legacy stub: synthesise the finish notification on a short timer
+        // so games waiting for it can proceed past the cut-scene.
+        retain(env, this);
+        State::get(env).pending_notifications.push_back((
+            MPMoviePlayerPlaybackDidFinishNotification,
+            this,
+            Instant::now() + std::time::Duration::from_millis(50),
+        ));
+    } else {
+        env.framework_state
+            .media_player
+            .movie_player
+            .active_player = Some(this);
+        retain(env, this);
+    }
 }
 
 - (())pause {
-    log!("TODO: [(MPMoviePlayerController*){:?} pause]", this);
-    env.objc
-        .borrow_mut::<MPMoviePlayerControllerHostObject>(this)
-        .playback_state = MPMoviePlaybackStatePaused;
+    log!("[(MPMoviePlayerController*){:?} pause]", this);
+    let mut host = env.objc.borrow_mut::<MPMoviePlayerControllerHostObject>(this);
+    host.playback_state = MPMoviePlaybackStatePaused;
+    if let Some(b) = host.backend.as_mut() {
+        b.pause();
+    }
 }
 
 - (())stop {
-    log!("TODO: [(MPMoviePlayerController*){:?} stop]", this);
-    env.objc
-        .borrow_mut::<MPMoviePlayerControllerHostObject>(this)
-        .playback_state = MPMoviePlaybackStateStopped;
+    log!("[(MPMoviePlayerController*){:?} stop]", this);
+    {
+        let mut host = env.objc.borrow_mut::<MPMoviePlayerControllerHostObject>(this);
+        host.playback_state = MPMoviePlaybackStateStopped;
+        if let Some(b) = host.backend.as_mut() {
+            b.stop();
+        }
+    }
     if env
         .framework_state
         .media_player
@@ -502,6 +645,74 @@ UIColor blackColor] // TODO
 /// For use by `NSRunLoop` via [super::handle_players]: check movie players'
 /// status, send notifications if necessary.
 pub(super) fn handle_players(env: &mut Environment) {
+    // First, drive any active real backend forward: drain its event channel,
+    // its video queue (frames are dropped for now — rendering is handled in
+    // a follow-up step) and its audio queue (samples are also dropped
+    // pending a wiring into the OpenAL output). When the backend reports
+    // `Finished` (or its worker has died), we synthesise the same
+    // `MPMoviePlayerPlaybackDidFinishNotification` the legacy stub emitted.
+    let active_player = env.framework_state.media_player.movie_player.active_player;
+    if let Some(player) = active_player {
+        let mut emit_finish = false;
+        let mut emit_failed: Option<String> = None;
+        {
+            let host = env
+                .objc
+                .borrow_mut::<MPMoviePlayerControllerHostObject>(player);
+            if !host.backend_finish_emitted {
+                if let Some(backend) = host.backend.as_mut() {
+                    // Drain pending decoded data – discarding for now keeps
+                    // the queues from filling up so the decoder can make
+                    // progress.
+                    while backend.try_next_video_frame().is_some() {}
+                    while backend.try_next_audio_chunk().is_some() {}
+                    while let Some(event) = backend.try_recv_event() {
+                        match event {
+                            PlayerEvent::Started => {}
+                            PlayerEvent::Finished => {
+                                emit_finish = true;
+                            }
+                            PlayerEvent::Failed(msg) => {
+                                emit_failed = Some(msg);
+                            }
+                        }
+                    }
+                }
+            }
+            if emit_finish || emit_failed.is_some() {
+                host.backend_finish_emitted = true;
+                host.playback_state = MPMoviePlaybackStateStopped;
+            }
+        }
+        if let Some(msg) = emit_failed.clone() {
+            log!(
+                "MPMoviePlayerController: backend reported failure: {}; \
+                 emitting PlaybackDidFinish anyway.",
+                msg
+            );
+        }
+        if emit_finish || emit_failed.is_some() {
+            // Don't double-queue the finish notification if something else
+            // (e.g. the legacy stub or an explicit `stop` call) already
+            // scheduled it.
+            let already_queued =
+                State::get(env)
+                    .pending_notifications
+                    .iter()
+                    .any(|(name, obj, _)| {
+                        *name == MPMoviePlayerPlaybackDidFinishNotification && *obj == player
+                    });
+            if !already_queued {
+                retain(env, player);
+                State::get(env).pending_notifications.push_back((
+                    MPMoviePlayerPlaybackDidFinishNotification,
+                    player,
+                    Instant::now(),
+                ));
+            }
+        }
+    }
+
     let mut notifs_to_run = Vec::new();
     let pending_notifs = &mut State::get(env).pending_notifications;
     let mut i = 0;
