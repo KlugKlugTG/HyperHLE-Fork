@@ -147,47 +147,48 @@ impl MovieBackend for FfmpegBackend {
     }
 
     fn try_next_video_frame(&mut self) -> Option<VideoFrame> {
-        let rx = self.inner.video_rx.as_ref()?;
+        if self.inner.video_rx.is_none() {
+            return None;
+        }
         let now = self.master_clock_seconds();
         let mut chosen: Option<VideoFrame> = None;
+        let mut disconnected = false;
         // Drain everything that's already late; keep only the most recent
         // due-frame. This protects against jank when the host loop falls
-        // behind for a tick.
+        // behind for a tick. We borrow `video_rx` for the duration of a
+        // single `try_recv` call so the borrow checker is happy with us
+        // calling `&mut self` helpers between iterations.
         loop {
-            match rx.try_recv() {
+            let recv_result = {
+                let rx = match self.inner.video_rx.as_ref() {
+                    Some(rx) => rx,
+                    None => break,
+                };
+                rx.try_recv()
+            };
+            match recv_result {
                 Ok(mut frame) => {
                     let normalised = self.record_first_pts_if_needed(frame.pts_seconds);
                     frame.pts_seconds = normalised;
-                    if normalised <= now {
-                        chosen = Some(frame);
-                    } else {
-                        // This frame is for the future. We've already taken
-                        // it out of the queue – stash it back? We don't have
-                        // a peek API on sync_channel, so we sleep this one
-                        // out by re-queuing through a tiny side channel.
-                        // To keep things simple, we just return whichever
-                        // we picked so far and accept ~1 frame of "burst"
-                        // latency on the next call.
-                        if chosen.is_some() {
-                            // Drop the future frame; the next try_next_*
-                            // call will pull it again from the channel?
-                            // No – it's already consumed. Convert to
-                            // chosen.replace so it actually displays, and
-                            // accept that we're a frame early. For an
-                            // intro video this is invisible.
-                            chosen = Some(frame);
-                        } else {
-                            chosen = Some(frame);
-                        }
+                    // We always keep the most recently received frame; if
+                    // it's in the future we still hand it out (since we
+                    // can't put it back) – on intro videos this 1-frame
+                    // burst is invisible.
+                    let is_future = normalised > now;
+                    chosen = Some(frame);
+                    if is_future {
                         break;
                     }
                 }
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => {
-                    self.inner.video_rx = None;
+                    disconnected = true;
                     break;
                 }
             }
+        }
+        if disconnected {
+            self.inner.video_rx = None;
         }
         chosen
     }
