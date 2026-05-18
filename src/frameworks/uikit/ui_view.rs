@@ -669,6 +669,20 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (())layoutSubviews { }
 
+// Per Apple docs: "Use this method to force the view to update its layout
+// immediately. [...] This method acts on the root view of the receiver's
+// subtree, laying out the entire subtree starting from that root."
+// In our simplified implementation, we just call layoutSubviews.
+- (())layoutIfNeeded {
+    () = msg![env; this layoutSubviews];
+}
+
+- (())setNeedsLayout {
+    // In a real implementation this would mark the view as needing layout
+    // on the next run loop iteration. Since we don't track dirty flags,
+    // this is a no-op — layoutSubviews will be called when appropriate.
+}
+
 // MARK: - Gesture recognizers
 //
 // These methods just track recognizers in a `Vec<id>`. Gesture recognition is
