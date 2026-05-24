@@ -1055,6 +1055,15 @@ fn glDiscardFramebufferEXT(
     _attachments: ConstPtr<GLenum>,
 ) {
 }
+
+// GL_EXT_debug_marker — no-op when the host driver does not support it.
+fn glPushGroupMarkerEXT(_env: &mut Environment, _length: GLsizei, _marker: ConstPtr<u8>) {
+    // Debug markers have no effect on rendering state.
+}
+fn glPopGroupMarkerEXT(_env: &mut Environment) {
+    // Debug markers have no effect on rendering state.
+}
+
 fn glBindVertexArrayOES(_env: &mut Environment, _array: GLuint) {}
 fn glDeleteVertexArraysOES(_env: &mut Environment, _n: GLsizei, _arrays: ConstPtr<GLuint>) {}
 fn glGenVertexArraysOES(env: &mut Environment, n: GLsizei, arrays: MutPtr<GLuint>) {
@@ -4202,6 +4211,8 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(glRenderbufferStorageMultisampleAPPLE(_, _, _, _, _)),
     export_c_func!(glResolveMultisampleFramebufferAPPLE()),
     export_c_func!(glDiscardFramebufferEXT(_, _, _)),
+    export_c_func!(glPushGroupMarkerEXT(_, _)),
+    export_c_func!(glPopGroupMarkerEXT()),
     export_c_func!(glBindVertexArrayOES(_)),
     export_c_func!(glDeleteVertexArraysOES(_, _)),
     export_c_func!(glGenVertexArraysOES(_, _)),

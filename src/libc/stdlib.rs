@@ -454,6 +454,46 @@ fn arc4random(env: &mut Environment) -> u32 {
     env.libc_state.stdlib.arc4random
 }
 
+fn arc4random_uniform(env: &mut Environment, upper_bound: u32) -> u32 {
+    // Per Apple docs: "arc4random_uniform() will return a uniformly
+    // distributed random number less than upper_bound.  arc4random_uniform()
+    // is recommended over constructions like ``arc4random() % upper_bound'' as
+    // it avoids "modulo bias" when the upper bound is not a power of two."
+    if upper_bound <= 1 {
+        return 0;
+    }
+    // Rejection sampling to avoid modulo bias.
+    // Compute the smallest multiple of upper_bound that is > u32::MAX,
+    // or rather reject values >= limit where limit = max_multiple.
+    // Simpler approach: keep generating until we get a value in [0, limit).
+    // limit = (u32::MAX / upper_bound) * upper_bound is not quite right
+    // because we want to exclude values that would bias the distribution.
+    // Standard approach: limit = u32::MAX - (u32::MAX % upper_bound)
+    // But that can still leave bias if u32::MAX % upper_bound == upper_bound - 1
+    // The correct Apple implementation uses:
+    //   min = (1 << 32) % upper_bound  (but that's 0 for powers of 2)
+    // Simpler correct approach: generate, if value > u32::MAX - (u32::MAX % upper_bound) - 1,
+    // reject and retry. But wait, u32::MAX is 2^32-1.
+    // The standard algorithm:
+    //   min = (-upper_bound) % upper_bound  (in 32-bit arithmetic)
+    // Actually the simplest correct algorithm for 32-bit:
+    //   limit = u32::MAX - (u32::MAX % upper_bound)
+    //   if value >= limit && limit != 0, reject
+    // But u32::MAX % upper_bound might be == upper_bound - 1, then limit = u32::MAX - (upper_bound - 1)
+    // which means we reject 1 out of 2^32 values. That's fine.
+    // Actually, the Apple implementation typically does:
+    //   arc4random() % upper_bound  for small upper_bound, or
+    //   rejection sampling.
+    // Let's implement proper rejection sampling:
+    let max_valid = u32::MAX - (u32::MAX % upper_bound);
+    loop {
+        let r = arc4random(env);
+        if r < max_valid {
+            return r % upper_bound;
+        }
+    }
+}
+
 // MARK: - drand48 family
 //
 // POSIX / Apple iPhone OS specification for these functions:
@@ -1532,6 +1572,7 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(srandom(_)),
     export_c_func!(random()),
     export_c_func!(arc4random()),
+    export_c_func!(arc4random_uniform(_)),
     export_c_func!(arc4random_stir()),
     export_c_func!(arc4random_addrandom()),
     // drand48 family (POSIX / Apple iPhone OS manpage)

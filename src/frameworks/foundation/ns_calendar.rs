@@ -184,6 +184,7 @@ fn gregorian_weekday_from_time_interval(time_interval: NSTimeInterval) -> NSInte
 struct NSCalendarHostObject {
     calendar_identifier: id,
     first_weekday: NSInteger,
+    time_zone: id,
 }
 impl HostObject for NSCalendarHostObject {}
 
@@ -197,6 +198,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     let host_object = Box::new(NSCalendarHostObject {
         calendar_identifier: nil,
         first_weekday: 0,
+        time_zone: nil,
     });
     env.objc.alloc_object(this, host_object, &mut env.mem)
 }
@@ -229,6 +231,14 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (())setFirstWeekday:(NSInteger)weekday {
     env.objc.borrow_mut::<NSCalendarHostObject>(this).first_weekday = weekday;
+}
+
+- (id)timeZone {
+    env.objc.borrow::<NSCalendarHostObject>(this).time_zone
+}
+
+- (())setTimeZone:(id)timeZone { // NSTimeZone *
+    env.objc.borrow_mut::<NSCalendarHostObject>(this).time_zone = timeZone;
 }
 
 - (id)components:(NSCalendarUnit)unit_flags fromDate:(id)date { // NSDate *

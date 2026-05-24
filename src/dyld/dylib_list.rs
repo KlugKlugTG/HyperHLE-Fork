@@ -240,6 +240,8 @@ pub const DYLIB_LIST: &[&super::HostDylib] = &[
     &ACCELERATE,
     &frameworks::core_text::DYLIB,
     &frameworks::core_bluetooth::DYLIB,
+    &frameworks::gl_kit::DYLIB,
+    &frameworks::image_io::DYLIB,
 ];
 
 #[cfg(test)]

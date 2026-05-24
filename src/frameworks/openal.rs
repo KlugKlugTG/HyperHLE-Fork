@@ -144,6 +144,14 @@ fn alcOpenDevice(env: &mut Environment, devicename: ConstPtr<u8>) -> MutPtr<Gues
         // Если нет, возвращаем NULL.
 
         let d_name = alcGetString(env, Ptr::null(), ALC_DEVICE_SPECIFIER);
+        if d_name.is_null() {
+            log!(
+                "alcGetString(NULL, ALC_DEVICE_SPECIFIER) вернул NULL; \
+                 не могу проверить имя устройства {:?}. Возвращаем NULL.",
+                env.mem.cstr_at_utf8(devicename)
+            );
+            return Ptr::null();
+        }
         if strcmp(env, d_name, devicename) != 0 {
             log!(
                 "Неподдерживаемое имя устройства {:?}, поддерживается {:?}. Возвращаем NULL",
