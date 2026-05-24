@@ -78,7 +78,7 @@ If you're going to open a pull request with non-trivial changes, please talk to 
 
 Avoid sending everything as big commit(s) - we prefer to have smaller self-mergeable commits which could be reviewed and submitted independently.
 
-Please also understand that we maintain a certain code quality standards and your contribution would be accepted _only_ if it does meet them. If your don't have time or willingness to be involved in the review process to attain those, please avoid contributing. You could check [past merged patch sets](https://review.gerrithub.io/q/project:touchHLE/touchHLE+status:merged) to get an idea what is expected.
+Please also understand that we maintain a certain code quality standards and your contribution would be accepted _only_ if it does meet them. If you don't have time or willingness to be involved in the review process to attain those, please avoid contributing. You could check [past merged patch sets](https://review.gerrithub.io/q/project:touchHLE/touchHLE+status:merged) to get an idea what is expected.
 
 ### Copyright and reverse engineering
 
