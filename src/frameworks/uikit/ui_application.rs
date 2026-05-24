@@ -354,12 +354,17 @@ pub const CLASSES: ClassExports = objc_classes! {
     false
 }
 
-- (())beginBackgroundTaskWithExpirationHandler:(id)_handler {
-    log!("UIApplication beginBackgroundTaskWithExpirationHandler: stubbed");
+- (NSUInteger)beginBackgroundTaskWithExpirationHandler:(id)_handler {
+    // Apple docs: returns a UIBackgroundTaskIdentifier (NSUInteger).
+    // Return a non-zero dummy identifier so the app can later pass it to
+    // endBackgroundTask:.  Background tasks are meaningless in touchHLE
+    // because the emulator never suspends the app.
+    log_dbg!("UIApplication beginBackgroundTaskWithExpirationHandler: returning dummy identifier 1");
+    1
 }
 
 - (())endBackgroundTask:(NSUInteger)_task {
-    log!("UIApplication endBackgroundTask: stubbed");
+    log_dbg!("UIApplication endBackgroundTask: no-op (task {})", _task);
 }
 
 - (NSUInteger)backgroundTimeRemaining {

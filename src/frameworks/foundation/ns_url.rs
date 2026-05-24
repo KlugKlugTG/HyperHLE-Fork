@@ -706,9 +706,14 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (bool)getResourceValue:(MutPtr<id>)value forKey:(id)key error:(MutPtr<id>)_err {
     let key_str = to_rust_string(env, key);
     if key_str == "NSURLIsDirectoryKey" {
-        // ИСПРАВЛЕНИЕ ЗДЕСЬ: Добавлена явная аннотация типа `: bool`
         let is_dir: bool = msg![env; this hasDirectoryPath];
         let ns_bool = msg_class![env; NSNumber numberWithBool:is_dir];
+        env.mem.write(value, ns_bool);
+        return true;
+    }
+    if key_str == "NSURLIsExcludedFromBackupKey" {
+        // touchHLE never backs files up, so this is always false.
+        let ns_bool = msg_class![env; NSNumber numberWithBool:false];
         env.mem.write(value, ns_bool);
         return true;
     }
@@ -721,6 +726,15 @@ pub const CLASSES: ClassExports = objc_classes! {
                   forKey:(id)_key        // NSURLResourceKey
                    error:(MutPtr<id>)_err // NSError**
 {
+    let key_str = to_rust_string(env, _key);
+    // NSURLIsExcludedFromBackupKey is the most common key games use.
+    // touchHLE does not back up files, so we can safely pretend the call
+    // succeeded.
+    if key_str == "NSURLIsExcludedFromBackupKey" {
+        return true;
+    }
+    // For other keys we don't implement, return false but don't crash.
+    log_dbg!("NSURL setResourceValue:forKey:{} — unimplemented key, returning false", key_str);
     false
 }
 

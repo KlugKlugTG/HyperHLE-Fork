@@ -418,8 +418,11 @@ pub fn read(
             if bytes_read == 0 {
                 log_dbg!("read({:?}, {:?}, {:#x}) => 0 (EOF)", fd, buffer, size);
             } else if bytes_read < buffer_slice.len() {
-                log!(
-                    "Warning: read({:?}, {:?}, {:#x}) read only {:#x} bytes",
+                // Частичное чтение — штатная ситуация для сокетов, pipe'ов и
+                // некоторых файловых систем. Логируем только в debug-режиме,
+                // чтобы не засорять вывод.
+                log_dbg!(
+                    "read({:?}, {:?}, {:#x}) read only {:#x} bytes (short read)",
                     fd,
                     buffer,
                     size,

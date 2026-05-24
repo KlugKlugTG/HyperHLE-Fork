@@ -280,8 +280,8 @@ pub fn main<T: Iterator<Item = String>>(mut args: T) -> Result<(), String> {
         };
         let major: u32 = major_str.parse().unwrap_or(0);
         let minor: u32 = minor_str.parse().unwrap_or(0);
-        if major > 4 || (major == 4 && minor > 0) {
-            echo!("Warning: app requires OS version {}. Only apps for iOS 4.0 and earlier are currently supported.", version);
+        if major > 7 || (major == 7 && minor > 0) {
+            echo!("Warning: app requires OS version {}. Only apps for iOS 7.0 and earlier are currently supported.", version);
         }
     }
 

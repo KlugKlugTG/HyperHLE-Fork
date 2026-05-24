@@ -98,11 +98,12 @@ fn mmap(
 
         let read = posix_io::read(env, fd, ptr, len);
         if (read as u32) < len {
-            log!(
-                "Warning: mmap: read only {} of {} bytes from fd {}; padding remainder with zeros",
+            // Частичное чтение при mmap — не фатальная ошибка; остаток
+            // уже обнулён благодаря calloc.
+            log_dbg!(
+                "mmap: read only {} of {} bytes from fd {}; padding remainder with zeros",
                 read, len, fd
             );
-            // Remainder is already zeroed (calloc)
         }
     }
 

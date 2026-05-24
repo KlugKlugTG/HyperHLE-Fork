@@ -18,6 +18,16 @@ use crate::Environment;
 /// В операционных системах семейства Darwin/iOS RTLD_DEFAULT традиционно равен
 //(void*)-2.
 const RTLD_DEFAULT: MutVoidPtr = Ptr::from_bits(-2 as _);
+/// RTLD_NEXT — поиск символа в следующем загруженном модуле (interposition).
+const RTLD_NEXT: MutVoidPtr = Ptr::from_bits(-1 as _);
+/// RTLD_SELF — поиск символа в модуле, из которого вызван dlsym.
+const RTLD_SELF: MutVoidPtr = Ptr::from_bits(-3 as _);
+
+/// Проверяет, является ли дескриптор одним из специальных глобальных
+/// псевдо-дескрипторов Darwin.
+fn is_global_handle(handle: MutVoidPtr) -> bool {
+    handle == RTLD_DEFAULT || handle == RTLD_NEXT || handle == RTLD_SELF
+}
 
 /// Проверяет, является ли запрашиваемая библиотека известной эмулятору
 //(присутствует в статическом списке DYLIB_LIST).
@@ -86,23 +96,26 @@ fn dlopen(env: &mut Environment, path: ConstPtr<u8>, _mode: i32) -> MutVoidPtr {
 //загруженном модуле.
 fn dlsym(env: &mut Environment, handle: MutVoidPtr, symbol: ConstPtr<u8>) -> MutVoidPtr {
     // БЕЗОПАСНОСТЬ: Валидация переданного дескриптора.
-    // Если дескриптор не является RTLD_DEFAULT, мы пытаемся разыменовать его
-    // как суррогатный указатель на строку пути.
-    if handle != RTLD_DEFAULT {
+    // Нулевой дескриптор и специальные псевдо-дескрипторы RTLD_DEFAULT /
+    // RTLD_NEXT / RTLD_SELF разрешаются в глобальную область символов.
+    if handle.is_null() || is_global_handle(handle) {
+        // proceed to global symbol resolution below
+    } else {
         let handle_path_ptr: ConstPtr<u8> = handle.cast().cast_const();
         let handle_str = match env.mem.cstr_at_utf8(handle_path_ptr) {
             Ok(s) => s,
             Err(_) => {
-                log!("Warning: dlsym() returning NULL due to invalid or corrupted handle pointer (possible UAF)");
-                return Ptr::null();
+                log_dbg!("dlsym() called with an invalid or corrupted handle pointer (possible UAF), treating as global lookup");
+                // proceed to global symbol resolution below
+                ""
             }
         };
 
-        // Если дескриптор указывает на строку, не являющуюся известной
-        // библиотекой, запрос отклоняется.
-        if !is_known_library(handle_str) {
-            log!(
-                "Warning: dlsym() returning NULL due to an unknown library handle: {}",
+        // Если дескриптор указывает на непустую строку, не являющуюся
+        // известной библиотекой, запрос отклоняется.
+        if !handle_str.is_empty() && !is_known_library(handle_str) {
+            log_dbg!(
+                "dlsym() called with unknown library handle: {}, returning NULL",
                 handle_str
             );
             return Ptr::null();
@@ -160,8 +173,8 @@ fn dlsym(env: &mut Environment, handle: MutVoidPtr, symbol: ConstPtr<u8>) -> Mut
 /// В HLE архитектуре выступает в роли заглушки, но строго соблюдает семантику
 //возврата кодов ошибок.
 fn dlclose(env: &mut Environment, handle: MutVoidPtr) -> i32 {
-    if handle == RTLD_DEFAULT {
-        return 0; // Операция успешна
+    if handle.is_null() || is_global_handle(handle) {
+        return 0; // Операция успешна для псевдо-дескрипторов
     }
 
     let handle_path_ptr: ConstPtr<u8> = handle.cast().cast_const();
@@ -170,7 +183,7 @@ fn dlclose(env: &mut Environment, handle: MutVoidPtr) -> i32 {
     // возвратом кода статуса.
     match env.mem.cstr_at_utf8(handle_path_ptr) {
         Ok(handle_str) => {
-            if !is_known_library(handle_str) {
+            if !handle_str.is_empty() && !is_known_library(handle_str) {
                 log!(
                     "Warning: dlclose() called on unknown or already freed library handle: {}",
                     handle_str

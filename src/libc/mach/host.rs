@@ -187,9 +187,20 @@ fn clock_get_time(
                 Err(_) => (0, 0),
             }
         }
+        // Some guests (e.g. Terraria) call clock_get_time with a nil port
+        // when they haven't gone through host_get_clock_service. Rather than
+        // returning KERN_INVALID_ARGUMENT, we default to monotonic time so
+        // the app keeps running.  Any truly unknown port is logged at debug
+        // level only.
         other => {
-            log!("clock_get_time: unknown clock_serv port {:#010x}", other);
-            (0, 0)
+            if other != 0 {
+                log_dbg!(
+                    "clock_get_time: unknown clock_serv port {:#010x}, defaulting to monotonic",
+                    other
+                );
+            }
+            let d = std::time::Instant::now().duration_since(env.startup_time);
+            (d.as_secs(), d.subsec_nanos())
         }
     };
     env.mem.write(
