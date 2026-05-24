@@ -196,7 +196,7 @@ pub fn printf_inner<const NS_LOG: bool, F: Fn(&Mem, GuestUSize) -> u8>(
         match specifier {
             // Integer specifiers
             b'c' => {
-                assert!(!prepend_sign);
+                // C99: '+' flag is ignored for non-numeric conversions.
 
                 // Если передали %lc, обрабатываем как широкий символ (аналог
                 // %C)
@@ -218,7 +218,7 @@ pub fn printf_inner<const NS_LOG: bool, F: Fn(&Mem, GuestUSize) -> u8>(
             // Apple extension?
             // Seemingly works in both NSLog and printf.
             b'C' => {
-                assert!(!prepend_sign);
+                // C99: '+' flag is ignored for non-numeric conversions.
                 // Убрали assert!(length_modifier.is_none());
                 let c: unichar = args.next(env);
                 assert!(pad_char == ' ' && pad_width == 0);
@@ -257,7 +257,7 @@ pub fn printf_inner<const NS_LOG: bool, F: Fn(&Mem, GuestUSize) -> u8>(
                 }
             }
             b'S' => {
-                assert!(!prepend_sign);
+                // C99: '+' flag is ignored for non-numeric conversions.
                 // Убрали assert!(length_modifier.is_none());
                 // TODO: support other locales
                 let ctype_locale = setlocale(env, LC_CTYPE, Ptr::null());
@@ -317,7 +317,7 @@ pub fn printf_inner<const NS_LOG: bool, F: Fn(&Mem, GuestUSize) -> u8>(
                 res.extend_from_slice(s.as_bytes());
             }
             b'@' if NS_LOG => {
-                assert!(!prepend_sign);
+                // C99: '+' flag is ignored for non-numeric conversions.
                 // Убрали assert!(length_modifier.is_none());
                 let object: id = args.next(env);
                 // TODO: use localized description if available?
@@ -333,7 +333,7 @@ pub fn printf_inner<const NS_LOG: bool, F: Fn(&Mem, GuestUSize) -> u8>(
             }
             b'o' => {
                 // Octal specifier
-                assert!(!prepend_sign);
+                // C99: '+' flag is ignored for unsigned conversions.
                 let uint: u64 = if length_modifier == Some("ll") {
                     args.next(env)
                 } else if length_modifier == Some("hh") {
@@ -379,7 +379,7 @@ pub fn printf_inner<const NS_LOG: bool, F: Fn(&Mem, GuestUSize) -> u8>(
                 }
             }
             b'x' => {
-                assert!(!prepend_sign);
+                // C99: '+' flag is ignored for unsigned conversions.
                 let uint: u64 = if length_modifier == Some("ll") {
                     args.next(env)
                 } else if length_modifier == Some("hh") {
@@ -437,7 +437,7 @@ pub fn printf_inner<const NS_LOG: bool, F: Fn(&Mem, GuestUSize) -> u8>(
                 }
             }
             b'X' => {
-                assert!(!prepend_sign);
+                // C99: '+' flag is ignored for unsigned conversions.
                 let uint: u64 = if length_modifier == Some("ll") {
                     args.next(env)
                 } else if length_modifier == Some("hh") {
@@ -495,7 +495,7 @@ pub fn printf_inner<const NS_LOG: bool, F: Fn(&Mem, GuestUSize) -> u8>(
                 }
             }
             b'p' => {
-                assert!(!prepend_sign);
+                // C99: '+' flag is ignored for pointer conversions.
                 // Убрали assert!(length_modifier.is_none());
                 let ptr: MutVoidPtr = args.next(env);
                 // '%p' is implementation defined,
@@ -515,23 +515,34 @@ pub fn printf_inner<const NS_LOG: bool, F: Fn(&Mem, GuestUSize) -> u8>(
             }
             // Float specifiers
             b'f' => {
-                assert!(!prepend_sign);
                 let float: f64 = args.next(env);
                 let pad_width = pad_width as usize;
                 let precision = precision.unwrap_or(6);
-                let formatted = f_format(float, pad_width, pad_char, precision, left_justified);
+                let formatted = f_format(
+                    float,
+                    pad_width,
+                    pad_char,
+                    precision,
+                    left_justified,
+                    prepend_sign,
+                );
                 res.extend_from_slice(formatted.as_bytes());
             }
             b'e' => {
-                assert!(!prepend_sign);
                 let float: f64 = args.next(env);
                 let pad_width = pad_width as usize;
                 let precision = precision.unwrap_or(6);
-                let formatted = e_format(float, pad_width, pad_char, precision, left_justified);
+                let formatted = e_format(
+                    float,
+                    pad_width,
+                    pad_char,
+                    precision,
+                    left_justified,
+                    prepend_sign,
+                );
                 res.extend_from_slice(formatted.as_bytes());
             }
             b'g' => {
-                assert!(!prepend_sign);
                 let float: f64 = args.next(env);
                 let pad_width = pad_width as usize;
                 // Reference https://en.cppreference.com/w/c/io/vfprintf
@@ -559,7 +570,14 @@ pub fn printf_inner<const NS_LOG: bool, F: Fn(&Mem, GuestUSize) -> u8>(
                 );
                 if P > X && X >= -4 {
                     let precision: usize = (P - X - 1).try_into().unwrap();
-                    let result = f_format(float, pad_width, pad_char, precision, left_justified);
+                    let result = f_format(
+                        float,
+                        pad_width,
+                        pad_char,
+                        precision,
+                        left_justified,
+                        prepend_sign,
+                    );
 
                     // TODO: skip if alternative representation is requested
                     let trimmed_result = if result.contains('.') {
@@ -581,7 +599,14 @@ pub fn printf_inner<const NS_LOG: bool, F: Fn(&Mem, GuestUSize) -> u8>(
                     res.extend_from_slice(trimmed_result.as_bytes());
                 } else {
                     let precision: usize = (P - 1).try_into().unwrap();
-                    let formatted = e_format(float, pad_width, pad_char, precision, left_justified);
+                    let formatted = e_format(
+                        float,
+                        pad_width,
+                        pad_char,
+                        precision,
+                        left_justified,
+                        prepend_sign,
+                    );
                     res.extend_from_slice(formatted.as_bytes());
                 }
             }
@@ -589,16 +614,30 @@ pub fn printf_inner<const NS_LOG: bool, F: Fn(&Mem, GuestUSize) -> u8>(
                 let float: f64 = args.next(env);
                 let pad_width = pad_width as usize;
                 let precision = precision.unwrap_or(6);
-                let s = format!("{float:.precision$}").to_uppercase();
-                let s = apply_pad(&s, pad_width, pad_char, left_justified);
+                let s = f_format(
+                    float,
+                    pad_width,
+                    pad_char,
+                    precision,
+                    left_justified,
+                    prepend_sign,
+                )
+                .to_uppercase();
                 res.extend_from_slice(s.as_bytes());
             }
             b'E' => {
                 let float: f64 = args.next(env);
                 let pad_width = pad_width as usize;
                 let precision = precision.unwrap_or(6);
-                let s =
-                    e_format(float, pad_width, pad_char, precision, left_justified).to_uppercase();
+                let s = e_format(
+                    float,
+                    pad_width,
+                    pad_char,
+                    precision,
+                    left_justified,
+                    prepend_sign,
+                )
+                .to_uppercase();
                 res.extend_from_slice(s.as_bytes());
             }
             b'G' => {
@@ -614,11 +653,18 @@ pub fn printf_inner<const NS_LOG: bool, F: Fn(&Mem, GuestUSize) -> u8>(
                 };
                 let s = if p > x && x >= -4 {
                     let prec = (p - x - 1) as usize;
-                    let raw = f_format(float, 0, ' ', prec, false);
+                    let raw = f_format(float, 0, ' ', prec, false, prepend_sign);
                     let trimmed = raw.trim_end_matches('0').trim_end_matches('.');
                     apply_pad(trimmed, pad_width, pad_char, left_justified)
                 } else {
-                    e_format(float, pad_width, pad_char, (p - 1) as usize, left_justified)
+                    e_format(
+                        float,
+                        pad_width,
+                        pad_char,
+                        (p - 1) as usize,
+                        left_justified,
+                        prepend_sign,
+                    )
                 };
                 res.extend_from_slice(s.to_uppercase().as_bytes());
             }
@@ -694,15 +740,32 @@ fn f_format(
     pad_char: char,
     precision: usize,
     left_justified: bool,
+    prepend_sign: bool,
 ) -> String {
-    if left_justified {
-        format!("{float:<pad_width$.precision$}")
-    } else if pad_char == '0' {
-        format!("{float:0>pad_width$.precision$}")
+    // Format magnitude without sign, then re-attach the sign so we can prefix
+    // it correctly with respect to zero-padding (sign before zeros, per C99).
+    let is_neg = float.is_sign_negative() && !float.is_nan();
+    let sign: &str = if is_neg {
+        "-"
+    } else if prepend_sign && !float.is_nan() {
+        "+"
     } else {
-        assert!(pad_char == ' ');
-        // TODO
-        format!("{float:>pad_width$.precision$}")
+        ""
+    };
+    let abs = if is_neg { -float } else { float };
+    let body = format!("{abs:.precision$}");
+    if pad_width == 0 || sign.len() + body.len() >= pad_width {
+        return format!("{sign}{body}");
+    }
+    if left_justified {
+        let s = format!("{sign}{body}");
+        format!("{s:<pad_width$}")
+    } else if pad_char == '0' {
+        let remaining = pad_width.saturating_sub(sign.len());
+        format!("{sign}{body:0>remaining$}")
+    } else {
+        let s = format!("{sign}{body}");
+        format!("{s:>pad_width$}")
     }
 }
 
@@ -712,17 +775,28 @@ fn e_format(
     pad_char: char,
     precision: usize,
     left_justified: bool,
+    prepend_sign: bool,
 ) -> String {
+    let is_neg = float.is_sign_negative() && !float.is_nan();
+    let sign: &str = if is_neg {
+        "-"
+    } else if prepend_sign && !float.is_nan() {
+        "+"
+    } else {
+        ""
+    };
     let exponent = if float == 0.0 {
         0.0
     } else {
         float.abs().log10().floor()
     };
     let mantissa = float.abs() / 10f64.powf(exponent);
-    let sign = if float.is_sign_negative() { "-" } else { "" };
     let float_exp_notation = format!("{mantissa:.precision$}e{exponent:+03}");
     let full_str = format!("{sign}{float_exp_notation}");
 
+    if pad_width == 0 || full_str.len() >= pad_width {
+        return full_str;
+    }
     if left_justified {
         format!("{full_str:<pad_width$}")
     } else if pad_char == '0' {
@@ -733,8 +807,6 @@ fn e_format(
             pad_width.saturating_sub(sign.len())
         )
     } else {
-        assert!(pad_char == ' ');
-        // TODO
         format!("{full_str:>pad_width$}")
     }
 }
