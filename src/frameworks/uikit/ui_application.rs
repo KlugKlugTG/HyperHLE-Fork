@@ -32,6 +32,11 @@ struct UIApplicationHostObject {
     delegate: id,
     delegate_is_retained: bool,
     status_bar_style: UIStatusBarStyle,
+    /// The most recent value set via `-setApplicationIconBadgeNumber:`.
+    /// Per Apple's UIApplication docs the property is read/write and
+    /// defaults to 0; we honour both the getter and the setter even
+    /// though touchHLE has no springboard to actually render the badge.
+    application_icon_badge_number: NSInteger,
 }
 impl HostObject for UIApplicationHostObject {}
 
@@ -66,6 +71,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         delegate: nil,
         delegate_is_retained: false,
         status_bar_style: 0,
+        application_icon_badge_number: 0,
     });
     env.objc.alloc_static_object(this, host_object, &mut env.mem)
 }
@@ -495,11 +501,17 @@ pub const CLASSES: ClassExports = objc_classes! {
     0 // UIRemoteNotificationTypeNone
 }
 
+// `applicationIconBadgeNumber` is the integer shown on the SpringBoard
+// app icon badge. touchHLE has no SpringBoard, but games (e.g.
+// notification-driven trial flows) often *read* the value back after
+// setting it to gate logic, so we store it for round-trip fidelity per
+// Apple's [UIApplication Reference](https://developer.apple.com/documentation/uikit/uiapplication/1622918-applicationiconbadgenumber).
 - (NSInteger)applicationIconBadgeNumber {
-    0 // default value
+    env.objc.borrow::<UIApplicationHostObject>(this).application_icon_badge_number
 }
 - (())setApplicationIconBadgeNumber:(NSInteger)bn {
-    log!("TODO: ignoring setApplicationIconBadgeNumber:{}", bn);
+    log_dbg!("setApplicationIconBadgeNumber:{}", bn);
+    env.objc.borrow_mut::<UIApplicationHostObject>(this).application_icon_badge_number = bn;
 }
 
 - (id)nextResponder {

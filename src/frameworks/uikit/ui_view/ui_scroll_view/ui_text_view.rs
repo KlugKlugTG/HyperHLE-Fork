@@ -36,6 +36,16 @@ pub struct UITextViewHostObject {
     font: id,
     text_color: id,
     text_alignment: UITextAlignment,
+    /// Per UITextInputTraits — these properties are read/write on every
+    /// concrete UITextView. touchHLE doesn't yet route keystrokes through
+    /// the iOS keyboard subsystem, but storing the values is sufficient
+    /// for round-trip get/set fidelity per Apple's reference docs.
+    return_key_type: NSInteger,
+    keyboard_type: NSInteger,
+    keyboard_appearance: NSInteger,
+    autocapitalization_type: NSInteger,
+    autocorrection_type: NSInteger,
+    data_detector_types: NSUInteger,
 }
 impl_HostObject_with_superclass!(UITextViewHostObject);
 
@@ -48,6 +58,12 @@ impl Default for UITextViewHostObject {
             text: nil,
             text_color: nil,
             text_alignment: UITextAlignmentLeft,
+            return_key_type: 0,
+            keyboard_type: 0,
+            keyboard_appearance: 0,
+            autocapitalization_type: 0,
+            autocorrection_type: 0,
+            data_detector_types: 0,
         }
     }
 }
@@ -217,12 +233,45 @@ pub const CLASSES: ClassExports = objc_classes! {
     update_scroll(env, this);
 }
 
-- (())setReturnKeyType:(UIReturnKeyType)type_ { todo_objc_setter!(this, type_); }
-- (())setKeyboardType:(UIKeyboardType)type_ { todo_objc_setter!(this, type_); }
-- (())setKeyboardAppearance:(UIKeyboardAppearance)appearance { todo_objc_setter!(this, appearance); }
-- (())setAutocapitalizationType:(UITextAutocapitalizationType)type_ { todo_objc_setter!(this, type_); }
-- (())setAutocorrectionType:(UITextAutocorrectionType)type_ { todo_objc_setter!(this, type_); }
-- (())setDataDetectorTypes:(UIDataDetectorTypes)types { todo_objc_setter!(this, types); }
+// UITextInputTraits getters/setters (Apple reference:
+// https://developer.apple.com/documentation/uikit/uitextinputtraits).
+// We persist the values so apps reading them back observe what they set.
+- (UIReturnKeyType)returnKeyType {
+    env.objc.borrow::<UITextViewHostObject>(this).return_key_type
+}
+- (())setReturnKeyType:(UIReturnKeyType)type_ {
+    env.objc.borrow_mut::<UITextViewHostObject>(this).return_key_type = type_;
+}
+- (UIKeyboardType)keyboardType {
+    env.objc.borrow::<UITextViewHostObject>(this).keyboard_type
+}
+- (())setKeyboardType:(UIKeyboardType)type_ {
+    env.objc.borrow_mut::<UITextViewHostObject>(this).keyboard_type = type_;
+}
+- (UIKeyboardAppearance)keyboardAppearance {
+    env.objc.borrow::<UITextViewHostObject>(this).keyboard_appearance
+}
+- (())setKeyboardAppearance:(UIKeyboardAppearance)appearance {
+    env.objc.borrow_mut::<UITextViewHostObject>(this).keyboard_appearance = appearance;
+}
+- (UITextAutocapitalizationType)autocapitalizationType {
+    env.objc.borrow::<UITextViewHostObject>(this).autocapitalization_type
+}
+- (())setAutocapitalizationType:(UITextAutocapitalizationType)type_ {
+    env.objc.borrow_mut::<UITextViewHostObject>(this).autocapitalization_type = type_;
+}
+- (UITextAutocorrectionType)autocorrectionType {
+    env.objc.borrow::<UITextViewHostObject>(this).autocorrection_type
+}
+- (())setAutocorrectionType:(UITextAutocorrectionType)type_ {
+    env.objc.borrow_mut::<UITextViewHostObject>(this).autocorrection_type = type_;
+}
+- (UIDataDetectorTypes)dataDetectorTypes {
+    env.objc.borrow::<UITextViewHostObject>(this).data_detector_types
+}
+- (())setDataDetectorTypes:(UIDataDetectorTypes)types {
+    env.objc.borrow_mut::<UITextViewHostObject>(this).data_detector_types = types;
+}
 
 - (())drawRect:(CGRect)_rect {
     let bounds: CGRect = msg![env; this bounds];

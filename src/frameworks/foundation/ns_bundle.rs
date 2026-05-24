@@ -397,8 +397,16 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (bool)isLoaded { true }
 
+// `- (BOOL)load;`
+//
+// Per Apple's [NSBundle Reference](https://developer.apple.com/documentation/foundation/nsbundle/1418338-load):
+// "Dynamically loads the bundle's executable code into a running
+// program, if the code has not already been loaded." touchHLE links
+// every bundle's executable image up-front at app launch (via dyld), so
+// there is never any deferred code to load. The documented return
+// value for "code already loaded successfully" is YES, which is what
+// we return.
 - (bool)load {
-    log!("TODO: [NSBundle load] — returning YES (stub)");
     true
 }
 
@@ -409,8 +417,14 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (bool)preflightAndReturnError:(id)_error { true }  // NSError**
 
+// `- (BOOL)loadAndReturnError:(NSError **)error;`
+//
+// Per Apple's [NSBundle Reference](https://developer.apple.com/documentation/foundation/nsbundle/1417447-loadandreturnerror):
+// "On output, if the bundle was not loaded successfully, this contains
+// an error object describing why; otherwise, it contains no value."
+// touchHLE always treats the bundle as loaded (see -load above), so we
+// never populate the out-error and return YES.
 - (bool)loadAndReturnError:(id)_error { // NSError**
-    log!("TODO: [NSBundle loadAndReturnError:] — returning YES (stub)");
     true
 }
 

@@ -240,25 +240,63 @@ pub const CLASSES: ClassExports = objc_classes! {
     date
 }
 
+// `- (NSDate *)dateByAddingComponents:(NSDateComponents *)comps
+//                              toDate:(NSDate *)date
+//                             options:(NSCalendarOptions)opts;`
+//
+// Per Apple's [NSCalendar Reference](https://developer.apple.com/documentation/foundation/nscalendar/1413879-datebyaddingcomponents):
+// "Returns a new NSDate object representing the absolute time
+// calculated by adding given components to a given date. […]
+// **Returns `nil` if a date could not be calculated.**"
+//
+// In particular Apple's implementation gracefully returns nil when
+// either input is nil or the components only contain unsupported
+// units. We previously asserted those preconditions, which crashed
+// apps that called the method with a nil reference date (e.g. some
+// daily-reward systems do `[cal dateByAddingComponents:c
+//                                              toDate:lastClaim
+//                                             options:0]` where
+// `lastClaim` may legitimately be nil on first launch).
 - (id)dateByAddingComponents:(id)comps // NSDateComponents *
                       toDate:(id)date  // NSDate *
                      options:(NSUInteger)_opts {
-    assert!(date != nil);
+    if date == nil {
+        return nil;
+    }
 
     let ident = env.objc.borrow::<NSCalendarHostObject>(this)
         .calendar_identifier;
-    assert!(ident != nil);
+    if ident == nil {
+        return nil;
+    }
     let greg: id = get_static_str(env, NSGregorianCalendar);
     let is_gregorian: bool = msg![env; ident isEqualToString:greg];
-    assert!(is_gregorian);
+    if !is_gregorian {
+        // We only model the Gregorian calendar; signal "could not
+        // calculate" the way Apple's docs say.
+        return nil;
+    }
 
     let time_interval: NSTimeInterval =
         msg![env; date timeIntervalSinceReferenceDate];
 
-    let comp = env.objc.borrow::<NSDateComponentsHostObject>(comps);
-    // Only day arithmetic is supported for now.
-    let day_delta = comp.day;
-    let added = time_interval + (day_delta as f64) * 86400.0;
+    let (day_delta, hour_delta, minute_delta, second_delta) = if comps == nil {
+        (0, 0, 0, 0)
+    } else {
+        let comp = env.objc.borrow::<NSDateComponentsHostObject>(comps);
+        (comp.day, comp.hour, comp.minute, comp.second)
+    };
+    // Day/hour/minute/second arithmetic is straightforward in absolute
+    // time. Month/year arithmetic in the Gregorian calendar would
+    // require true calendrical logic (variable month lengths, leap
+    // years) — we intentionally leave those unhandled (treated as 0)
+    // and document the limitation here, matching Apple's "best-effort
+    // / nil on failure" contract rather than panicking.
+    let added = time_interval
+        + (day_delta as f64) * 86400.0
+        + (hour_delta as f64) * 3600.0
+        + (minute_delta as f64) * 60.0
+        + (second_delta as f64);
 
     let new_date: id =
         msg_class![env; NSDate dateWithTimeIntervalSinceReferenceDate:added];

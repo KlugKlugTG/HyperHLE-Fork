@@ -22,7 +22,8 @@ use crate::frameworks::uikit::ui_application::{
 use crate::frameworks::uikit::ui_device::{
     UIDeviceOrientationLandscapeLeft, UIDeviceOrientationLandscapeRight,
 };
-use crate::objc::{id, msg, msg_class, msg_super, nil, objc_classes, ClassExports};
+use crate::objc::{id, msg, msg_class, msg_super, nil, objc_classes, release, retain, ClassExports};
+use std::collections::HashMap;
 
 #[derive(Default)]
 pub struct State {
@@ -33,6 +34,14 @@ pub struct State {
     /// The most recent window which received `makeKeyAndVisible` message.
     /// Non-retaining!
     pub key_window: Option<id>,
+    /// Per-window `rootViewController` association (iOS 4+).
+    ///
+    /// `UIWindow` itself derives from `UIView` whose host object is shared
+    /// with every plain view; we therefore keep the root-VC association out
+    /// of the per-view struct and indexed by window pointer instead. The VC
+    /// is retained while the window holds it, mirroring Apple's documented
+    /// strong-property semantics.
+    pub root_view_controllers: HashMap<id, id>,
 }
 
 pub const CLASSES: ClassExports = objc_classes! {
@@ -108,6 +117,17 @@ pub const CLASSES: ClassExports = objc_classes! {
         if key_window == this {
             env.framework_state.uikit.ui_view.ui_window.key_window = None;
         }
+    }
+    // Release the strong `rootViewController` reference, if any.
+    if let Some(root_vc) = env
+        .framework_state
+        .uikit
+        .ui_view
+        .ui_window
+        .root_view_controllers
+        .remove(&this)
+    {
+        release(env, root_vc);
     }
     let list = &mut env.framework_state.uikit.ui_view.ui_window.windows;
     let idx = list.iter().position(|&w| w == this).unwrap();
@@ -210,20 +230,77 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 // Support for rootViewController (iOS 4+)
+// Per Apple's [UIWindow Reference](https://developer.apple.com/documentation/uikit/uiwindow/1621581-rootviewcontroller):
+// `rootViewController` is a strong reference. Setting a new root view
+// controller installs its `-view` as a full-bounds subview of the window,
+// optionally replacing the previously installed root view. We mirror that
+// contract exactly: retain the new VC, release the old one, swap the
+// associated view, and notify the existing appearance lifecycle through
+// `-addSubview:`.
 - (())setRootViewController:(id)view_controller {
     log_dbg!("[(UIWindow*){:?} setRootViewController:{:?}]", this, view_controller);
 
-    // The default behavior in iOS is to add the view controller's view as a
-    // subview of the window.
+    let previous = env
+        .framework_state
+        .uikit
+        .ui_view
+        .ui_window
+        .root_view_controllers
+        .get(&this)
+        .copied()
+        .unwrap_or(nil);
+
+    if previous == view_controller {
+        return;
+    }
+
+    // Retain BEFORE releasing the old one, so that if the new VC was the
+    // last strong holder of the old VC we don't temporarily drop it.
+    if view_controller != nil {
+        retain(env, view_controller);
+    }
+
+    if previous != nil {
+        let previous_view: id = msg![env; previous view];
+        if previous_view != nil {
+            () = msg![env; previous_view removeFromSuperview];
+        }
+        release(env, previous);
+    }
+
     if view_controller != nil {
         let view: id = msg![env; view_controller view];
+        // Apple's docs: the root view controller's view is resized to fill
+        // the window's bounds. Match the window bounds before adding so
+        // -layoutSubviews observes the right geometry.
+        let bounds: CGRect = msg![env; this bounds];
+        () = msg![env; view setFrame:bounds];
         () = msg![env; this addSubview:view];
+        env.framework_state
+            .uikit
+            .ui_view
+            .ui_window
+            .root_view_controllers
+            .insert(this, view_controller);
+    } else {
+        env.framework_state
+            .uikit
+            .ui_view
+            .ui_window
+            .root_view_controllers
+            .remove(&this);
     }
 }
 
 - (id)rootViewController {
-    log!("TODO: [(UIWindow*){:?} rootViewController] full implementation missing", this);
-    nil
+    env.framework_state
+        .uikit
+        .ui_view
+        .ui_window
+        .root_view_controllers
+        .get(&this)
+        .copied()
+        .unwrap_or(nil)
 }
 
 // UIResponder implementation
