@@ -197,7 +197,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         let dummy: id = msg![env; ns_object_class alloc];
         msg![env; dummy init]
     } else if id == "IBFirstResponder" {
-        log!("touchHLE: Bypassing IBFirstResponder replacement with dummy NSObject");
+        log_dbg!("touchHLE: Bypassing IBFirstResponder replacement with dummy NSObject");
         let proxy_class = env.objc.get_known_class("NSObject", &mut env.mem);
         let dummy: id = msg![env; proxy_class alloc];
         let dummy_init: id = msg![env; dummy init];
@@ -222,7 +222,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     let orig_nss: id = msg![env; coder decodeObjectForKey:orig_key];
     let orig = to_rust_string(env, orig_nss);
 
-    log!("[DEBUG NIB] UIClassSwapper loading class: {} (original: {})", name, orig);
+    log_dbg!("[DEBUG NIB] UIClassSwapper loading class: {} (original: {})", name, orig);
 
     // Use try_get_known_class so the lookup returns None instead of
     // panicking if the app references a custom class (e.g. FirstViewController

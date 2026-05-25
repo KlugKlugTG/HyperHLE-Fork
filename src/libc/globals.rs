@@ -20,8 +20,22 @@
 //! * `<mach/vm_param.h>` for `vm_page_size` / `vm_page_mask`.
 
 use crate::dyld::{ConstantExports, HostConstant};
-use crate::mem::{ConstPtr, ConstVoidPtr, Ptr};
+use crate::mem::{guest_size_of, ConstPtr, ConstVoidPtr, Ptr};
 use crate::Environment;
+
+/// `extern char *tzname[2];` — standard and daylight saving time zone
+/// abbreviation strings set by `tzset(3)`. Index 0 is the standard
+/// abbreviation (e.g. "GMT"), index 1 is the DST abbreviation (empty
+/// when there is no DST). touchHLE runs in UTC → `{ "GMT", "" }`.
+fn tzname_ptr(env: &mut Environment) -> ConstVoidPtr {
+    let gmt = env.mem.alloc_and_write_cstr(b"GMT").cast_const();
+    let empty = env.mem.alloc_and_write_cstr(b"").cast_const();
+    let table = env.mem.alloc(guest_size_of::<[ConstPtr<u8>; 2]>());
+    let table_ptr = table.cast::<ConstPtr<u8>>();
+    env.mem.write(table_ptr + 0u32, gmt);
+    env.mem.write(table_ptr + 1u32, empty);
+    table.cast_const()
+}
 
 /// `extern char **environ;` — base of the program's environment vector.
 /// touchHLE has no real environment block, so we expose a one-element
@@ -77,6 +91,7 @@ fn vm_page_shift_ptr(env: &mut Environment) -> ConstVoidPtr {
 
 pub const CONSTANTS: ConstantExports = &[
     ("_environ", HostConstant::Custom(environ_ptr)),
+    ("_tzname", HostConstant::Custom(tzname_ptr)),
     ("_timezone", HostConstant::Custom(timezone_ptr)),
     ("_daylight", HostConstant::Custom(daylight_ptr)),
     ("_vm_page_size", HostConstant::Custom(vm_page_size_ptr)),

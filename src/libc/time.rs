@@ -60,8 +60,18 @@ fn time(env: &mut Environment, out: MutPtr<time_t>) -> time_t {
     time
 }
 
-fn tzset(_env: &mut Environment) {
-    log!("TODO: tzset()");
+fn tzset(env: &mut Environment) {
+    set_errno(env, 0);
+    let tz_key: &[u8] = b"TZ";
+    if let Some(&tz_val) = env.env_vars.get(tz_key) {
+        let tz_bytes = env.mem.cstr_at(tz_val);
+        if !tz_bytes.is_empty() {
+            log_once!(
+                "Warning: tzset(): TZ environment variable is set to {:?}, but touchHLE only supports UTC (GMT). Using UTC.",
+                tz_bytes
+            );
+        }
+    }
 }
 
 #[allow(non_camel_case_types)]
