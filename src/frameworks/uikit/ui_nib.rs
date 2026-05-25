@@ -201,6 +201,11 @@ pub const CLASSES: ClassExports = objc_classes! {
         let proxy_class = env.objc.get_known_class("NSObject", &mut env.mem);
         let dummy: id = msg![env; proxy_class alloc];
         let dummy_init: id = msg![env; dummy init];
+        // If -init returns a different object than the one we alloc'd,
+        // release the original to avoid leaking it.
+        if dummy_init != dummy {
+            release(env, dummy);
+        }
         release(env, this);
         dummy_init
     } else {

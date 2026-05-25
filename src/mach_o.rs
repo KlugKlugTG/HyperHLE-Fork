@@ -388,6 +388,10 @@ impl MachO {
                         // policy in HLE, so treat the segment as a regular
                         // read-only data segment without spamming a warning.
                         "__RESTRICT" => true,
+                        // Marmalade SDK dedicates the `__S3E_DATA` segment to its
+                        // own data tables (extension registrations, callback
+                        // pointers, etc.). Treat it as a regular data segment.
+                        "__S3E_DATA" => true,
                         _ => {
                             log!("Warning: Unexpected segment name: {}", segname);
                             true

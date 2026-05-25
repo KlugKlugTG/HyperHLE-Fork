@@ -43,16 +43,38 @@ fn environ_ptr(env: &mut Environment) -> ConstVoidPtr {
 /// `extern long timezone;` — seconds west of UTC for the current TZ.
 /// On Apple platforms `tzset(3)` populates this; we ship UTC by
 /// default (value 0). The address resolves to a `long` storage cell.
+///
+/// Stores the pointer so `tzset()` can update the value in-place.
 fn timezone_ptr(env: &mut Environment) -> ConstVoidPtr {
     let value: i32 = 0;
-    env.mem.alloc_and_write(value).cast().cast_const()
+    let ptr: MutPtr<i32> = env.mem.alloc_and_write(value);
+    env.libc_state.time.timezone_ptr = Some(ptr);
+    ptr.cast().cast_const()
 }
 
 /// `extern int daylight;` — boolean flag set by `tzset(3)` when DST is
 /// observed in the current TZ. UTC has no DST → 0.
+///
+/// Stores the pointer so `tzset()` can update the value in-place.
 fn daylight_ptr(env: &mut Environment) -> ConstVoidPtr {
     let value: i32 = 0;
-    env.mem.alloc_and_write(value).cast().cast_const()
+    let ptr: MutPtr<i32> = env.mem.alloc_and_write(value);
+    env.libc_state.time.daylight_ptr = Some(ptr);
+    ptr.cast().cast_const()
+}
+
+/// `extern char **tzname;` — array of two C-string pointers populated by
+/// `tzset(3)`: `tzname[0]` is the standard timezone abbreviation,
+/// `tzname[1]` is the DST abbreviation (or NULL if DST is never observed).
+///
+/// Stores the pointers so `tzset()` can update them in-place.
+fn tzname_ptr(env: &mut Environment) -> ConstVoidPtr {
+    let value: MutPtr<u8> = Ptr::null();
+    let ptr0: MutPtr<MutPtr<u8>> = env.mem.alloc_and_write(value);
+    let ptr1: MutPtr<MutPtr<u8>> = env.mem.alloc_and_write(value);
+    env.libc_state.time.tzname_ptrs = Some((ptr0, ptr1));
+    // _tzname is a `char *[2]`, i.e. the symbol points to the first element.
+    ptr0.cast().cast_const()
 }
 
 /// `extern vm_size_t vm_page_size;` — 4 KiB on all 32-bit iOS devices.
@@ -79,6 +101,7 @@ pub const CONSTANTS: ConstantExports = &[
     ("_environ", HostConstant::Custom(environ_ptr)),
     ("_timezone", HostConstant::Custom(timezone_ptr)),
     ("_daylight", HostConstant::Custom(daylight_ptr)),
+    ("_tzname", HostConstant::Custom(tzname_ptr)),
     ("_vm_page_size", HostConstant::Custom(vm_page_size_ptr)),
     ("_vm_page_mask", HostConstant::Custom(vm_page_mask_ptr)),
     ("_vm_page_shift", HostConstant::Custom(vm_page_shift_ptr)),

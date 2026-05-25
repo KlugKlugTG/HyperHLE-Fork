@@ -134,9 +134,20 @@ impl Bundle {
     }
 
     pub fn executable_path(&self) -> GuestPathBuf {
-        // FIXME: Is this key optional? All iPhone apps seem to have it.
-        self.path
-            .join(self.plist["CFBundleExecutable"].as_string().unwrap())
+        // CFBundleExecutable is required by Apple for all executable bundles,
+        // but some third-party repackaged apps or broken bundles may omit it.
+        // Fall back to the bundle name if the key is absent or non-string.
+        let exe_name = self
+            .plist
+            .get("CFBundleExecutable")
+            .and_then(|v| v.as_string())
+            .unwrap_or_else(|| {
+                log!(
+                    "Warning: CFBundleExecutable is missing from Info.plist; using bundle name as fallback."
+                );
+                self.bundle_name()
+            });
+        self.path.join(exe_name)
     }
 
     pub fn launch_image_path(&self, fs: &Fs, device_family: DeviceFamily) -> GuestPathBuf {

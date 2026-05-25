@@ -19,6 +19,16 @@ pub struct State {
     /// Temporary static storage for the return value of `gmtime` or
     /// `localtime`. The standard allows calls to either to overwrite it.
     gmtime_tmp: Option<MutPtr<tm>>,
+    /// Pointer to the _timezone guest global (seconds west of UTC).
+    pub timezone_ptr: Option<MutPtr<i32>>,
+    /// Pointer to the _daylight guest global (non-zero if DST is observed).
+    pub daylight_ptr: Option<MutPtr<i32>>,
+    /// Pointers to _tzname[0] and _tzname[1] (timezone abbreviation strings).
+    pub tzname_ptrs: Option<(MutPtr<MutPtr<u8>>, MutPtr<MutPtr<u8>>)>,
+    /// Whether tzset() has already been called.
+    tz_initialized: bool,
+    /// Seconds west of UTC for standard time (_timezone value).
+    tz_std_offset: i32,
 }
 
 // time.h (C)
@@ -60,8 +70,238 @@ fn time(env: &mut Environment, out: MutPtr<time_t>) -> time_t {
     time
 }
 
-fn tzset(_env: &mut Environment) {
-    log!("TODO: tzset()");
+/// Parse the POSIX `TZ` environment variable value of the form:
+///   `std offset [dst [offset]]`
+///
+/// Returns `(std_name, std_offset_secs_west, dst_name, dst_offset_secs_west)`
+/// where offsets are seconds *west* of UTC (matching the POSIX `timezone`
+/// global convention).
+///
+/// If `dst` is present without its own `offset`, the DST offset is assumed to
+/// be 1 hour east of standard time (i.e. 3600 seconds less west).
+///
+/// References:
+/// - POSIX.1-2017 "Environment Variables" (§8.3)
+/// - Apple `tzset(3)` man page
+fn parse_tz_value(tz_str: &str) -> (&str, i32, &str, i32) {
+    let s = tz_str.trim();
+
+    // POSIX allows ":TZname" (implementation-defined) — strip the leading
+    // colon and try the POSIX rule parsing anyway; on real macOS the colon
+    // prefix causes a zoneinfo lookup, which we don't support yet.
+    let s = s.strip_prefix(':').unwrap_or(s);
+
+    if s.is_empty() || s.len() < 3 {
+        return ("UTC", 0, "", 0);
+    }
+
+    // POSIX TZ rule format: std offset [dst [offset] [,start[/time],end[/time]]]
+    // We only need std, offset, and optionally dst name and dst offset.
+    let std_len = s
+        .chars()
+        .take_while(|c| c.is_ascii_alphabetic())
+        .count()
+        .min(s.len());
+
+    if std_len < 3 {
+        return ("UTC", 0, "", 0);
+    }
+
+    let std_name = &s[..std_len];
+    let rest = &s[std_len..];
+
+    if rest.is_empty() {
+        return (std_name, 0, "", 0);
+    }
+
+    let parse_posix_offset = |input: &str| -> Option<(i32, usize)> {
+        let sign = match input.chars().next() {
+            Some('+') => -1, // POSIX: + means east of UTC → less seconds west
+            Some('-') => 1,  // POSIX: - means west of UTC → more seconds west
+            _ => return None,
+        };
+        let after_sign = &input[1..];
+        let mut consumed = 1;
+
+        let mut total = 0i32;
+        let hour_str: String = after_sign
+            .chars()
+            .take_while(|c| c.is_ascii_digit())
+            .collect();
+        if hour_str.is_empty() {
+            return None;
+        }
+        consumed += hour_str.len();
+        let hours: i32 = hour_str.parse().ok()?;
+        total += hours * 3600;
+
+        if consumed < after_sign.len() + 1 {
+            let remaining = &after_sign[hour_str.len()..];
+            if remaining.starts_with(':') {
+                consumed += 1;
+                let min_str: String = remaining[1..]
+                    .chars()
+                    .take_while(|c| c.is_ascii_digit())
+                    .collect();
+                if !min_str.is_empty() {
+                    consumed += min_str.len();
+                    let minutes: i32 = min_str.parse().ok()?;
+                    total += minutes * 60;
+
+                    if consumed - 1 < after_sign.len() + 1 {
+                        let after_min = &remaining[1 + min_str.len()..];
+                        if after_min.starts_with(':') {
+                            consumed += 1;
+                            let sec_str: String = after_min[1..]
+                                .chars()
+                                .take_while(|c| c.is_ascii_digit())
+                                .collect();
+                            if !sec_str.is_empty() {
+                                consumed += sec_str.len();
+                                let seconds: i32 = sec_str.parse().ok()?;
+                                total += seconds;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Some((sign * total, consumed))
+    };
+
+    if let Some((offset, consumed)) = parse_posix_offset(rest) {
+        let after_offset = &rest[consumed..];
+
+        // Check for DST name (3+ alphabetic chars)
+        let dst_len = after_offset
+            .chars()
+            .take_while(|c| c.is_ascii_alphabetic())
+            .count();
+
+        if dst_len < 3 {
+            // No DST — just standard time
+            return (std_name, offset, "", 0);
+        }
+
+        let dst_name = &after_offset[..dst_len];
+        let after_dst = &after_offset[dst_len..];
+
+        // Optional DST offset
+        let dst_offset = if let Some((o, _)) = parse_posix_offset(after_dst) {
+            o
+        } else {
+            // DST is 1 hour east of standard (3600 seconds less west)
+            offset - 3600
+        };
+
+        (std_name, offset, dst_name, dst_offset)
+    } else {
+        // Could not parse offset
+        (std_name, 0, "", 0)
+    }
+}
+
+fn tzset(env: &mut Environment) {
+    let time_state = &mut env.libc_state.time;
+    if time_state.tz_initialized {
+        return;
+    }
+
+    let (std_name, std_offset, dst_name, _dst_offset) = {
+        // Read TZ environment variable from the guest environment
+        let tz_str = env
+            .env_vars
+            .get(b"TZ".as_slice())
+            .copied()
+            .filter(|&ptr| !ptr.is_null())
+            .and_then(|ptr| {
+                env.mem
+                    .cstr_at_utf8(ptr.cast_const())
+                    .ok()
+                    .map(|s| s.to_string())
+            });
+
+        match tz_str {
+            Some(ref tz) if !tz.is_empty() => parse_tz_value(tz),
+            _ => {
+                // No TZ set — try to get the host system timezone offset.
+                // Compute the difference between localtime and gmtime via libc;
+                // this avoids depending on the tm_gmtoff extension which is not
+                // universally available across all libc implementations.
+                #[cfg(not(target_arch = "wasm32"))]
+                let host_offset: i32 = {
+                    let now = SystemTime::now()
+                        .duration_since(SystemTime::UNIX_EPOCH)
+                        .unwrap_or_default();
+                    let now_secs = now.as_secs() as libc::time_t;
+                    (unsafe {
+                        let mut tm_local: libc::tm = std::mem::zeroed();
+                        let mut tm_utc: libc::tm = std::mem::zeroed();
+                        if libc::localtime_r(&now_secs, &mut tm_local).is_null()
+                            || libc::gmtime_r(&now_secs, &mut tm_utc).is_null()
+                        {
+                            return 0;
+                        }
+                        let local_epoch = libc::mktime(&mut tm_local);
+                        let utc_epoch = libc::mktime(&mut tm_utc);
+                        // timezone = seconds WEST of UTC
+                        // If local_epoch > utc_epoch, local is east → negative timezone
+                        let diff: i64 = utc_epoch as i64 - local_epoch as i64;
+                        if diff > i32::MAX as i64 {
+                            i32::MAX
+                        } else if diff < i32::MIN as i64 {
+                            i32::MIN
+                        } else {
+                            diff as i32
+                        }
+                    })
+                };
+                #[cfg(target_arch = "wasm32")]
+                let host_offset: i32 = 0;
+
+                log_dbg!(
+                    "tzset: no TZ env var, using host timezone offset {} seconds west of UTC",
+                    host_offset
+                );
+                ("UTC", host_offset, "", 0)
+            }
+        }
+    };
+
+    // Allocate guest memory for standard timezone name
+    let std_name_ptr = env.mem.alloc_and_write_cstr(std_name.as_bytes());
+
+    // Update _timezone (seconds west of UTC)
+    if let Some(ptr) = time_state.timezone_ptr {
+        env.mem.write(ptr, std_offset);
+    }
+
+    // Update _daylight (non-zero if DST is ever observed)
+    if let Some(ptr) = time_state.daylight_ptr {
+        env.mem.write(ptr, if dst_name.is_empty() { 0 } else { 1 });
+    }
+
+    // Update _tzname[0] and _tzname[1]
+    if let Some((t0, t1)) = time_state.tzname_ptrs {
+        env.mem.write(t0, std_name_ptr);
+        if dst_name.is_empty() {
+            env.mem.write(t1, MutPtr::<u8>::null());
+        } else {
+            let dst_name_ptr = env.mem.alloc_and_write_cstr(dst_name.as_bytes());
+            env.mem.write(t1, dst_name_ptr);
+        }
+    }
+
+    time_state.tz_std_offset = std_offset;
+    time_state.tz_initialized = true;
+
+    log_dbg!(
+        "tzset: std=\"{}\" offset={} (sec west of UTC), dst=\"{}\"",
+        std_name,
+        std_offset,
+        dst_name
+    );
 }
 
 #[allow(non_camel_case_types)]
@@ -287,10 +527,37 @@ fn gmtime(env: &mut Environment, timestamp: ConstPtr<time_t>) -> MutPtr<tm> {
 }
 
 fn localtime_r(env: &mut Environment, timestamp: ConstPtr<time_t>, res: MutPtr<tm>) -> MutPtr<tm> {
-    gmtime_r(env, timestamp, res)
+    // POSIX: localtime_r acts as though tzset() has been called.
+    tzset(env);
+
+    let utc_timestamp = env.mem.read(timestamp);
+    let tz_offset = env.libc_state.time.tz_std_offset; // seconds WEST of UTC
+
+    // Convert UTC timestamp to local time by subtracting the timezone offset.
+    // _timezone is seconds WEST of UTC, so local = UTC - timezone.
+    let local_timestamp = utc_timestamp.wrapping_sub(tz_offset);
+
+    let mut calendar_date = timestamp_to_calendar_date(local_timestamp);
+
+    // Populate timezone fields.
+    // tm_isdst: 0 for standard time, positive for DST.
+    // Currently we don't track actual DST rules, so we report standard time.
+    calendar_date.tm_isdst = 0;
+    // tm_gmtoff: seconds EAST of UTC (BSD extension).
+    // _timezone is seconds WEST, so tm_gmtoff = -_timezone.
+    calendar_date.tm_gmtoff = -tz_offset;
+
+    env.mem.write(res, calendar_date);
+    res
 }
 fn localtime(env: &mut Environment, timestamp: ConstPtr<time_t>) -> MutPtr<tm> {
-    gmtime(env, timestamp)
+    let tmp = *env
+        .libc_state
+        .time
+        .gmtime_tmp
+        .get_or_insert_with(|| env.mem.alloc(guest_size_of::<tm>()).cast());
+
+    localtime_r(env, timestamp, tmp)
 }
 
 fn mktime(env: &mut Environment, tm: MutPtr<tm>) -> time_t {
