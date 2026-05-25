@@ -197,7 +197,12 @@ pub const CLASSES: ClassExports = objc_classes! {
         let dummy: id = msg![env; ns_object_class alloc];
         msg![env; dummy init]
     } else if id == "IBFirstResponder" {
-        log!("touchHLE: Bypassing IBFirstResponder replacement with dummy NSObject");
+        let app: id = msg_class![env; UIApplication sharedApplication];
+        if app != nil {
+            release(env, this);
+            retain(env, app);
+            return app;
+        }
         let proxy_class = env.objc.get_known_class("NSObject", &mut env.mem);
         let dummy: id = msg![env; proxy_class alloc];
         let dummy_init: id = msg![env; dummy init];

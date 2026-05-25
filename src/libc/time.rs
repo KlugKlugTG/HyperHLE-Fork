@@ -19,6 +19,94 @@ pub struct State {
     /// Temporary static storage for the return value of `gmtime` or
     /// `localtime`. The standard allows calls to either to overwrite it.
     gmtime_tmp: Option<MutPtr<tm>>,
+    /// Address of the guest `timezone` global (seconds west of UTC).
+    pub timezone_ptr: Option<MutPtr<i32>>,
+    /// Address of the guest `daylight` global (DST flag).
+    pub daylight_ptr: Option<MutPtr<i32>>,
+    /// Address of the guest `tzname[0]` C string.
+    pub tzname_std_ptr: Option<MutPtr<u8>>,
+    /// Address of the guest `tzname[1]` C string.
+    pub tzname_dst_ptr: Option<MutPtr<u8>>,
+    /// Address of the guest `tzname[2]` array.
+    pub tzname_array_ptr: Option<MutPtr<ConstPtr<u8>>>,
+    /// Whether tzset() has already been called.
+    tzset_done: bool,
+}
+
+pub fn get_timezone_ptr(env: &mut Environment) -> MutPtr<i32> {
+    *env.libc_state.time.timezone_ptr.get_or_insert_with(|| env.mem.alloc_and_write(0i32))
+}
+pub fn get_daylight_ptr(env: &mut Environment) -> MutPtr<i32> {
+    *env.libc_state.time.daylight_ptr.get_or_insert_with(|| env.mem.alloc_and_write(0i32))
+}
+pub fn get_tzname_std_ptr(env: &mut Environment) -> MutPtr<u8> {
+    *env.libc_state.time.tzname_std_ptr.get_or_insert_with(|| env.mem.alloc_and_write_cstr(b"UTC"))
+}
+pub fn get_tzname_dst_ptr(env: &mut Environment) -> MutPtr<u8> {
+    *env.libc_state.time.tzname_dst_ptr.get_or_insert_with(|| env.mem.alloc_and_write_cstr(b""))
+}
+pub fn get_tzname_array_ptr(env: &mut Environment) -> MutPtr<ConstPtr<u8>> {
+    *env.libc_state.time.tzname_array_ptr.get_or_insert_with(|| {
+        let std_ptr: ConstPtr<u8> = get_tzname_std_ptr(env).cast_const();
+        let dst_ptr: ConstPtr<u8> = get_tzname_dst_ptr(env).cast_const();
+        let arr_ptr: MutPtr<ConstPtr<u8>> = env.mem.alloc(guest_size_of::<ConstPtr<u8>>() * 2).cast();
+        env.mem.write(arr_ptr, std_ptr);
+        env.mem.write(arr_ptr + 1, dst_ptr);
+        arr_ptr
+    })
+}
+
+fn maybe_tzset(env: &mut Environment) {
+    if !env.libc_state.time.tzset_done {
+        tzset(env);
+    }
+}
+
+fn parse_tz(tz: &str) -> Option<(i32, &str, &str)> {
+    let bytes = tz.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() && !bytes[i].is_ascii_digit() && bytes[i] != b'+' && bytes[i] != b'-' {
+        i += 1;
+    }
+    let std_name = std::str::from_utf8(&bytes[..i]).ok()?;
+    if i >= bytes.len() {
+        return Some((0, std_name, ""));
+    }
+    let sign_start = i;
+    if bytes[i] == b'+' || bytes[i] == b'-' {
+        i += 1;
+    }
+    let start_h = i;
+    while i < bytes.len() && bytes[i].is_ascii_digit() {
+        i += 1;
+    }
+    let num_str = std::str::from_utf8(&bytes[sign_start..i]).ok()?;
+    let hours: i32 = num_str.parse().ok()?;
+    let mut offset_secs = hours * 3600;
+    if i < bytes.len() && bytes[i] == b':' {
+        i += 1;
+        let start_m = i;
+        while i < bytes.len() && bytes[i].is_ascii_digit() {
+            i += 1;
+        }
+        let mins: i32 = std::str::from_utf8(&bytes[start_m..i]).ok()?.parse().ok()?;
+        offset_secs += mins * 60;
+        if i < bytes.len() && bytes[i] == b':' {
+            i += 1;
+            let start_s = i;
+            while i < bytes.len() && bytes[i].is_ascii_digit() {
+                i += 1;
+            }
+            let secs: i32 = std::str::from_utf8(&bytes[start_s..i]).ok()?.parse().ok()?;
+            offset_secs += secs;
+        }
+    }
+    let dst_name = if i < bytes.len() {
+        std::str::from_utf8(&bytes[i..]).ok()?
+    } else {
+        ""
+    };
+    Some((offset_secs, std_name, dst_name))
 }
 
 // time.h (C)
@@ -60,8 +148,35 @@ fn time(env: &mut Environment, out: MutPtr<time_t>) -> time_t {
     time
 }
 
-fn tzset(_env: &mut Environment) {
-    log!("TODO: tzset()");
+fn tzset(env: &mut Environment) {
+    env.libc_state.time.tzset_done = true;
+
+    let tz = std::env::var("TZ").unwrap_or_default();
+    let (offset_secs, std_name, dst_name) = if tz.is_empty() {
+        (0i32, "UTC", "")
+    } else {
+        parse_tz(&tz).unwrap_or((0, "UTC", ""))
+    };
+
+    let tz_ptr = get_timezone_ptr(env);
+    env.mem.write(tz_ptr, offset_secs);
+
+    let daylight = if !dst_name.is_empty() { 1i32 } else { 0i32 };
+    let dl_ptr = get_daylight_ptr(env);
+    env.mem.write(dl_ptr, daylight);
+
+    let std_ptr = env.mem.alloc_and_write_cstr(std_name.as_bytes());
+    let dst_ptr = env.mem.alloc_and_write_cstr(dst_name.as_bytes());
+    env.libc_state.time.tzname_std_ptr = Some(std_ptr);
+    env.libc_state.time.tzname_dst_ptr = Some(dst_ptr);
+
+    let arr_ptr = env.libc_state.time.tzname_array_ptr.unwrap_or_else(|| {
+        let arr_ptr: MutPtr<ConstPtr<u8>> = env.mem.alloc(guest_size_of::<ConstPtr<u8>>() * 2).cast();
+        env.libc_state.time.tzname_array_ptr = Some(arr_ptr);
+        arr_ptr
+    });
+    env.mem.write(arr_ptr, std_ptr.cast_const());
+    env.mem.write(arr_ptr + 1, dst_ptr.cast_const());
 }
 
 #[allow(non_camel_case_types)]
@@ -287,24 +402,45 @@ fn gmtime(env: &mut Environment, timestamp: ConstPtr<time_t>) -> MutPtr<tm> {
 }
 
 fn localtime_r(env: &mut Environment, timestamp: ConstPtr<time_t>, res: MutPtr<tm>) -> MutPtr<tm> {
-    gmtime_r(env, timestamp, res)
+    maybe_tzset(env);
+    let timestamp = env.mem.read(timestamp);
+    let tz = env.libc_state.time.timezone_ptr
+        .map(|p| env.mem.read(p))
+        .unwrap_or(0);
+    let local_timestamp = timestamp - tz;
+    let mut calendar_date = timestamp_to_calendar_date(local_timestamp);
+    calendar_date.tm_gmtoff = -tz;
+    calendar_date.tm_zone = env.libc_state.time.tzname_std_ptr
+        .map(|p| p.cast_const())
+        .unwrap_or(Ptr::null());
+    env.mem.write(res, calendar_date);
+    res
 }
 fn localtime(env: &mut Environment, timestamp: ConstPtr<time_t>) -> MutPtr<tm> {
-    gmtime(env, timestamp)
+    let tmp = *env
+        .libc_state
+        .time
+        .gmtime_tmp
+        .get_or_insert_with(|| env.mem.alloc(guest_size_of::<tm>()).cast());
+    localtime_r(env, timestamp, tmp)
 }
 
 fn mktime(env: &mut Environment, tm: MutPtr<tm>) -> time_t {
+    maybe_tzset(env);
     let tm_value = env.mem.read(tm);
-    let res = calendar_date_to_timestamp(tm_value);
+    let tz = env.libc_state.time.timezone_ptr
+        .map(|p| env.mem.read(p))
+        .unwrap_or(0);
+    let utc_timestamp = calendar_date_to_timestamp(tm_value) + tz;
+    let mut normalized = timestamp_to_calendar_date(utc_timestamp - tz);
+    normalized.tm_gmtoff = -tz;
+    normalized.tm_zone = env.libc_state.time.tzname_std_ptr
+        .map(|p| p.cast_const())
+        .unwrap_or(Ptr::null());
+    env.mem.write(tm, normalized);
 
-    // ИСПРАВЛЕНИЕ: Стандарт C требует, чтобы mktime нормализовал структуру tm
-    // и записал её обратно (с правильными днями недели tm_wday, днем в году tm_yday и т.д.).
-    // Мы легко это делаем, прогоняя посчитанный timestamp обратно через конвертер.
-    let normalized_tm = timestamp_to_calendar_date(res);
-    env.mem.write(tm, normalized_tm);
-
-    log_dbg!("mktime({:?}) => {}", tm_value, res);
-    res
+    log_dbg!("mktime({:?}) => {}", tm_value, utc_timestamp);
+    utc_timestamp
 }
 
 // sys/time.h (POSIX)

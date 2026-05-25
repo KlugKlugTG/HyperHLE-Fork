@@ -377,6 +377,8 @@ impl MachO {
                             true
                         }
                         "__DATA" => true,
+                        // Marmalade SDK data segment (e.g. EarnToDie).
+                        "__S3E_DATA" => true,
                         // `__RESTRICT` is a one-section segment Apple's
                         // linker emits to mark a binary as non-injectable
                         // (it disables `DYLD_INSERT_LIBRARIES` and the

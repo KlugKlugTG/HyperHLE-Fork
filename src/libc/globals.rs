@@ -20,6 +20,7 @@
 //! * `<mach/vm_param.h>` for `vm_page_size` / `vm_page_mask`.
 
 use crate::dyld::{ConstantExports, HostConstant};
+use crate::libc::time;
 use crate::mem::{ConstPtr, ConstVoidPtr, Ptr};
 use crate::Environment;
 
@@ -44,15 +45,18 @@ fn environ_ptr(env: &mut Environment) -> ConstVoidPtr {
 /// On Apple platforms `tzset(3)` populates this; we ship UTC by
 /// default (value 0). The address resolves to a `long` storage cell.
 fn timezone_ptr(env: &mut Environment) -> ConstVoidPtr {
-    let value: i32 = 0;
-    env.mem.alloc_and_write(value).cast().cast_const()
+    time::get_timezone_ptr(env).cast().cast_const()
 }
 
 /// `extern int daylight;` — boolean flag set by `tzset(3)` when DST is
 /// observed in the current TZ. UTC has no DST → 0.
 fn daylight_ptr(env: &mut Environment) -> ConstVoidPtr {
-    let value: i32 = 0;
-    env.mem.alloc_and_write(value).cast().cast_const()
+    time::get_daylight_ptr(env).cast().cast_const()
+}
+
+/// `extern char *tzname[2];` — names of standard and DST time zones.
+fn tzname_ptr(env: &mut Environment) -> ConstVoidPtr {
+    time::get_tzname_array_ptr(env).cast().cast_const()
 }
 
 /// `extern vm_size_t vm_page_size;` — 4 KiB on all 32-bit iOS devices.
@@ -79,6 +83,7 @@ pub const CONSTANTS: ConstantExports = &[
     ("_environ", HostConstant::Custom(environ_ptr)),
     ("_timezone", HostConstant::Custom(timezone_ptr)),
     ("_daylight", HostConstant::Custom(daylight_ptr)),
+    ("_tzname", HostConstant::Custom(tzname_ptr)),
     ("_vm_page_size", HostConstant::Custom(vm_page_size_ptr)),
     ("_vm_page_mask", HostConstant::Custom(vm_page_mask_ptr)),
     ("_vm_page_shift", HostConstant::Custom(vm_page_shift_ptr)),
