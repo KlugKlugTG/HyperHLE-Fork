@@ -60,15 +60,23 @@ struct UIStoryboardHostObject {
     bundle: id,
     /// Path of the per-device `*.storyboardc` containing the metadata,
     /// relative to the bundle's resource path (e.g.
-    /// `Base.lproj/Main~iphone.storyboardc`).
+    /// `Base.lproj/Main~iphone.storyboardc`). Empty if the storyboard
+    /// was loaded from a raw `.storyboard` XML file at runtime.
     storyboardc_relative_dir: String,
     /// Identifier of the designated entry-point scene, or empty when the
     /// storyboard has no initial view controller.
     initial_identifier: String,
     /// `UIViewControllerIdentifiersToNibNames` from the storyboardc
     /// metadata: maps each scene identifier to its base nib name (without
-    /// device suffix or `.nib` extension).
+    /// device suffix or `.nib` extension). Empty for XML-backed
+    /// storyboards.
     identifier_to_nib: std::collections::HashMap<String, String>,
+    /// When the storyboard was loaded from raw Interface Builder XML
+    /// (no pre-compiled `.storyboardc` bundle is available), this holds
+    /// the parsed scene graph. `+instantiateViewControllerWithIdentifier:`
+    /// short-circuits to [`crate::frameworks::uikit::ui_storyboard_xml`]
+    /// instead of the NIB unarchiver in that case.
+    parsed_xml: Option<std::sync::Arc<crate::frameworks::uikit::ui_storyboard_xml::ParsedStoryboard>>,
 }
 impl HostObject for UIStoryboardHostObject {}
 
@@ -284,6 +292,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         storyboardc_relative_dir: String::new(),
         initial_identifier: String::new(),
         identifier_to_nib: std::collections::HashMap::new(),
+        parsed_xml: None,
     });
     env.objc.alloc_object(this, host_object, &mut env.mem)
 }
@@ -303,40 +312,96 @@ pub const CLASSES: ClassExports = objc_classes! {
     let name_str = to_rust_string(env, name).into_owned();
 
     let device_family = env.options.device_family;
-    let (storyboardc_absolute, storyboardc_relative) =
-        match locate_storyboardc(env, effective_bundle, &name_str, device_family) {
-            Some(paths) => paths,
-            None => {
-                log!(
-                    "Warning: +[UIStoryboard storyboardWithName:{:?} bundle:{:?}] storyboardc not found",
-                    name_str,
-                    bundle,
-                );
-                return nil;
+    match locate_storyboardc(env, effective_bundle, &name_str, device_family) {
+        Some((storyboardc_absolute, storyboardc_relative)) => {
+            let (initial_identifier, identifier_to_nib) =
+                match load_storyboardc_metadata(env, &storyboardc_absolute) {
+                    Some(meta) => meta,
+                    None => return nil,
+                };
+
+            let storyboard: id = msg![env; this alloc];
+
+            retain(env, name);
+            retain(env, effective_bundle);
+
+            {
+                let host_obj = env.objc.borrow_mut::<UIStoryboardHostObject>(storyboard);
+                host_obj.name = name;
+                host_obj.bundle = effective_bundle;
+                host_obj.storyboardc_relative_dir = storyboardc_relative;
+                host_obj.initial_identifier = initial_identifier;
+                host_obj.identifier_to_nib = identifier_to_nib;
+                host_obj.parsed_xml = None;
             }
-        };
 
-    let (initial_identifier, identifier_to_nib) =
-        match load_storyboardc_metadata(env, &storyboardc_absolute) {
-            Some(meta) => meta,
-            None => return nil,
-        };
+            autorelease(env, storyboard)
+        }
+        None => {
+            // Fall back to a raw `.storyboard` Interface Builder XML
+            // file shipped inside the bundle (i.e. an app that did not
+            // run `ibtool` at build time). Apple's runtime does not do
+            // this, but real shipping apps occasionally rely on the
+            // un-compiled storyboard being read by tooling, and Apple
+            // sample projects frequently distribute the raw XML; this
+            // path lets HyperHLE run them directly.
+            match crate::frameworks::uikit::ui_storyboard_xml::locate_storyboard_xml(
+                env,
+                effective_bundle,
+                &name_str,
+                device_family,
+            ) {
+                Some(xml_path) => {
+                    let Some(parsed) =
+                        crate::frameworks::uikit::ui_storyboard_xml::load_and_parse_storyboard(
+                            env, &xml_path,
+                        )
+                    else {
+                        log!(
+                            "Warning: +[UIStoryboard storyboardWithName:{:?} bundle:{:?}] \
+                             failed to parse raw XML at {:?}",
+                            name_str, bundle, xml_path
+                        );
+                        return nil;
+                    };
 
-    let storyboard: id = msg![env; this alloc];
+                    let initial_identifier = parsed
+                        .initial_view_controller_id
+                        .clone()
+                        .unwrap_or_default();
 
-    retain(env, name);
-    retain(env, effective_bundle);
-
-    {
-        let host_obj = env.objc.borrow_mut::<UIStoryboardHostObject>(storyboard);
-        host_obj.name = name;
-        host_obj.bundle = effective_bundle;
-        host_obj.storyboardc_relative_dir = storyboardc_relative;
-        host_obj.initial_identifier = initial_identifier;
-        host_obj.identifier_to_nib = identifier_to_nib;
+                    let storyboard: id = msg![env; this alloc];
+                    retain(env, name);
+                    retain(env, effective_bundle);
+                    {
+                        let host_obj = env
+                            .objc
+                            .borrow_mut::<UIStoryboardHostObject>(storyboard);
+                        host_obj.name = name;
+                        host_obj.bundle = effective_bundle;
+                        host_obj.storyboardc_relative_dir = String::new();
+                        host_obj.initial_identifier = initial_identifier;
+                        host_obj.identifier_to_nib =
+                            std::collections::HashMap::new();
+                        host_obj.parsed_xml = Some(parsed);
+                    }
+                    log!(
+                        "+[UIStoryboard storyboardWithName:{:?}] loaded raw XML at {:?}",
+                        name_str, xml_path
+                    );
+                    autorelease(env, storyboard)
+                }
+                None => {
+                    log!(
+                        "Warning: +[UIStoryboard storyboardWithName:{:?} bundle:{:?}] \
+                         neither .storyboardc nor .storyboard found",
+                        name_str, bundle,
+                    );
+                    nil
+                }
+            }
+        }
     }
-
-    autorelease(env, storyboard)
 }
 
 - (id)name {
@@ -354,6 +419,23 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (id)instantiateInitialViewController {
+    // XML-backed storyboard? Go straight to the XML scene graph.
+    let parsed = env
+        .objc
+        .borrow::<UIStoryboardHostObject>(this)
+        .parsed_xml
+        .clone();
+    if let Some(parsed) = parsed {
+        let vc =
+            crate::frameworks::uikit::ui_storyboard_xml::instantiate_initial_view_controller(
+                env, &parsed,
+            );
+        if vc != nil {
+            crate::frameworks::uikit::ui_view_controller::set_storyboard(env, vc, this);
+        }
+        return vc;
+    }
+
     let identifier = env
         .objc
         .borrow::<UIStoryboardHostObject>(this)
@@ -373,6 +455,52 @@ pub const CLASSES: ClassExports = objc_classes! {
     if identifier == nil {
         return nil;
     }
+
+    // XML-backed storyboard fast path.
+    let parsed = env
+        .objc
+        .borrow::<UIStoryboardHostObject>(this)
+        .parsed_xml
+        .clone();
+    if let Some(parsed) = parsed {
+        let identifier_str = to_rust_string(env, identifier).into_owned();
+        // Apple allows both Storyboard IDs and runtime ids; we look up
+        // by `id` attribute first, then by `storyboardIdentifier`.
+        let mut target_id: Option<String> = None;
+        if parsed.objects_by_id.contains_key(&identifier_str) {
+            target_id = Some(identifier_str.clone());
+        }
+        if target_id.is_none() {
+            for (key, obj) in parsed.objects_by_id.iter() {
+                if obj
+                    .node
+                    .attrs
+                    .get("storyboardIdentifier")
+                    .map(|s| s == &identifier_str)
+                    .unwrap_or(false)
+                {
+                    target_id = Some(key.clone());
+                    break;
+                }
+            }
+        }
+        let Some(target_id) = target_id else {
+            log!(
+                "Warning: UIStoryboard XML has no scene with identifier {:?}",
+                identifier_str,
+            );
+            return nil;
+        };
+        let vc =
+            crate::frameworks::uikit::ui_storyboard_xml::instantiate_view_controller_by_id(
+                env, &parsed, &target_id,
+            );
+        if vc != nil {
+            crate::frameworks::uikit::ui_view_controller::set_storyboard(env, vc, this);
+        }
+        return vc;
+    }
+
     let identifier_str = to_rust_string(env, identifier).into_owned();
     let (storyboardc_relative_dir, vc_nib_base_name, bundle) = {
         let host = env.objc.borrow::<UIStoryboardHostObject>(this);

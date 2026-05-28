@@ -44,6 +44,7 @@ pub mod ui_screen_mode;
 pub mod ui_search_bar;
 pub mod ui_split_view_controller;
 pub mod ui_storyboard;
+pub mod ui_storyboard_xml;
 pub mod ui_layout_placeholders;
 pub mod ui_tab_bar_controller;
 pub mod ui_tab_bar_item;
