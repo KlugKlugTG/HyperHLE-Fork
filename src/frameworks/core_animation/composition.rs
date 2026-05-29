@@ -77,12 +77,18 @@ pub fn recomposite_if_necessary(env: &mut Environment, force: bool) -> Option<In
     }
 
     if env.options.print_fps {
-        env.framework_state
+        let fps = env
+            .framework_state
             .core_animation
             .composition
             .fps_counter
             .get_or_insert_with(FpsCounter::start)
             .count_frame(format_args!("Core Animation compositor"));
+        if let Some(fps) = fps {
+            if let Some(window) = env.window.as_mut() {
+                window.set_fps_in_title(Some(fps));
+            }
+        }
     }
 
     let now = Instant::now();

@@ -236,6 +236,8 @@ pub struct Window {
     _sdl_ctx: sdl2::Sdl,
     video_ctx: sdl2::VideoSubsystem,
     window: sdl2::video::Window,
+    /// The base window title, without any appended live FPS readout.
+    base_title: String,
     event_pump: sdl2::EventPump,
     event_queue: VecDeque<Event>,
     last_polled: Instant,
@@ -277,6 +279,20 @@ impl Window {
     /// Android devices.
     pub fn rotatable_fullscreen() -> bool {
         env::consts::OS == "android"
+    }
+
+    /// Update the window title to show the current frames-per-second, or clear
+    /// the FPS readout when `fps` is `None`. This is a no-op on always-fullscreen
+    /// platforms (e.g. Android), which have no visible title bar.
+    pub fn set_fps_in_title(&mut self, fps: Option<f32>) {
+        if Self::rotatable_fullscreen() {
+            return;
+        }
+        let new_title = match fps {
+            Some(fps) => format!("{}  —  {:.0} FPS", self.base_title, fps),
+            None => self.base_title.clone(),
+        };
+        let _ = self.window.set_title(&new_title);
     }
     pub fn new(
         title: &str,
@@ -389,6 +405,7 @@ impl Window {
             _sdl_ctx: sdl_ctx,
             video_ctx,
             window,
+            base_title: title.to_string(),
             event_pump,
             event_queue: VecDeque::new(),
             last_polled: Instant::now() - Duration::from_secs(1),

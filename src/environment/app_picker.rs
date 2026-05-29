@@ -148,6 +148,7 @@ struct AppPickerDelegateHostObject {
     analog_stick_tilt_controls: Option<bool>,
     network: Option<bool>,
     fullscreen: Option<bool>,
+    print_fps: Option<bool>,
     device_family_iphone: bool,
     device_family_ipad: bool,
     device_family_iphone5: bool,
@@ -235,6 +236,10 @@ const CLASSES: ClassExports = objc_classes! {
 - (())fullscreen:(id)switch { // UISwitch*
     let switch_state: bool = msg![env; switch isOn];
     env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).fullscreen = Some(switch_state);
+}
+- (())printFps:(id)switch { // UISwitch*
+    let switch_state: bool = msg![env; switch isOn];
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).print_fps = Some(switch_state);
 }
 - (())deviceFamilyIphone {
     env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).device_family_iphone = true;
@@ -543,6 +548,7 @@ fn app_picker_inner(
     let mut quick_options_orientation: Option<DeviceOrientation> = None;
     let mut quick_options_analog_stick_tilt_controls = true;
     let mut quick_options_network = false;
+    let mut quick_options_print_fps = false;
     let mut quick_options_device_family: Option<&str> = None;
 
     fn update_quick_option_buttons(env: &mut Environment, buttons: &[id], selected_idx: usize) {
@@ -758,6 +764,8 @@ fn app_picker_inner(
             quick_options_analog_stick_tilt_controls = enabled;
         } else if let Some(enabled) = std::mem::take(&mut host_obj.network) {
             quick_options_network = enabled;
+        } else if let Some(enabled) = std::mem::take(&mut host_obj.print_fps) {
+            quick_options_print_fps = enabled;
         } else if let Some(fullscreen) = std::mem::take(&mut host_obj.fullscreen) {
             quick_options_fullscreen = match fullscreen {
                 false => None,
@@ -788,6 +796,9 @@ fn app_picker_inner(
     }
     if quick_options_network {
         option_args.push("--allow-network-access".to_string());
+    }
+    if quick_options_print_fps {
+        option_args.push("--print-fps".to_string());
     }
 
     if let Some(family) = quick_options_device_family {
@@ -1370,6 +1381,25 @@ fn setup_quick_options(
         () = msg![env; main_view addSubview:button];
     }
 
+    // Panel header
+    {
+        let header_frame = CGRect {
+            origin: CGPoint { x: 0.0, y: 8.0 },
+            size: CGSize {
+                width: main_frame.size.width,
+                height: 28.0,
+            },
+        };
+        let header: id = msg_class![env; UILabel alloc];
+        let header: id = msg![env; header initWithFrame:header_frame];
+        let text = ns_string::get_static_str(env, "Quick Options");
+        () = msg![env; header setText:text];
+        () = msg![env; header setTextAlignment:UITextAlignmentCenter];
+        let font: id = msg_class![env; UIFont boldSystemFontOfSize:(20.0 as CGFloat)];
+        () = msg![env; header setFont:font];
+        () = msg![env; main_view addSubview:header];
+    }
+
     enum RowKind {
         Label(&'static str),
         Buttons(&'static [(&'static str, &'static str)]),
@@ -1400,6 +1430,8 @@ fn setup_quick_options(
         RowKind::Switch("network:", false),
         RowKind::Label("Use analog sticks for tilt controls"),
         RowKind::Switch("analogStickTiltControls:", true),
+        RowKind::Label("Show FPS counter"),
+        RowKind::Switch("printFps:", false),
         // ---- (divider for stuff skipped below)
         RowKind::Label("Fullscreen (override)"),
         RowKind::Switch("fullscreen:", false),

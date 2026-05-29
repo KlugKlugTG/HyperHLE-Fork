@@ -457,12 +457,17 @@ pub const CLASSES: ClassExports = objc_classes! {
     let sleep_for = limit_framerate(&mut env.objc.borrow_mut::<EAGLContextHostObject>(this).next_frame_due, &env.options);
 
     if env.options.print_fps {
-        env
+        let fps = env
             .objc
             .borrow_mut::<EAGLContextHostObject>(this)
             .fps_counter
             .get_or_insert_with(FpsCounter::start)
             .count_frame(format_args!("EAGLContext {this:?}"));
+        if let Some(fps) = fps {
+            if let Some(window) = env.window.as_mut() {
+                window.set_fps_in_title(Some(fps));
+            }
+        }
     }
 
     let fullscreen_layer = find_fullscreen_eagl_layer(env);
