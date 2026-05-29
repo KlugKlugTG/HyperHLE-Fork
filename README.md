@@ -1,137 +1,134 @@
 <div align="center">
 
-<img src="res/icon.png" width="140" alt="HyperHLE icon">
+<img src="res/icon.png" width="150" alt="HyperHLE icon">
 
 # HyperHLE
 
-**The fastest, friendliest way to play classic iPhone OS games on your modern devices.**
+### A high-level emulator that lets you replay the early days of the iPhone — on the devices you already own.
+
+**iPhone OS 2.0 → iOS 8.0  ·  Windows · macOS · Linux · Android  ·  Written in Rust**
 
 </div>
 
 ---
 
+## ⭐ Why HyperHLE is so good
+
+HyperHLE isn't trying to be a museum piece — it's built to **actually run your games, smoothly, today.** A few things make it special:
+
+- **It's fast, because it doesn't waste effort.** Most emulators boot an entire operating system inside a virtual machine and pay for it on every frame. HyperHLE skips all of that: it *replaces* iPhone OS instead of simulating it. The only thing running on the emulated ARM CPU (powered by the excellent [dynarmic](https://github.com/merryhime/dynarmic) JIT) is the app itself. Everything else is native, modern host code. That's why startup is near-instant and frame rates stay high even on a phone.
+- **It's genuinely broad.** This is not a one-or-two-games demo. HyperHLE ships **46 reimplemented system frameworks**, over **300 Objective-C classes**, and more than **2,600 system functions** — covering graphics, audio, touch, networking, location, motion, in-app purchases, Game Center and more.
+- **It spans the whole golden era.** From the very first 2008-era apps up through the iOS 7/8 generation, HyperHLE understands both the legacy (`CFBundleIconFile`, single-orientation plists) and the modern (`CFBundleIcons`, Retina assets, interface-orientation arrays) ways apps were built.
+- **It runs everywhere you do.** The same emulator core powers desktop *and* Android, so the phone in your pocket can play the games that phones used to play.
+- **It looks and feels right.** A built-in home screen with the classic iOS wallpaper, proper icon rendering with the iconic rounded-corner sheen, real controller support, and tilt controls that map a gamepad's analog stick to the accelerometer.
+
+If you have a legally-obtained copy of an old favourite, HyperHLE is one of the most pleasant ways there is to play it again.
+
+---
+
 ## What is HyperHLE?
 
-**HyperHLE** is a high-level emulator for early iPhone and iPod touch apps. It runs on modern desktops and Android, and it's written in Rust for speed and safety.
+**HyperHLE** is a high-level emulator (HLE) for iPhone and iPod touch applications. It runs on modern desktop operating systems and Android, and is written in Rust for speed, portability and safety.
 
-Unlike low-level emulators that try to simulate the whole iPhone chip-by-chip, HyperHLE takes a smarter route: it *becomes* iPhone OS. Instead of booting a real operating system inside a virtual machine, HyperHLE provides its own clean-room implementations of the system frameworks an app expects — Foundation, UIKit, OpenGL ES, OpenAL and more. The only code that runs on the [emulated CPU](https://github.com/merryhime/dynarmic) is the app itself and a small handful of libraries.
+HyperHLE's high-level approach differs from low-level emulation (LLE) in a fundamental way. An LLE emulator directly simulates the iPhone hardware and runs a real copy of iPhone OS on top of it. HyperHLE does the opposite: it **takes the place of iPhone OS itself** and provides its own clean implementations of the system frameworks an app expects — Foundation, UIKit, OpenGL ES, OpenAL, Core Graphics, Core Animation and dozens more. The only code the [emulated CPU](https://github.com/merryhime/dynarmic) ever executes is the app binary and [a small handful of bundled libraries](touchHLE_dylibs/).
 
-The result is an emulator that's **light, quick to start, and remarkably accurate** for the era it targets — early iOS games feel snappy and play the way you remember.
+This is what makes HyperHLE lightweight, quick to launch, and accurate for the era it targets — you get the app's real behaviour without the overhead of booting a whole OS.
 
-## Why HyperHLE is so good
+> HyperHLE is a 2026 project. It builds on, and gives full credit to, the open-source [touchHLE](https://github.com/touchHLE/touchHLE) emulator, extending its framework coverage to span a much wider range of iPhone OS / iOS releases.
 
-- ⚡ **Fast where it counts.** The high-level emulation approach skips an entire layer of overhead. There's no OS to boot — apps launch almost instantly and stay responsive.
-- 🎯 **Built for the games people actually love.** The OpenGL ES and OpenAL implementations are mature enough to drive a huge slice of early App Store classics with proper graphics and sound.
-- 🦀 **Written in Rust.** Memory-safe, modern, and portable — the same codebase runs cleanly across Windows, macOS, Linux and Android.
-- 🎮 **Flexible controls.** Mouse, touchscreen, and full game-controller support, including controller-to-touch and tilt simulation, so almost any setup works.
-- 🛋️ **A real home screen.** A built-in app picker greets you with a clean iOS-style launcher — complete with a bundled **iOS 4 wallpaper** out of the box, so it feels like home the moment you open it.
-- 🌐 **Local multiplayer.** Limited Wi-Fi multiplayer in supported games (like Asphalt 4 and N.O.V.A.) — you can even play against real iOS devices.
-- 📦 **Zero faff.** Drop in a decrypted app, pick it from the launcher, and play.
+---
 
-> HyperHLE is built on top of the excellent open-source **touchHLE** project, with a refreshed identity and a few quality-of-life touches of our own. Huge respect and thanks to the upstream contributors who made this possible.
+## Supported iOS versions
 
-The goal is to bring back the early days of iOS gaming:
+HyperHLE targets the first seven years of the platform:
 
-* **Today:** iPhone and iPod touch apps for iPhone OS 2.x and 3.0.
-* **Soon:** iPhone OS 3.1, iPad apps (3.2), iOS 4.x, and beyond.
+| Era | Versions | Notes |
+| --- | --- | --- |
+| Classic iPhone OS | 2.0 – 3.2 | The original App Store generation; single-icon, single-orientation apps. |
+| Early iOS | 4.0 – 5.1 | Retina assets, multitasking-era apps, `CFBundleIcons`. |
+| Late support | 6.0 – 8.0 | Modern framework usage (Social, Core Image, Game Controller, Map Kit, etc.). |
 
-This project is not affiliated with or endorsed by Apple Inc. in any way. iPhone, iOS, iPod, iPod touch and iPad are trademarks of Apple Inc. in the United States and other countries. **Only use HyperHLE to emulate software you have obtained legally.**
+Coverage of any given app depends on which APIs it uses — HyperHLE implements an enormous slice of the system, but not literally every method of every framework. Games and self-contained apps from this era are the sweet spot.
+
+> **This project is not affiliated with or endorsed by Apple Inc. in any way.** iPhone, iOS, iPod, iPod touch and iPad are trademarks of Apple Inc. in the United States and other countries. **Only use HyperHLE to emulate software you have obtained legally.**
+
+---
+
+## What's inside (frameworks & features)
+
+HyperHLE reimplements **46 frameworks**, including:
+
+- **Graphics** — OpenGL ES 1.1 *and* OpenGL ES 2.0 (both native pass-through and translation-to-desktop-GL backends), Core Graphics, Core Animation, Core Image, Core Video, Quartz/CALayer compositing.
+- **UI** — UIKit (views, controls, scroll views, view controllers, alerts, text), with a real touch/input model.
+- **Audio** — OpenAL, Audio Toolbox, Core Audio, AVFoundation, Media Player.
+- **Input & sensors** — multi-touch, accelerometer, Core Motion, Game Controller, with gamepad-to-tilt mapping.
+- **Connectivity & services** — CFNetwork, Captive Network, System Configuration, Security / Common Crypto, Game Kit (Game Center), Store Kit (in-app purchases), Core Location, Map Kit, Address Book, Social / Twitter compose, Message UI, Store, accounts.
+- **System libraries** — a large portion of libc/POSIX, libxml2, libsqlite3, libicucore, libbz2, the Objective-C runtime, and the dynamic linker (dyld).
+
+Behind the scenes: **300+ Objective-C classes** and **2,600+ exported C functions**.
+
+---
 
 ## Platform support
 
-* **Officially supported:** x64 Windows, x64 macOS, AArch64 Android. These are the platforms with binary releases. Apple Silicon Mac users report the x64 build works fine under Rosetta.
-* **Build-it-yourself (works, no binaries):** AArch64 macOS, x64 Linux, AArch64 Linux.
+- **Officially supported (binary releases):** x64 Windows, x64 macOS, AArch64 Android.
+  - On Apple Silicon Macs, the x64 build runs under Rosetta.
+- **Builds yourself, generally works:** AArch64 macOS, x64 Linux, AArch64 Linux.
+- **Device families:** iPhone, iPhone 5, and iPad — selectable with `--device-family=`, otherwise deduced from the app bundle.
 
-### Input methods
+---
 
-- **Touch input** — four ways:
-  - Mouse / trackpad (tap, hold and drag with the left button)
-  - Virtual cursor via a game controller (right stick to move, stick-press or right shoulder to tap)
-  - Map controller buttons or the left stick to fixed on-screen spots (`--button-to-touch=`, `--dpad-to-touch=`, `--stick-to-touch=` — see `OPTIONS_HELP.txt`)
-  - Real touch input on touchscreen devices
-- **Accelerometer input** — three ways:
-  - Tilt simulation with a controller's left analog stick
-  - Tilt simulation with the mouse (hold the right button)
-  - Real accelerometer input on phones, tablets and similar devices
+## Getting started
 
-# Usage
+1. Get a copy of HyperHLE for your platform (a release binary, or build it yourself — see below).
+2. Put your **legally-obtained** `.ipa` files (or unpacked `.app` bundles) into the **`touchHLE_apps`** folder next to the emulator. On Android, use the in-app file manager to copy apps into the app's data folder.
+3. Launch HyperHLE. You'll land on the home screen — pick your app and play.
 
-First, get HyperHLE — either a binary release or by building it yourself (see below).
+A few useful details:
 
-You'll also need an app to run. An app-compatibility database is a good guide for which versions of which apps are known to work, though it may contain outdated info. **The app binary must be decrypted to be usable.**
+- **Saved games and app data** live in the **`touchHLE_sandbox`** folder.
+- **Options:** run with `--help` to see every flag, or put options in `touchHLE_options.txt`. Common ones: `--fullscreen`, `--landscape-left` / `--landscape-right`, `--scale-hack=2` (sharper internal resolution), `--device-family=ipad`, and the controller/tilt tuning flags (`--deadzone=`, `--x-tilt-range=`, `--button-to-touch=`, …).
+- **Home screen wallpaper:** HyperHLE ships with the classic iOS wallpaper by default. To use your own, drop a `touchHLE_wallpaper.png` / `.jpg` / `.jpeg` into the data folder.
 
-## Graphical user interface (the app picker)
+### Controls
 
-HyperHLE has a built-in app picker. Put your `.ipa` files and `.app` bundles in the `touchHLE_apps` directory and they'll show up automatically when you launch HyperHLE.
+- **Touch:** mouse / trackpad (left button), or a touchscreen on Android.
+- **Tilt / accelerometer:** a connected game controller's analog stick (or the right mouse button + cursor) simulates tilting the device. Tunable via the tilt options.
+- **Buttons:** game controller buttons can be mapped to on-screen touch points with `--button-to-touch=`.
 
-To configure options, edit `touchHLE_options.txt`. For the full list of available options, see `OPTIONS_HELP.txt`.
+### A note on crashes
 
-## Special Android notes
+If the emulator crashes almost immediately on a *known-working* game, check for screen-overlay tools (Steam overlay, Discord overlay, RivaTuner Statistics Server, etc.). These inject themselves into other programs and can break HyperHLE — it isn't HyperHLE's fault. RivaTuner Statistics Server is the known offender; if you find another, please report it.
 
-*Windows, Mac and Linux users can skip this section.*
+---
 
-On Android, only the graphical app picker is available, so you must place your `.ipa` files or `.app` bundles inside the `touchHLE_apps` directory. Note that this directory only appears after you've run HyperHLE at least once.
+## Building & contributing
 
-File management can be tricky on newer Android versions due to [scoped storage restrictions](https://developer.android.com/about/versions/11/privacy/storage#scoped-storage). One of these usually works:
+You'll need [git](https://git-scm.com/), the [Rust toolchain](https://www.rust-lang.org/tools/install), [CMake](https://cmake.org/), and your platform's standard C and C++ compilers. Then:
 
-* Tap the **File manager** button in HyperHLE. You may also find HyperHLE in your device's file manager (often "Files" or "Downloads"). *Warning:* on some devices this button opens a file manager that crashes on actual file operations (an Android bug). If that happens, clear that file manager from recents and open your device's file manager app directly instead.
-* On older Android, browse directly to `/sdcard/Android/data/org.touchhle.android/files/touchHLE_apps` (note: `/sdcard` is usually not the SD card).
-* Use ADB. If you're new to ADB, try <https://yume-chan.github.io/ya-webadb/> in a WebUSB-capable browser with your device connected over USB, then navigate to "sdcard" → "Android" → "data" → "org.touchhle.android" → "files" → "touchHLE_apps".
+```sh
+cargo run --release      # release build (recommended)
+cargo run                # debug build
+```
 
-## Command-line user interface
+A clean release build takes only a few minutes on a modest machine. For Android, dynamic-linking, and cross-compilation notes, see [`dev-docs/building.md`](dev-docs/building.md). If you'd like to contribute, read [`CONTRIBUTING.md`](CONTRIBUTING.md) first.
 
-**This section does not apply on Android.**
+---
 
-Run with `--help` to see all command-line usage.
+## License
 
-If you're on Windows and new to the command line:
+HyperHLE is a 2026 project, built on **touchHLE © 2023–2026 touchHLE project contributors**.
 
-1. Move the `.ipa` or `.app` into the same folder as the HyperHLE executable.
-2. Hold **Shift**, right-click the empty space in that folder.
-3. Click **Open with PowerShell**.
-4. Type `.\HyperHLE.exe "YourAppName.ipa"` (or `.app`) and press Enter. To add options, put a space after the app name (outside the quotes) and list them separated by spaces.
+The source code of HyperHLE / touchHLE itself (not its dependencies) is licensed under the **Mozilla Public License, version 2.0**. Some bundled components are under other licenses — most notably parts of libgcc/libstdc++ (GPLv3-or-later with the runtime exception). Different terms apply to the bundled dynamic libraries (`touchHLE_dylibs/`) and fonts (`touchHLE_fonts/`); see those directories for details. For a full best-effort listing of dependency licenses, build the emulator and run it with the `--copyright` flag.
 
-## Local multiplayer
+---
 
-HyperHLE supports limited local Wi-Fi multiplayer in some games (e.g. Asphalt 4 and N.O.V.A.). Real iOS devices can join or host too.
+## Thanks
 
-1. Install HyperHLE on 2+ devices on the same Wi-Fi network.
-2. **Important:** whitelist HyperHLE in your OS firewall / network settings.
-3. Enable "Network access" in Quick options or via `--allow-network-access`.
-4. Start or join multiplayer in the game.
+HyperHLE stands on the shoulders of giants. Thank you to:
 
-**Notes:** Internet/VPN tunneling isn't officially supported (but may work); Bluetooth isn't supported. On macOS you may need to launch from the terminal so the OS doesn't block network connections.
-
-## Other stuff
-
-Anything the app saves (e.g. **saved games**) lives in the `touchHLE_sandbox` folder.
-
-If the emulator crashes almost immediately while running a **known-working** game, check for overlays such as the Steam overlay, Discord overlay, or RivaTuner Statistics Server. These inject themselves into other apps and don't always clean up after themselves, which can break HyperHLE. 😢
-
-# Building and contributing
-
-See `CONTRIBUTING.md` if you'd like to contribute. If you just want to build HyperHLE, follow `dev-docs/building.md`.
-
-# License
-
-HyperHLE is a fork of **touchHLE** © 2023–2026 touchHLE project contributors, with additional changes © the HyperHLE contributors.
-
-The source code of HyperHLE itself (not its dependencies) is licensed under the Mozilla Public License, version 2.0. Due to license-compatibility concerns, binaries are under the GNU General Public License version 3 or later.
-
-For a best-effort listing of all dependency licenses, build HyperHLE and pass `--copyright`, or click the "Copyright info" button in the app picker.
-
-Different licensing terms apply to the bundled dynamic libraries (in `touchHLE_dylibs/`) and fonts (in `touchHLE_fonts/`) — see those directories for details.
-
-# Thanks
-
-We stand on the shoulders of giants. Thank you to:
-
-* The **touchHLE** project and all of its contributors — HyperHLE wouldn't exist without your work.
-* Everyone who has contributed to the project or supported any of its contributors.
-* The [Rust project](https://www.rust-lang.org/).
-* Everyone who has documented the iPhone OS platform, officially or otherwise.
-* The iOS hacking/jailbreaking community.
-* The Free Software Foundation, for keeping libgcc and libstdc++ copyleft and saving this project from ABI hell.
-* The National Security Agency of the United States, for [Ghidra](https://ghidra-sre.org/).
-* Developers of early iPhone OS apps — what treasures you created!
-* Apple, and NeXT before them, for creating such fantastic platforms.
+- The **touchHLE** project and all of its contributors — HyperHLE would not exist without your work.
+- The authors of [dynarmic](https://github.com/merryhime/dynarmic), and the wider [Rust](https://www.rust-lang.org/) community.
+- Everyone who has documented the iPhone OS platform, officially or otherwise, and the iOS hacking / jailbreaking community.
+- The developers of those early iPhone OS apps and games — what treasures you created!
+- Apple, and NeXT before them, for building such fantastic platforms.
