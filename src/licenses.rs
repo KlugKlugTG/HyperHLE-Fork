@@ -133,8 +133,8 @@ const PVRTD_LICENSE: &str = include_str!(concat!(
 const EXTERNAL_FILES_CAVEAT: &str = "
 The following authorship, copyright and license information relates to this
 touchHLE executable. Please note that different licensing terms apply to source
-files and to the bundled dynamic libraries (in touchHLE_dylibs/) and fonts (in
-touchHLE_fonts/). Please consult the respective files/directories for more
+files and to the bundled dynamic libraries (in HyperHLE_dylibs/) and fonts (in
+HyperHLE_fonts/). Please consult the respective files/directories for more
 information.
 ";
 

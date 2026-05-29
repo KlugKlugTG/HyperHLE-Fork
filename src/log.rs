@@ -15,7 +15,7 @@ use std::sync::LazyLock;
 /// who don't have access to ADB, so we also write to a log file.
 pub fn get_log_file() -> &'static File {
     static LOG_FILE: LazyLock<File> = LazyLock::new(|| {
-        File::create(crate::paths::user_data_base_path().join("touchHLE_log.txt")).unwrap()
+        File::create(crate::paths::user_data_base_path().join("HyperHLE_log.txt")).unwrap()
     });
 
     &LOG_FILE

@@ -93,7 +93,7 @@ pub fn sqlite3_open(env: &mut Environment, filename_ptr: u32, pp_db: u32) -> u32
         ":memory:".to_string()
     } else {
         format!(
-            "/storage/emulated/0/Android/data/org.touchhle.android.unofficial/files/touchHLE_apps/{}",
+            "/storage/emulated/0/Android/data/org.touchhle.android.unofficial/files/HyperHLE_apps/{}",
             safe_name
         )
     };

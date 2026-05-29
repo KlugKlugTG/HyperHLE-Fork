@@ -12,9 +12,9 @@ if [[ $# == 1 ]]; then
     rm -rf touchHLE_windows_bundle
     mkdir touchHLE_windows_bundle
     cp $PATH_TO_BINARY touchHLE_windows_bundle/
-    cp -r ../touchHLE_dylibs touchHLE_windows_bundle/
-    cp -r ../touchHLE_fonts touchHLE_windows_bundle/
-    cp -r ../touchHLE_default_options.txt touchHLE_windows_bundle/
+    cp -r ../HyperHLE_dylibs touchHLE_windows_bundle/
+    cp -r ../HyperHLE_fonts touchHLE_windows_bundle/
+    cp -r ../HyperHLE_default_options.txt touchHLE_windows_bundle/
 else
     echo "Incorrect usage."
     exit 1

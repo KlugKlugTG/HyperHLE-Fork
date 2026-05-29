@@ -119,7 +119,7 @@ Game controller options:
         For example, --button-to-touch=A,470,310 will make the A button simulate
         tapping in the bottom-right corner of the screen, for a landscape game.
 
-        Except where specified in touchHLE_default_options.txt, this is not used
+        Except where specified in HyperHLE_default_options.txt, this is not used
         by default. There is however a virtual cursor that is controlled by the
         right analog stick (tap/hold by pressing the stick or right shoulder
         button).
@@ -140,7 +140,7 @@ Game controller options:
         Note that this option takes precedence over any D-pad buttons defined
         with --button-to-touch.
 
-        Except where specified in touchHLE_default_options.txt, this is not used
+        Except where specified in HyperHLE_default_options.txt, this is not used
         by default. There is however a virtual cursor that is controlled by the
         right analog stick (tap/hold by pressing the stick or right shoulder
         button).
@@ -159,7 +159,7 @@ Game controller options:
         stick to control a touch within a 100x100 pixel region starting at
         (10,10) on the screen.
 
-        Except where specified in touchHLE_default_options.txt, this is not used
+        Except where specified in HyperHLE_default_options.txt, this is not used
         by default. There is however a virtual cursor that is controlled by the
         right analog stick (tap/hold by pressing the stick or right shoulder
         button).
@@ -249,7 +249,7 @@ Other options:
     --args
         All arguments following this option will be passed to the app (via C's
         argc/argv) rather than processed by touchHLE. This option can't be used
-        via touchHLE_options.txt or touchHLE_default_options.txt.
+        via HyperHLE_options.txt or HyperHLE_default_options.txt.
 
     --print-fps
         Logs the current framerate (FPS) to the console once per second.

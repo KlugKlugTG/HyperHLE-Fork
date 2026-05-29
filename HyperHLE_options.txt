@@ -1,6 +1,6 @@
 # This file lets you specify the options you want to use for various apps.
 #
-# Options in this file take precedence over ones in touchHLE_default_options.txt
+# Options in this file take precedence over ones in HyperHLE_default_options.txt
 #
 # ---
 #

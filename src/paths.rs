@@ -27,13 +27,13 @@ use std::path::{Path, PathBuf};
 
 /// Name of the directory containing ARMv6 dynamic libraries bundled with
 /// touchHLE.
-pub const DYLIBS_DIR: &str = "touchHLE_dylibs";
+pub const DYLIBS_DIR: &str = "HyperHLE_dylibs";
 
 /// Name of the directory containing fonts bundled with touchHLE.
-pub const FONTS_DIR: &str = "touchHLE_fonts";
+pub const FONTS_DIR: &str = "HyperHLE_fonts";
 
 /// Name of the file containing touchHLE's default options for various apps.
-pub const DEFAULT_OPTIONS_FILE: &str = "touchHLE_default_options.txt";
+pub const DEFAULT_OPTIONS_FILE: &str = "HyperHLE_default_options.txt";
 
 /// macOS-only: If touchHLE is located in a .app bundle, return the path of the
 /// Resources directory. If touchHLE is not located in a .app bundle, return
@@ -93,22 +93,22 @@ pub const RESOURCES_ARE_EXTERNAL_FILES: bool = cfg!(not(target_os = "android"));
 
 /// Name of the directory where the user can put apps if they want them to
 /// appear in the app picker.
-pub const APPS_DIR: &str = "touchHLE_apps";
+pub const APPS_DIR: &str = "HyperHLE_apps";
 
 /// Name of the file intended for the user's own options.
-pub const USER_OPTIONS_FILE: &str = "touchHLE_options.txt";
+pub const USER_OPTIONS_FILE: &str = "HyperHLE_options.txt";
 
 /// Names of files the user can put a wallpaper image (for the app picker) in.
 #[allow(unused)]
 pub const WALLPAPER_FILES: &[&str] = &[
-    "touchHLE_wallpaper.png",
-    "touchHLE_wallpaper.jpg",
-    "touchHLE_wallpaper.jpeg",
+    "HyperHLE_wallpaper.png",
+    "HyperHLE_wallpaper.jpg",
+    "HyperHLE_wallpaper.jpeg",
 ];
 
 /// Name of the directory where touchHLE will store sandboxed app data, e.g.
 /// the `Documents` directory.
-pub const SANDBOX_DIR: &str = "touchHLE_sandbox";
+pub const SANDBOX_DIR: &str = "HyperHLE_sandbox";
 
 /// Name of the directory where touchHLE will store IMG_####.PNG files saved to
 /// the Photo Album.
@@ -221,14 +221,14 @@ pub fn prepopulate_user_data_dir() {
     if !apps_dir_readme.is_file() {
         let content = include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/touchHLE_apps/README.txt"
+            "/HyperHLE_apps/README.txt"
         ));
         create_file(&apps_dir_readme, content);
     }
 
     let user_options = base_path.join(USER_OPTIONS_FILE);
     if !user_options.is_file() {
-        let content = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/touchHLE_options.txt"));
+        let content = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/HyperHLE_options.txt"));
         create_file(&user_options, content);
     }
 

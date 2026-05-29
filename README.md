@@ -30,7 +30,7 @@ If you have a legally-obtained copy of an old favourite, HyperHLE is one of the 
 
 **HyperHLE** is a high-level emulator (HLE) for iPhone and iPod touch applications. It runs on modern desktop operating systems and Android, and is written in Rust for speed, portability and safety.
 
-HyperHLE's high-level approach differs from low-level emulation (LLE) in a fundamental way. An LLE emulator directly simulates the iPhone hardware and runs a real copy of iPhone OS on top of it. HyperHLE does the opposite: it **takes the place of iPhone OS itself** and provides its own clean implementations of the system frameworks an app expects — Foundation, UIKit, OpenGL ES, OpenAL, Core Graphics, Core Animation and dozens more. The only code the [emulated CPU](https://github.com/merryhime/dynarmic) ever executes is the app binary and [a small handful of bundled libraries](touchHLE_dylibs/).
+HyperHLE's high-level approach differs from low-level emulation (LLE) in a fundamental way. An LLE emulator directly simulates the iPhone hardware and runs a real copy of iPhone OS on top of it. HyperHLE does the opposite: it **takes the place of iPhone OS itself** and provides its own clean implementations of the system frameworks an app expects — Foundation, UIKit, OpenGL ES, OpenAL, Core Graphics, Core Animation and dozens more. The only code the [emulated CPU](https://github.com/merryhime/dynarmic) ever executes is the app binary and [a small handful of bundled libraries](HyperHLE_dylibs/).
 
 This is what makes HyperHLE lightweight, quick to launch, and accurate for the era it targets — you get the app's real behaviour without the overhead of booting a whole OS.
 
@@ -81,14 +81,14 @@ Behind the scenes: **300+ Objective-C classes** and **2,600+ exported C function
 ## Getting started
 
 1. Get a copy of HyperHLE for your platform (a release binary, or build it yourself — see below).
-2. Put your **legally-obtained** `.ipa` files (or unpacked `.app` bundles) into the **`touchHLE_apps`** folder next to the emulator. On Android, use the in-app file manager to copy apps into the app's data folder.
+2. Put your **legally-obtained** `.ipa` files (or unpacked `.app` bundles) into the **`HyperHLE_apps`** folder next to the emulator. On Android, use the in-app file manager to copy apps into the app's data folder.
 3. Launch HyperHLE. You'll land on the home screen — pick your app and play.
 
 A few useful details:
 
-- **Saved games and app data** live in the **`touchHLE_sandbox`** folder.
-- **Options:** run with `--help` to see every flag, or put options in `touchHLE_options.txt`. Common ones: `--fullscreen`, `--landscape-left` / `--landscape-right`, `--scale-hack=2` (sharper internal resolution), `--device-family=ipad`, and the controller/tilt tuning flags (`--deadzone=`, `--x-tilt-range=`, `--button-to-touch=`, …).
-- **Home screen wallpaper:** HyperHLE ships with the classic iOS wallpaper by default. To use your own, drop a `touchHLE_wallpaper.png` / `.jpg` / `.jpeg` into the data folder.
+- **Saved games and app data** live in the **`HyperHLE_sandbox`** folder.
+- **Options:** run with `--help` to see every flag, or put options in `HyperHLE_options.txt`. Common ones: `--fullscreen`, `--landscape-left` / `--landscape-right`, `--scale-hack=2` (sharper internal resolution), `--device-family=ipad`, and the controller/tilt tuning flags (`--deadzone=`, `--x-tilt-range=`, `--button-to-touch=`, …).
+- **Home screen wallpaper:** HyperHLE ships with the classic iOS wallpaper by default. To use your own, drop a `HyperHLE_wallpaper.png` / `.jpg` / `.jpeg` into the data folder.
 
 ### Controls
 
@@ -119,7 +119,7 @@ A clean release build takes only a few minutes on a modest machine. For Android,
 
 HyperHLE is a 2026 project, built on **touchHLE © 2023–2026 touchHLE project contributors**.
 
-The source code of HyperHLE / touchHLE itself (not its dependencies) is licensed under the **Mozilla Public License, version 2.0**. Some bundled components are under other licenses — most notably parts of libgcc/libstdc++ (GPLv3-or-later with the runtime exception). Different terms apply to the bundled dynamic libraries (`touchHLE_dylibs/`) and fonts (`touchHLE_fonts/`); see those directories for details. For a full best-effort listing of dependency licenses, build the emulator and run it with the `--copyright` flag.
+The source code of HyperHLE / touchHLE itself (not its dependencies) is licensed under the **Mozilla Public License, version 2.0**. Some bundled components are under other licenses — most notably parts of libgcc/libstdc++ (GPLv3-or-later with the runtime exception). Different terms apply to the bundled dynamic libraries (`HyperHLE_dylibs/`) and fonts (`HyperHLE_fonts/`); see those directories for details. For a full best-effort listing of dependency licenses, build the emulator and run it with the `--copyright` flag.
 
 ---
 
