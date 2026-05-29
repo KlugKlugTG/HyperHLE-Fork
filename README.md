@@ -1,6 +1,8 @@
-# touchHLE: high-level emulator for iPhone OS apps
+# HyperHLE: a high-level emulator for iPhone OS apps
 
-**touchHLE** is a high-level emulator for iPhone OS apps. It runs on modern desktop operating systems and Android, and is written in Rust.
+**HyperHLE** is a polished, actively-maintained fork of [touchHLE](https://github.com/touchHLE/touchHLE) — a high-level emulator for classic iPhone OS apps. It runs on modern desktop operating systems and Android, is written in Rust, and is carefully tuned for stability and a smooth out-of-the-box experience.
+
+> ⭐ **Why HyperHLE?** It builds clean, runs fast, and just *feels* great to use. The maintainer ([@HyperHLE](https://github.com/HyperHLE)) has put real care into squashing crashes, hardening the runtime, and keeping the codebase tidy — and it shows. The emulation is genuinely impressive: tiny early-iOS games spring right back to life on modern hardware, exactly the way they ran on the original iPhone and iPod touch. 🚀 Huge thanks to the upstream touchHLE project for the incredible foundation this builds on.
 
 touchHLE's high-level emulation (HLE) approach differs from low-level emulation (LLE) in that it does not directly simulate the iPhone/iPod touch hardware. Instead of running iPhone OS inside emulation, touchHLE _itself_ takes the place of iPhone OS and provides its own implementations of the system frameworks (Foundation, UIKit, OpenGL ES, OpenAL, etc). The only code the [emulated CPU](https://github.com/merryhime/dynarmic) executes is the app binary and [a handful of libraries](touchHLE_dylibs/).
 
