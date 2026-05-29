@@ -120,13 +120,14 @@ impl GLESImplementation {
     pub fn construct(
         self,
         window: &mut crate::window::Window,
+        options: &crate::options::Options, // PassOptions
     ) -> Result<Box<dyn GLESContext>, String> {
         fn boxer<T: GLESContext + 'static>(ctx: T) -> Box<dyn GLESContext> {
             Box::new(ctx)
         }
         match self {
-            Self::GLES1Native => GLES1NativeContext::new(window).map(boxer),
-            Self::GLES1OnGL2 => GLES1OnGL2Context::new(window).map(boxer),
+            Self::GLES1Native => GLES1NativeContext::new(window, options).map(boxer),
+            Self::GLES1OnGL2 => GLES1OnGL2Context::new(window, options).map(boxer),
         }
     }
 }
@@ -263,7 +264,8 @@ pub fn create_gles1_ctx_no_parent_stack(
     let mut gles1_ctx = None;
     for implementation in list {
         log!("Trying: {}", implementation.description());
-        match implementation.construct(window) {
+        match implementation.construct(window, options) {
+            // PassOptionsArgs
             Ok(ctx) => {
                 log!("=> Success!");
                 gles1_ctx = Some(ctx);

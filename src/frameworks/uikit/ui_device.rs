@@ -11,6 +11,11 @@ use crate::dyld::{ConstantExports, HostConstant};
 use crate::frameworks::foundation::{ns_string, NSInteger};
 use crate::objc::{id, msg, msg_class, nil, objc_classes, ClassExports, TrivialHostObject};
 use crate::window::{get_battery_status, BatteryState, DeviceOrientation};
+// FixMsgClassImport
+use crate::objc::{
+    id, msg, msg_class, objc_classes, todo_objc_setter, ClassExports, TrivialHostObject,
+};
+use crate::window::DeviceOrientation;
 
 pub const UIDeviceOrientationDidChangeNotification: &str =
     "UIDeviceOrientationDidChangeNotification";
@@ -36,8 +41,11 @@ pub const UIDeviceOrientationFaceUp: UIDeviceOrientation = 5;
 pub const UIDeviceOrientationFaceDown: UIDeviceOrientation = 6;
 
 pub type UIDeviceBatteryState = NSInteger;
+#[allow(dead_code)]
 pub const UIDeviceBatteryStateUnknown: UIDeviceBatteryState = 0;
+#[allow(dead_code)]
 pub const UIDeviceBatteryStateUnplugged: UIDeviceBatteryState = 1;
+#[allow(dead_code)]
 pub const UIDeviceBatteryStateCharging: UIDeviceBatteryState = 2;
 pub const UIDeviceBatteryStateFull: UIDeviceBatteryState = 3;
 
@@ -226,6 +234,11 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // MARK: - Capabilities
 
+- (id)identifierForVendor {
+    // FakeVendorIdentifier
+    msg_class![env; NSUUID UUID]
+}
+
 - (bool)isMultitaskingSupported {
     false
 }
@@ -260,6 +273,8 @@ pub const CLASSES: ClassExports = objc_classes! {
         return 1.0;
     }
     pct as f32 / 100.0
+    // BypassSDLCrash
+    1.0
 }
 
 - (UIDeviceBatteryState)batteryState {
@@ -270,6 +285,126 @@ pub const CLASSES: ClassExports = objc_classes! {
         BatteryState::Charging  => UIDeviceBatteryStateCharging,
         BatteryState::Full      => UIDeviceBatteryStateFull,
     }
+    // FakeBatteryFull
+    UIDeviceBatteryStateFull
+}
+
+@end
+
+@implementation CTTelephonyNetworkInfo: NSObject
+
++ (id)allocWithZone:(crate::objc::NSZonePtr)_zone {
+    // FakeTelephonyAlloc
+    let host_object = Box::new(TrivialHostObject);
+    env.objc.alloc_object(this, host_object, &mut env.mem)
+}
+
+- (id)init {
+    // FakeTelephonyInit
+    this
+}
+
+- (id)subscriberCellularProvider {
+    // FakeTelephonyProvider
+    let carrier: id = msg_class![env; CTCarrier alloc];
+    let carrier: id = msg![env; carrier init];
+    crate::objc::autorelease(env, carrier)
+}
+
+@end
+
+@implementation CTCarrier: NSObject
+
++ (id)allocWithZone:(crate::objc::NSZonePtr)_zone {
+    // FakeCarrierAlloc
+    let host_object = Box::new(TrivialHostObject);
+    env.objc.alloc_object(this, host_object, &mut env.mem)
+}
+
+- (id)init {
+    // FakeCarrierInit
+    this
+}
+
+- (id)carrierName {
+    // FakeCarrierName
+    ns_string::get_static_str(env, "touchHLE")
+}
+
+- (id)mobileCountryCode {
+    // FakeCarrierMCC
+    ns_string::get_static_str(env, "310")
+}
+
+- (id)mobileNetworkCode {
+    // FakeCarrierMNC
+    ns_string::get_static_str(env, "410")
+}
+
+- (id)isoCountryCode {
+    // FakeCarrierISO
+    ns_string::get_static_str(env, "us")
+}
+
+- (bool)allowsVOIP {
+    // FakeCarrierVOIP
+    true
+}
+
+@end
+
+@implementation UIPasteboard: NSObject
+
++ (id)allocWithZone:(crate::objc::NSZonePtr)_zone {
+    // FakePasteboardAlloc
+    let host_object = Box::new(TrivialHostObject);
+    env.objc.alloc_object(this, host_object, &mut env.mem)
+}
+
++ (id)pasteboardWithName:(id)_name create:(bool)_create {
+    // FakePasteboardWithName
+    let new: id = msg![env; this alloc];
+    let new: id = msg![env; new init];
+    crate::objc::autorelease(env, new)
+}
+
++ (id)generalPasteboard {
+    // FakeGeneralPasteboard
+    let new: id = msg![env; this alloc];
+    let new: id = msg![env; new init];
+    crate::objc::autorelease(env, new)
+}
+
+- (id)init {
+    // FakePasteboardInit
+    this
+}
+
+- (id)string {
+    // FakePasteboardString
+    ns_string::get_static_str(env, "")
+}
+
+- (())setString:(id)_string {
+    // FakePasteboardSetString
+}
+
+- (id)dataForPasteboardType:(id)_pasteboardType {
+    // FakePasteboardData
+    crate::objc::nil
+}
+
+- (())setData:(id)_data forPasteboardType:(id)_pasteboardType {
+    // FakePasteboardSetData
+}
+
+- (id)valueForPasteboardType:(id)_pasteboardType {
+    // FakePasteboardValue
+    crate::objc::nil
+}
+
+- (())setValue:(id)_value forPasteboardType:(id)_pasteboardType {
+    // FakePasteboardSetValue
 }
 
 // MARK: - Hardware info (read-only stubs matching iPhone 2G/3G era)

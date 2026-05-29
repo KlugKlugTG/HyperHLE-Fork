@@ -627,6 +627,7 @@ fn strcasestr(env: &mut Environment, haystack: MutPtr<u8>, needle: ConstPtr<u8>)
 }
 
 pub const FUNCTIONS: FunctionExports = &[
+    export_c_func!(strerror(_)),
     export_c_func!(strtok(_, _)),
     export_c_func!(bzero(_, _)),
     // Functions shared with wchar.rs

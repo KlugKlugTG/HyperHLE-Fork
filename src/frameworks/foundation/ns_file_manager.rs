@@ -47,6 +47,8 @@ const NSAllApplicationsDirectory: NSSearchPathDirectory = 100;
 const NSAllLibrariesDirectory: NSSearchPathDirectory = 101;
 
 // Search path domain masks
+const NSCachesDirectory: NSSearchPathDirectory = 13; // AddedCachesDirectory
+
 type NSSearchPathDomainMask = NSUInteger;
 const NSUserDomainMask: NSSearchPathDomainMask = 1;
 const NSLocalDomainMask: NSSearchPathDomainMask = 2;
@@ -274,6 +276,8 @@ fn NSSearchPathForDirectoriesInDomains(
             );
             env.fs.home_directory().to_owned()
         }
+        NSCachesDirectory => env.fs.home_directory().join("Library/Caches"), // ReturnCachesPath
+        _ => todo!("NSSearchPathDirectory {}", directory),
     };
 
     let dir = ns_string::from_rust_string(env, String::from(dir));
@@ -541,6 +545,11 @@ pub const CLASSES: ClassExports = objc_classes! {
     let _ = attributes; // Ignore for now
 
     if data.is_null() {
+- (bool)createFileAtPath:(id)path // NSString*
+                contents:(id)data // NSData*
+              attributes:(id)attributes { // NSDictionary*
+    let _ = attributes; // IgnoreAttributes
+    if data == nil {
         let empty: id = msg_class![env; NSData new];
         let res: bool = msg![env; empty writeToFile:path atomically:false];
         release(env, empty);
@@ -579,6 +588,19 @@ pub const CLASSES: ClassExports = objc_classes! {
             let ns_error = msg_class![env; NSError alloc];
             let ns_error = msg![env; ns_error initWithDomain:domain code:NSFileReadNoSuchFileError userInfo:nil];
             env.mem.write(error, ns_error);
+- (bool)moveItemAtPath:(id)path // NSString*
+                toPath:(id)toPath // NSString*
+                 error:(MutPtr<id>)error { // NSError**
+    // TODO: call delegate
+    let path = ns_string::to_rust_string(env, path); // TODO: avoid copy
+    let toPath = ns_string::to_rust_string(env, toPath); // TODO: avoid copy
+    match env.fs.rename(GuestPath::new(&path), GuestPath::new(&toPath)) {
+        Ok(()) => true,
+        Err(()) => {
+            if !error.is_null() {
+               // IgnoreErrorObj
+            }
+            false
         }
         return false;
     }
@@ -661,6 +683,9 @@ pub const CLASSES: ClassExports = objc_classes! {
         }
     }
     // ------------------------------------------
+                   attributes:(id)attributes // NSDictionary*
+                        error:(MutPtr<id>)error { // NSError**
+    let _ = attributes; // IgnoreAttributes
 
     let res = if with_intermediates {
         env.fs.create_dir_all(guest_path)
@@ -691,6 +716,7 @@ pub const CLASSES: ClassExports = objc_classes! {
                 }
             }
 
+            let _ = error; // IgnoreErrorAssert
             log!(
                 "Warning: createDirectoryAtPath {} failed with {:?}, returning false",
                 path_str,
@@ -746,6 +772,11 @@ pub const CLASSES: ClassExports = objc_classes! {
             env.mem.write(error, ns_error);
         }
         return nil;
+- (id)contentsOfDirectoryAtPath:(id)path /* NSString* */
+                          error:(MutPtr<id>)error { // NSError**
+    let contents: id = msg![env; this directoryContentsAtPath:path];
+    if contents == nil && !error.is_null() {
+        // IgnoreErrorObj
     }
 
     // 2. В виртуальной ФС touchHLE реальных симлинков нет (они либо резолвятся
@@ -840,6 +871,12 @@ pub const CLASSES: ClassExports = objc_classes! {
             let ns_error = msg![env; ns_error initWithDomain:domain code:NSFileReadNoSuchFileError userInfo:nil];
             env.mem.write(error, ns_error);
         }
+            let _ = error; // IgnoreErrorAssert
+            return false;
+        }
+    };
+    if env.fs.write(GuestPath::new(dst.as_ref()), &data).is_err() {
+        let _ = error; // IgnoreErrorAssert
         return false;
     }
 
@@ -894,6 +931,9 @@ pub const CLASSES: ClassExports = objc_classes! {
     // iCloud not supported
     false
 }
+- (id)attributesOfItemAtPath:(id)path // NSString *
+                       error:(MutPtr<id>)error { // NSError **
+    let _ = error; // IgnoreErrorAssert
 
 - (bool)setUbiquitous:(bool)_flag
             itemAtURL:(id)_url
@@ -980,6 +1020,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 // MARK: - Getting and Setting Attributes
+    let _ = error; // IgnoreErrorAssert
 
 - (id)attributesOfItemAtPath:(id)path
                        error:(MutPtr<id>)error {

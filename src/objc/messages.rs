@@ -100,6 +100,9 @@ fn ensure_class_initialized(env: &mut Environment, class_to_init: Class) {
     let regs = env.cpu.regs_mut();
     regs[0..4].copy_from_slice(&saved_r0_r3);
 }
+// StoreRootViewControllers
+static ROOT_VC_STORE: std::sync::Mutex<Option<std::collections::HashMap<u32, u32>>> =
+    std::sync::Mutex::new(None);
 
 /// The core implementation of `objc_msgSend`, the main function of Objective-C.
 ///
@@ -184,11 +187,26 @@ fn objc_msgSend_inner(
         return;
     }
 
+    // TraceAudioCalls
+    let sel_name = selector.as_str(&env.mem);
+    if sel_name.contains("udio") || sel_name.contains("ound") || sel_name.contains("olume") {
+        println!("AUDIO_TRACE: [{:?} {}]", receiver, sel_name);
+    }
     let message_type_info = env.objc.message_type_info.take();
 
     if receiver == nil {
         // https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/ObjectiveC/Chapters/ocObjectsClasses.html#//apple_ref/doc/uid/TP30001163-CH11-SW7
         log_dbg!("[nil {}]", selector.as_str(&env.mem));
+        env.cpu.regs_mut()[0..2].fill(0);
+        return;
+    }
+
+    // BypassGarbagePointer
+    if receiver.to_bits() >= 0xe0000000 {
+        log!(
+            "WARNING: objc_msgSend received garbage pointer {:#010x}. Bypassing.",
+            receiver.to_bits()
+        );
         env.cpu.regs_mut()[0..2].fill(0);
         return;
     }
@@ -201,6 +219,8 @@ fn objc_msgSend_inner(
             receiver,
             selector.as_str(&env.mem)
         );
+    if orig_class == nil {
+        // BypassNilClassAssert
         env.cpu.regs_mut()[0..2].fill(0);
         return;
     }
@@ -239,6 +259,18 @@ fn objc_msgSend_inner(
         if class == nil {
             assert!(class != orig_class);
             let class_host_object = env.objc.get_host_object(orig_class).unwrap();
+
+            let class_host_object = match env.objc.get_host_object(orig_class) {
+                Some(obj) => obj,
+                None => {
+                    log!(
+                        "WARNING: objc_msgSend superclass chain lookup failed for {:?}. Bypassing.",
+                        orig_class
+                    );
+                    env.cpu.regs_mut()[0..2].fill(0);
+                    return;
+                }
+            };
             let &super::ClassHostObject {
                 ref name,
                 is_metaclass,
@@ -249,6 +281,96 @@ fn objc_msgSend_inner(
             // форка) ---
             log!(
                 "Warning: {} {:?} ({}class \"{}\", {:?}){} does not respond to selector \"{}\"! Returning 0.",
+            // BypassMethodSelector
+            if selector.as_str(&env.mem) == "methodForSelector:" {
+                env.cpu.regs_mut()[0..2].fill(0);
+                return;
+            }
+            // BypassStopLoading
+            if selector.as_str(&env.mem) == "stopLoading" {
+                env.cpu.regs_mut()[0..2].fill(0);
+                return;
+            }
+            // BypassInterfaceIdiom
+            if selector.as_str(&env.mem) == "userInterfaceIdiom" {
+                env.cpu.regs_mut()[0..2].fill(0);
+                return;
+            }
+            // SafeRootViewControllerHook
+            if selector.as_str(&env.mem) == "setRootViewController:" {
+                let vc: id = crate::mem::Ptr::from_bits(env.cpu.regs()[2]);
+                echo!(
+                    "SafeHook: setRootViewController: Window: {:?}, VC: {:?}",
+                    receiver,
+                    vc
+                );
+
+                if vc != nil {
+                    let mut store_lock = ROOT_VC_STORE.lock().unwrap();
+                    if store_lock.is_none() {
+                        *store_lock = Some(std::collections::HashMap::new());
+                    }
+                    store_lock
+                        .as_mut()
+                        .unwrap()
+                        .insert(receiver.to_bits(), vc.to_bits());
+                    drop(store_lock);
+
+                    // SaveCpuState
+                    let saved_regs = env.cpu.regs().to_vec();
+
+                    let view: id = crate::msg![env; vc view];
+                    if view != nil {
+                        let sel_add = env.objc.lookup_selector("addSubview:").unwrap();
+                        let _: () =
+                            crate::objc::msg_send_no_type_checking(env, (receiver, sel_add, view));
+
+                        let sel_key = env.objc.lookup_selector("makeKeyAndVisible").unwrap();
+                        let _: () =
+                            crate::objc::msg_send_no_type_checking(env, (receiver, sel_key));
+
+                        *crate::libc::stdlib::HACK_MAIN_WINDOW.lock().unwrap() = receiver.to_bits();
+                    }
+
+                    // RestoreCpuState (Crucial for AppPicker stability)
+                    env.cpu.regs_mut().copy_from_slice(&saved_regs);
+                }
+
+                env.cpu.regs_mut()[0..2].fill(0);
+                return;
+            }
+            // FakeRootViewGetter
+            if selector.as_str(&env.mem) == "rootViewController" {
+                let mut vc_bits = 0;
+                if let Some(store) = ROOT_VC_STORE.lock().unwrap().as_ref() {
+                    vc_bits = store.get(&receiver.to_bits()).copied().unwrap_or(0);
+                }
+                echo!(
+                    "WARNING: Hooked rootViewController! Returning {:#x}",
+                    vc_bits
+                );
+                env.cpu.regs_mut()[0] = vc_bits;
+                env.cpu.regs_mut()[1] = 0;
+                return;
+            }
+            // BypassTimeZone
+            if selector.as_str(&env.mem) == "defaultTimeZone" {
+                env.cpu.regs_mut()[0..2].fill(0);
+                return;
+            }
+            // BypassWebViewJS
+            if selector.as_str(&env.mem) == "stringByEvaluatingJavaScriptFromString:" {
+                env.cpu.regs_mut()[0..2].fill(0);
+                return;
+            }
+            // BypassDictCreate
+            if selector.as_str(&env.mem) == "dictionaryWithObjects:forKeys:count:" {
+                env.cpu.regs_mut()[0..2].fill(0);
+                return;
+            }
+
+            panic!(
+                "{} {:?} ({}class \"{}\", {:?}){} does not respond to selector \"{}\"!",
                 if is_metaclass { "Class" } else { "Object" },
                 receiver,
                 if is_metaclass { "meta" } else { "" },
@@ -275,6 +397,16 @@ fn objc_msgSend_inner(
             );
             env.cpu.regs_mut()[0..2].fill(0);
             return;
+        let host_object = match env.objc.get_host_object(class) {
+            Some(obj) => obj,
+            None => {
+                log!(
+                    "WARNING: objc_msgSend failed to get host object for class {:?}. Bypassing.",
+                    class
+                );
+                env.cpu.regs_mut()[0..2].fill(0);
+                return;
+            }
         };
 
         if let Some(&super::ClassHostObject {
@@ -338,6 +470,47 @@ Type mismatch when sending message {} to {:?}!
         }) = host_object.as_any().downcast_ref()
         {
             log!(
+            // BypassGKSession
+            if name == "GKSession" {
+                env.cpu.regs_mut()[0..2].fill(0);
+                return;
+            }
+            // FakeAccessoryManager
+            if name == "EAAccessoryManager" {
+                env.cpu.regs_mut()[0..2].fill(0);
+                return;
+            }
+            // BypassMailCompose
+            if name == "MFMailComposeViewController" {
+                env.cpu.regs_mut()[0..2].fill(0);
+                return;
+            }
+            // BypassMessageCompose
+            if name == "MFMessageComposeViewController" {
+                env.cpu.regs_mut()[0..2].fill(0);
+                return;
+            }
+            // FakeAdManager
+            if name == "ASIdentifierManager" {
+                env.cpu.regs_mut()[0..2].fill(0);
+                return;
+            }
+            // BypassTextTokenizer
+            if name == "UITextInputStringTokenizer" {
+                env.cpu.regs_mut()[0..2].fill(0);
+                return;
+            }
+            // BypassBarButtonItem
+            if name == "UIBarButtonItem" {
+                env.cpu.regs_mut()[0..2].fill(0);
+                return;
+            }
+            // BypassGCController
+            if name == "GCController" {
+                env.cpu.regs_mut()[0..2].fill(0);
+                return;
+            }
+            panic!(
                 "Class \"{}\" ({:?}) is unimplemented. Call to {} method \"{}\".",
                 name,
                 class,

@@ -35,6 +35,7 @@ pub enum Button {
 #[derive(Clone)]
 pub struct Options {
     pub fullscreen: bool,
+    pub device_model: Option<String>, // StoreDeviceModel
     pub device_family: Option<DeviceFamily>,
     pub initial_orientation: DeviceOrientation,
     pub scale_hack: NonZeroU32,
@@ -105,12 +106,14 @@ pub struct Options {
     /// use mipmaps are unaffected.
     pub fix_texture_min_filter: bool,
     pub zero_stack_after_guest_to_host_call: Option<u32>,
+    pub gles_version: u32,
 }
 
 impl Default for Options {
     fn default() -> Self {
         Options {
             fullscreen: false,
+            device_model: None, // DefaultNoModel
             device_family: None,
             initial_orientation: DeviceOrientation::Portrait,
             scale_hack: NonZeroU32::new(1).unwrap(),
@@ -141,6 +144,7 @@ impl Default for Options {
             trace_gl_errors: false,
             fix_texture_min_filter: false,
             zero_stack_after_guest_to_host_call: None,
+            gles_version: 2, // DefaultEsVer
         }
     }
 }
@@ -162,6 +166,9 @@ impl Options {
 
         if arg == "--fullscreen" {
             self.fullscreen = true;
+        } else if let Some(value) = arg.strip_prefix("--device-model=") {
+            // ParseModelArg
+            self.device_model = Some(value.to_string());
         } else if arg == "--landscape-left" {
             self.initial_orientation = DeviceOrientation::LandscapeLeft;
         } else if arg == "--landscape-right" {
@@ -306,6 +313,8 @@ impl Options {
             self.zero_stack_after_guest_to_host_call = Some(value.parse().map_err(|_| {
                 "Invalid value for --zero-stack-after-guest-to-host-call=".to_string()
             })?);
+        } else if let Some(val) = arg.strip_prefix("--gles-version=") {
+            self.gles_version = val.parse().unwrap_or(2); // ParseEsVer
         } else {
             return Ok(false);
         };

@@ -68,6 +68,7 @@ pub(super) struct CALayerHostObject {
     pub(super) corner_radius: CGFloat,
     pub(super) border_width: CGFloat,
     pub(super) border_color: Option<CGColorHostObject>,
+    pub(super) contents_scale: CGFloat, // LayerScaleField
     pub(super) needs_display: bool,
     pub(super) needs_display_on_bounds_change: bool,
     pub(super) contents: id,
@@ -390,6 +391,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         corner_radius: 0.0,
         border_width: 0.0,
         border_color: None,
+        contents_scale: 1.0, // DefaultScale
         needs_display: false,
         needs_display_on_bounds_change: false,
         contents: nil,
@@ -736,6 +738,17 @@ pub const CLASSES: ClassExports = objc_classes! {
     // round-trip instead of a partial one) and matches the iOS
     // documentation's wording that "calling setNeedsDisplay(in:) with the
     // bounds of the layer is equivalent to calling setNeedsDisplay()".
+- (CGFloat)contentsScale {
+    env.objc.borrow::<CALayerHostObject>(this).contents_scale // GetScale
+}
+- (())setContentsScale:(CGFloat)contents_scale {
+    env.objc.borrow_mut::<CALayerHostObject>(this).contents_scale = contents_scale; // SetScale
+}
+
+- (bool)needsDisplay {
+    env.objc.borrow::<CALayerHostObject>(this).needs_display
+}
+- (())setNeedsDisplay {
     env.objc.borrow_mut::<CALayerHostObject>(this).needs_display = true;
 }
 

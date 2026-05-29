@@ -1167,6 +1167,15 @@ pub const CLASSES: ClassExports = objc_classes! {
         host_obj.insert(env, key, object, /* copy_key: */ true);
         *env.objc.borrow_mut(this) = host_obj;
     }
+         forKey:(id)key {
+    // BypassNilInsertCrash
+    if object == nil || key == nil {
+        return;
+    }
+    let mut host_obj: DictionaryHostObject = std::mem::take(env.objc.borrow_mut(this));
+    host_obj.insert(env, key, object, /* copy_key: */ true);
+    *env.objc.borrow_mut(this) = host_obj;
+}
 
 - (())removeObjectForKey:(id)key {
     if key.is_null() {

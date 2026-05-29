@@ -7,6 +7,7 @@
 
 use crate::frameworks::core_graphics::{CGFloat, CGPoint, CGRect, CGSize};
 use crate::objc::{id, msg, msg_class, nil, objc_classes, ClassExports, TrivialHostObject, SEL};
+use crate::objc::{id, msg, msg_class, objc_classes, ClassExports, TrivialHostObject};
 
 #[derive(Default)]
 pub struct State {
@@ -45,6 +46,15 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (id)retain      { this }
 - (())release     {}
++ (id)screens {
+    // ReturnMainScreenArray
+    let main_screen: id = msg_class![env; UIScreen mainScreen];
+    let arr = crate::frameworks::foundation::ns_array::from_vec(env, vec![main_screen]);
+    crate::objc::autorelease(env, arr)
+}
+
+- (id)retain { this }
+- (())release {}
 - (id)autorelease { this }
 
 // MARK: - Geometry
@@ -84,6 +94,27 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (CGFloat)nativeScale {
     // Physical pixels == points for our purposes.
     1.0
+    // SupportRetinaScale
+    let model = env.options.device_model.as_deref().unwrap_or("");
+    let is_retina = model.starts_with("iPhone3")
+        || model.starts_with("iPhone4")
+        || model.starts_with("iPhone5")
+        || model.starts_with("iPod4")
+        || model.starts_with("iPod5")
+        || model.starts_with("iPad3")
+        || model.starts_with("iPad4");
+
+    if is_retina {
+        2.0
+    } else {
+        1.0
+    }
+}
+
+- (id)displayLinkWithTarget:(id)target selector:(id)sel {
+    // ReturnDisplayLinkStub
+    let cls = env.objc.get_known_class("CADisplayLink", &mut env.mem);
+    msg![env; cls displayLinkWithTarget:target selector:sel]
 }
 
 // MARK: - Brightness

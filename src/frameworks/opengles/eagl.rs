@@ -9,7 +9,7 @@ use crate::dyld::{export_c_func, ConstantExports, FunctionExports, HostConstant}
 use crate::frameworks::core_animation::ca_eagl_layer::{
     find_fullscreen_eagl_layer, get_pixels_vec_for_presenting, present_pixels,
 };
-use crate::frameworks::core_graphics::{CGRect, CGSize};
+use crate::frameworks::core_graphics::{CGFloat, CGRect, CGSize};
 use crate::frameworks::foundation::ns_string::get_static_str;
 use crate::frameworks::foundation::NSUInteger;
 use crate::frameworks::uikit;
@@ -64,7 +64,7 @@ pub const CONSTANTS: ConstantExports = &[
     ),
 ];
 
-type EAGLRenderingAPI = u32;
+pub(super) type EAGLRenderingAPI = u32; // MakeTypePub
 const kEAGLRenderingAPIOpenGLES1: EAGLRenderingAPI = 1;
 const kEAGLRenderingAPIOpenGLES2: EAGLRenderingAPI = 2;
 const kEAGLRenderingAPIOpenGLES3: EAGLRenderingAPI = 3;
@@ -88,6 +88,7 @@ fn effective_eagl_api(requested: EAGLRenderingAPI, prefer_gles2_context: bool) -
 }
 
 pub(super) struct EAGLContextHostObject {
+    pub(super) api: EAGLRenderingAPI, // Es2Support
     pub(super) gles_ctx: Option<Box<dyn GLESContext>>,
     /// Which EAGL rendering API was requested. This influences how
     /// [super::gles_guest] dispatches calls and how the present-renderbuffer
@@ -99,6 +100,7 @@ pub(super) struct EAGLContextHostObject {
     fps_counter: Option<FpsCounter>,
     next_frame_due: Option<Instant>,
     pub mapped_buffers: HashMap<GLuint, (MutPtr<GLvoid>, *mut GLvoid)>,
+    pub retina_scale: f32, // StoreRetinaScale
 }
 impl HostObject for EAGLContextHostObject {}
 
@@ -110,12 +112,14 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 + (id)alloc {
     let host_object = Box::new(EAGLContextHostObject {
+        api: kEAGLRenderingAPIOpenGLES1, // DefaultApi
         gles_ctx: None,
         api: kEAGLRenderingAPIOpenGLES1,
         renderbuffer_drawable_bindings: Rc::new(RefCell::new(HashMap::new())),
         fps_counter: None,
         next_frame_due: None,
         mapped_buffers: HashMap::new(),
+        retina_scale: 1.0, // InitRetinaScale
     });
     env.objc.alloc_object(this, host_object, &mut env.mem)
 }
@@ -154,8 +158,21 @@ pub const CLASSES: ClassExports = objc_classes! {
         );
         return nil;
     }
+        if api != kEAGLRenderingAPIOpenGLES1 && api != kEAGLRenderingAPIOpenGLES2 {
+            log!(
+                "TODO: App requested EAGL initWithAPI:{} sharegroup:{:?}, returning nil", // UnsupportedApi
+                api,
+                group
+            );
+            return nil;
+        }
 
-    if group == nil {
+        if env.options.gles_version == 1 && api == kEAGLRenderingAPIOpenGLES2 {
+            log!("Rejecting ES 2.0 context creation because ES 1.1 mode is active.");
+            return nil; // RejectEsTwo
+        }
+
+        if group == nil {
         return msg![env; this initWithAPI:api];
     }
 
@@ -187,6 +204,9 @@ pub const CLASSES: ClassExports = objc_classes! {
 
     env.objc.borrow_mut::<EAGLContextHostObject>(this).gles_ctx = Some(gles_ins);
     env.objc.borrow_mut::<EAGLContextHostObject>(this).api = effective_api;
+    let host_obj = env.objc.borrow_mut::<EAGLContextHostObject>(this); // SetApi
+    host_obj.api = api;
+    host_obj.gles_ctx = Some(gles1_ins);
 
     env.window.as_mut().unwrap().set_share_with_current_context(false);
 
@@ -213,6 +233,21 @@ pub const CLASSES: ClassExports = objc_classes! {
         kEAGLRenderingAPIOpenGLES2 => create_gles2_ctx(env),
         _ => create_gles1_ctx(env),
     };
+        if api != kEAGLRenderingAPIOpenGLES1 && api != kEAGLRenderingAPIOpenGLES2 {
+            log!(
+                "TODO: App requested EAGL initWithAPI:{}, returning nil", // UnsupportedApi
+                api
+            );
+            return nil;
+        }
+
+        if env.options.gles_version == 1 && api == kEAGLRenderingAPIOpenGLES2 {
+            log!("Rejecting ES 2.0 context creation because ES 1.1 mode is active.");
+            return nil; // RejectEsTwo
+        }
+
+        // FixGlesContext
+    let mut gles1_ins = create_gles1_ctx(env);
 
     let window = env.window.as_mut().expect("OpenGL ES is not supported in headless mode");
     {
@@ -222,12 +257,16 @@ pub const CLASSES: ClassExports = objc_classes! {
 
     env.objc.borrow_mut::<EAGLContextHostObject>(this).gles_ctx = Some(gles_ins);
     env.objc.borrow_mut::<EAGLContextHostObject>(this).api = effective_api;
+    let host_obj = env.objc.borrow_mut::<EAGLContextHostObject>(this); // SetApi
+    host_obj.api = api;
+    host_obj.gles_ctx = Some(gles1_ins);
 
     this
 }
 
 - (EAGLRenderingAPI)API {
     env.objc.borrow::<EAGLContextHostObject>(this).api
+    env.objc.borrow::<EAGLContextHostObject>(this).api // ReturnStoredApi
 }
 
 - (id)sharegroup {
@@ -339,13 +378,27 @@ pub const CLASSES: ClassExports = objc_classes! {
     }
     let internalformat = gles11::RGBA8_OES;
 
+    let scale: CGFloat = {
+        let drawable_class = msg![env; drawable class];
+        if env.objc.class_has_method_named(drawable_class, "contentsScale") {
+            msg![env; drawable contentsScale] // FetchLayerScale
+        } else {
+            1.0
+        }
+    };
+    env.objc.borrow_mut::<EAGLContextHostObject>(this).retina_scale = scale as f32; // SyncRetinaScale
+
     let (width, height) = {
         let bounds: CGRect = msg![env; drawable bounds];
         let CGSize { width, height } = bounds.size;
         assert!((0.0..(u32::MAX as f32)).contains(&width));
         assert!((0.0..(u32::MAX as f32)).contains(&height));
-        let scale_hack = env.options.scale_hack.get();
-        (width.round() as u32 * scale_hack, height.round() as u32 * scale_hack)
+        let scale_hack = env.options.scale_hack.get() as f32;
+        let final_w = (width * scale * scale_hack).round() as u32;
+        let final_h = (height * scale * scale_hack).round() as u32;
+        //DebugRenderSize
+        log!("DEBUG_EAGL: renderbufferStorage:fromDrawable: {:?} Bounds: w={}, h={} | scale={}, scale_hack={} | Final FBO: {}x{}", drawable, width, height, scale, scale_hack, final_w, final_h);
+        (final_w, final_h)
     };
 
     let window = env.window.as_mut().expect("OpenGL ES is not supported in headless mode");
@@ -509,9 +562,11 @@ pub const CLASSES: ClassExports = objc_classes! {
 
     // We're presenting to the opaque CAEAGLLayer that covers the screen.
     // We can use the fast path where we skip composition and present directly.
+    //DebugPresentPath
+    log!("DEBUG_EAGL: presentRenderbuffer: target={}, drawable={:?}, fullscreen_layer={:?}", target, drawable, fullscreen_layer);
     if drawable == fullscreen_layer {
-        log_dbg!(
-            "Layer {:?} is the fullscreen layer, presenting renderbuffer {:?} directly (fast path).",
+        log!(
+            "DEBUG_EAGL: Layer {:?} IS fullscreen layer. Fast path ACTIVE. renderbuffer: {:?}",
             drawable,
             renderbuffer,
         );
@@ -521,6 +576,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         }
     } else {
         if fullscreen_layer != nil {
+            log!("DEBUG_EAGL: Layer {:?} is NOT fullscreen layer {:?}. Rendering to RAM (SLOW PATH) or skipped!", drawable, fullscreen_layer);
             // If there's a single layer that covers the screen, and this isn't
             // it, there's no point in presenting the output because it won't be
             // seen. Using a noisy log because it's a weird scenario and might
@@ -1235,6 +1291,7 @@ unsafe fn present_renderbuffer(env: &mut Environment) {
     } else {
         env.window.as_mut().unwrap().rotation_matrix()
     };
+    let mut rotation_matrix = env.window.as_mut().unwrap().rotation_matrix();
     let virtual_cursor_visible_at = env.window.as_mut().unwrap().virtual_cursor_visible_at();
 
     let Some(gles_ctx) = super::get_thread_context(
@@ -1364,6 +1421,17 @@ unsafe fn present_renderbuffer(env: &mut Environment) {
     let old_texture_2d: GLuint = get_int(gles, gles11::TEXTURE_BINDING_2D) as _;
     {
         static SEEN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    let active_texture: GLint = get_int(gles, gles11::ACTIVE_TEXTURE);
+    //DebugPRBState
+    log!(
+        "DEBUG_PRB: Start. RB={}, w={}, h={}. OLD_FB={}, OLD_TEX2D={}, ACTIVE_TEX={:#x}",
+        renderbuffer,
+        width,
+        height,
+        old_framebuffer,
+        old_texture_2d,
+        active_texture
+    );
 
         present_check(
             gles,
@@ -1441,6 +1509,63 @@ unsafe fn present_renderbuffer(env: &mut Environment) {
         );
     }
 
+    // DebugFboStatusExt
+    let fbo_status = gles.CheckFramebufferStatusOES(gles11::FRAMEBUFFER_OES);
+    let mut px = [0u8; 20];
+    let hw = width.saturating_sub(1);
+    let hh = height.saturating_sub(1);
+    gles.ReadPixels(
+        0,
+        0,
+        1,
+        1,
+        gles11::RGBA,
+        gles11::UNSIGNED_BYTE,
+        px[0..4].as_mut_ptr() as *mut _,
+    );
+    gles.ReadPixels(
+        hw,
+        0,
+        1,
+        1,
+        gles11::RGBA,
+        gles11::UNSIGNED_BYTE,
+        px[4..8].as_mut_ptr() as *mut _,
+    );
+    gles.ReadPixels(
+        0,
+        hh,
+        1,
+        1,
+        gles11::RGBA,
+        gles11::UNSIGNED_BYTE,
+        px[8..12].as_mut_ptr() as *mut _,
+    );
+    gles.ReadPixels(
+        hw,
+        hh,
+        1,
+        1,
+        gles11::RGBA,
+        gles11::UNSIGNED_BYTE,
+        px[12..16].as_mut_ptr() as *mut _,
+    );
+    gles.ReadPixels(
+        width / 2,
+        height / 2,
+        1,
+        1,
+        gles11::RGBA,
+        gles11::UNSIGNED_BYTE,
+        px[16..20].as_mut_ptr() as *mut _,
+    );
+    log!("DEBUG_PRB: FBO={:#x}. w={}, h={}. Pixels: BL[{},{},{},{}] BR[{},{},{},{}] TL[{},{},{},{}] TR[{},{},{},{}] C[{},{},{},{}]",
+        fbo_status, width, height,
+        px[0], px[1], px[2], px[3], px[4], px[5], px[6], px[7],
+        px[8], px[9], px[10], px[11], px[12], px[13], px[14], px[15],
+        px[16], px[17], px[18], px[19]
+    );
+
     // Create a texture with a copy of the pixels in the framebuffer
     let mut texture: GLuint = 0;
     gles.GenTextures(1, &mut texture);
@@ -1463,6 +1588,10 @@ unsafe fn present_renderbuffer(env: &mut Environment) {
     // ensuring correctness is fine. (And on lenient drivers glFinish on
     // an already-flushed pipeline is essentially free.)
     gles.Finish();
+
+    // Clear error
+    while gles.GetError() != 0 {}
+
     gles.CopyTexImage2D(
         gles11::TEXTURE_2D,
         0,
@@ -1649,6 +1778,16 @@ unsafe fn present_renderbuffer(env: &mut Environment) {
             );
         }
     }
+
+    //DebugCopyTex
+    let err_after_copy = gles.GetError();
+    if err_after_copy != 0 {
+        log!(
+            "DEBUG_PRB: ERROR after CopyTexImage2D: {:#x}",
+            err_after_copy
+        );
+    }
+
     // The texture will not have any mip levels so we must ensure the filter
     // does not use them, else rendering will fail. Also force
     // GL_CLAMP_TO_EDGE wrap because the renderbuffer is typically a
@@ -1742,11 +1881,15 @@ unsafe fn present_renderbuffer(env: &mut Environment) {
     // ES 2.0 backend. So just drop the clear/restore entirely on the
     // remaining (non-ES2) path. See LEGO Ninjago: Spinjitzu Scavenger Hunt.
 
+    // EsTwoBackupBypass
+    let is_gles2 = gles.is_gles2();
     let old_arrays = {
         let mut old_arrays = [gles11::FALSE; gles1_on_gl2::ARRAYS.len()];
-        for (is_enabled, info) in old_arrays.iter_mut().zip(gles1_on_gl2::ARRAYS.iter()) {
-            gles.GetBooleanv(info.name, is_enabled);
-            gles.DisableClientState(info.name);
+        if !is_gles2 {
+            for (is_enabled, info) in old_arrays.iter_mut().zip(gles1_on_gl2::ARRAYS.iter()) {
+                gles.GetBooleanv(info.name, is_enabled);
+                gles.DisableClientState(info.name);
+            }
         }
         old_arrays
     };
@@ -1874,6 +2017,37 @@ unsafe fn present_renderbuffer(env: &mut Environment) {
             "after old_color save + Color4f white",
         );
     }
+    let old_capabilities = {
+        let mut old_capabilities = [gles11::FALSE; gles1_on_gl2::CAPABILITIES.len()];
+        if !is_gles2 {
+            for (is_enabled, &name) in old_capabilities
+                .iter_mut()
+                .zip(gles1_on_gl2::CAPABILITIES.iter())
+            {
+                gles.GetBooleanv(name, is_enabled);
+                gles.Disable(name);
+            }
+        }
+        old_capabilities
+    };
+    let old_matrix_mode: GLenum = if !is_gles2 {
+        get_int(gles, gles11::MATRIX_MODE) as _
+    } else {
+        0
+    };
+    let old_color: [GLfloat; 4] = if !is_gles2 {
+        get_floats(gles, gles11::CURRENT_COLOR)
+    } else {
+        [0.0; 4]
+    };
+    if !is_gles2 {
+        for mode in [gles11::MODELVIEW, gles11::PROJECTION, gles11::TEXTURE] {
+            gles.MatrixMode(mode);
+            gles.PushMatrix();
+            gles.LoadIdentity();
+        }
+        gles.Color4f(1.0, 1.0, 1.0, 1.0);
+    }
 
     // Back up other things that will be modified while drawing.
     let old_viewport: (GLint, GLint, GLsizei, GLsizei) = {
@@ -1922,6 +2096,24 @@ unsafe fn present_renderbuffer(env: &mut Environment) {
         present_check(gles, trace_gl_errors, &SEEN, "after TexEnviv setup");
     }
 
+    // SmartRotationFix
+    let rb_w = width as f32;
+    let rb_h = height as f32;
+    let cols = rotation_matrix.columns();
+    let is_rotated = cols[0][0].abs() < 0.1 && cols[0][1].abs() > 0.9;
+
+    if is_rotated && rb_w > rb_h {
+        unsafe {
+            let m_ptr = &mut rotation_matrix as *mut _ as *mut [[f32; 2]; 2];
+            *m_ptr = [[1.0, 0.0], [0.0, 1.0]];
+        }
+        log!(
+            "DEBUG_EAGL: SmartRotationFix bypassed matrix! rb_w={}, rb_h={}",
+            rb_w,
+            rb_h
+        );
+    }
+
     // Draw the quad
     present_frame(gles, viewport, rotation_matrix, virtual_cursor_visible_at);
     {
@@ -1943,12 +2135,14 @@ unsafe fn present_renderbuffer(env: &mut Environment) {
         present_check(gles, trace_gl_errors, &SEEN, "after DeleteTextures");
     }
 
-    // Restore all the state saved before rendering
-    for (&is_enabled, info) in old_arrays.iter().zip(gles1_on_gl2::ARRAYS.iter()) {
-        match is_enabled {
-            gles11::TRUE => gles.EnableClientState(info.name),
-            gles11::FALSE => gles.DisableClientState(info.name),
-            _ => unreachable!(),
+    // EsTwoRestoreBypass
+    if !is_gles2 {
+        for (&is_enabled, info) in old_arrays.iter().zip(gles1_on_gl2::ARRAYS.iter()) {
+            match is_enabled {
+                gles11::TRUE => gles.EnableClientState(info.name),
+                gles11::FALSE => gles.DisableClientState(info.name),
+                _ => unreachable!(),
+            }
         }
     }
     for (&saved, &name) in old_capabilities
@@ -1968,7 +2162,22 @@ unsafe fn present_renderbuffer(env: &mut Environment) {
             gles11::TRUE => gles.Enable(name),
             gles11::FALSE => gles.Disable(name),
             _ => unreachable!(),
+        for (&is_enabled, &name) in old_capabilities
+            .iter()
+            .zip(gles1_on_gl2::CAPABILITIES.iter())
+        {
+            match is_enabled {
+                gles11::TRUE => gles.Enable(name),
+                gles11::FALSE => gles.Disable(name),
+                _ => unreachable!(),
+            }
         }
+        for mode in [gles11::MODELVIEW, gles11::PROJECTION, gles11::TEXTURE] {
+            gles.MatrixMode(mode);
+            gles.PopMatrix();
+        }
+        gles.MatrixMode(old_matrix_mode);
+        gles.Color4f(old_color[0], old_color[1], old_color[2], old_color[3]);
     }
     for mode in [gles11::MODELVIEW, gles11::PROJECTION, gles11::TEXTURE] {
         gles.MatrixMode(mode);

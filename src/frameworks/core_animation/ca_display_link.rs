@@ -24,6 +24,8 @@ struct CADisplayLinkHostObject {
     /// before the display link notifies the target again; the default is 1
     /// and the value must be `>= 1`.
     /// <https://developer.apple.com/documentation/quartzcore/cadisplaylink/1648526-frameinterval>
+    target: id,
+    selector: Option<SEL>,
     frame_interval: NSInteger,
 }
 impl HostObject for CADisplayLinkHostObject {}
@@ -71,6 +73,55 @@ pub const CLASSES: ClassExports = objc_classes! {
     log!("[CADisplayLink displayLinkWithTarget:{:?} selector:{}] => {:?}", target, sel.as_str(&env.mem), display_link);
     autorelease(env, display_link)
 }
+        let display_link: id = msg![env; this new];
+
+        // Retain the target as CADisplayLink holds a strong reference to it
+        retain(env, target);
+
+        {
+            // Устанавливаем данные в хост-объект,
+            // изолируя borrow_mut, чтобы не
+            // мешать макросу msg_class! ниже
+            let host_object = env.objc.borrow_mut::<CADisplayLinkHostObject>(display_link);
+            host_object.target = target;
+            host_object.selector = Some(sel);
+            host_object.frame_interval = 1;
+        }
+
+        // Создаем свой внутренний селектор
+        // для перехвата тика таймера
+        let tick_sel = env.objc.lookup_selector("_timerTick:").unwrap();
+
+        let ns_timer = msg_class![env; NSTimer timerWithTimeInterval:(1.0/60.0)
+                         target:display_link
+                       selector:tick_sel
+                       userInfo:nil
+                        repeats:true];
+        retain(env, ns_timer);
+
+        env.objc.borrow_mut::<CADisplayLinkHostObject>(display_link).ns_timer = ns_timer;
+
+        log_dbg!("[CADisplayLink displayLinkWithTarget:{:?} selector:{}] => {:?}", target, sel.as_str(&env.mem), display_link);
+        autorelease(env, display_link)
+    }
+
+    - (())_timerTick:(id)_timer {
+        // Создаем отдельный scope { },
+        // чтобы borrow освободился ДО
+        // вызова msg_send
+        let (target, sel) = {
+            let host_object = env.objc.borrow::<CADisplayLinkHostObject>(this);
+            (host_object.target, host_object.selector.unwrap())
+        };
+        // Передаем this (сам CADisplayLink)
+        // вместо оригинального NSTimer
+        let _: () = crate::objc::msg_send(env, (target, sel, this));
+    }
+
+    - (f64)duration {
+        let host_object = env.objc.borrow::<CADisplayLinkHostObject>(this);
+        (host_object.frame_interval as f64) / 60.0
+    }
 
 // Внутренний трамплин: вызывается таймером, перенаправляет вызов в игру
 - (())_touchHLE_displayLinkFired:(id)_timer {
@@ -139,6 +190,16 @@ pub const CLASSES: ClassExports = objc_classes! {
         set_time_interval(env, ns_timer, interval);
     }
 }
+        log_dbg!("[(CADisplayLink*){:?} setFrameInterval:{}]", this, frameInterval);
+        assert!(frameInterval >= 1);
+        let interval = frameInterval as f64 / 60.0;
+        let ns_timer = {
+            let host_object = env.objc.borrow_mut::<CADisplayLinkHostObject>(this);
+            host_object.frame_interval = frameInterval;
+            host_object.ns_timer
+        };
+        set_time_interval(env, ns_timer, interval);
+    }
 
 - (())addToRunLoop:(id)run_loop forMode:(NSRunLoopMode)mode {
     log!("[(CADisplayLink*){:?} addToRunLoop:{:?} forMode:{:?}]", this, run_loop, mode);
@@ -193,6 +254,17 @@ pub const CLASSES: ClassExports = objc_classes! {
 
     env.objc.dealloc_object(this, &mut env.mem);
 }
+        // Копируем указатели и сразу
+        // отпускаем borrow, чтобы release
+        // смог использовать env
+        let (ns_timer, target) = {
+            let host_object = env.objc.borrow::<CADisplayLinkHostObject>(this);
+            (host_object.ns_timer, host_object.target)
+        };
+        release(env, ns_timer);
+        release(env, target);
+        env.objc.dealloc_object(this, &mut env.mem);
+    }
 
 @end
 

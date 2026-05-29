@@ -378,6 +378,28 @@ pub const CLASSES: ClassExports = objc_classes! {
     let new: id = msg![env; this alloc];
     let new: id = msg![env; new initWithContentsOfURL:url usedEncoding:enc error:error];
     autorelease(env, new)
++ (id)stringWithContentsOfFile:(id)path { // NSString*
+    let new_alloc: id = msg![env; this alloc];
+    let new_init: id = msg![env; new_alloc initWithContentsOfFile:path];
+    if new_init == nil {
+        release(env, new_alloc);
+        return nil;
+    }
+    autorelease(env, new_init)
+}
+
++ (id)stringWithContentsOfFile:(id)path // NSString*
+                      encoding:(NSStringEncoding)encoding
+                         error:(MutPtr<id>)error { // NSError**
+    let new_alloc: id = msg![env; this alloc];
+    let new_init: id = msg![env; new_alloc initWithContentsOfFile:path
+                                                         encoding:encoding
+                                                            error:error];
+    if new_init == nil {
+        release(env, new_alloc);
+        return nil;
+    }
+    autorelease(env, new_init)
 }
 
 + (id)stringWithFormat:(id)format, ...args {
@@ -436,6 +458,40 @@ pub const CLASSES: ClassExports = objc_classes! {
     msg![env; this dataUsingEncoding:encoding allowLossyConversion:false]
 }
 
+- (NSUInteger)lengthOfBytesUsingEncoding:(NSStringEncoding)encoding {
+    // ImplLengthOfBytes
+    let string = to_rust_string(env, this);
+    let safe_string = if encoding == NSASCIIStringEncoding
+        || encoding == NSMacOSRomanStringEncoding
+        || encoding == NSISOLatin1StringEncoding
+    {
+        if !string.as_bytes().iter().all(|byte| byte.is_ascii()) {
+            let sanitized: String = string.chars().map(|c| if c.is_ascii() { c } else { '?' }).collect();
+            Cow::Owned(sanitized)
+        } else {
+            string
+        }
+    } else {
+        string
+    };
+
+    match encoding {
+        NSASCIIStringEncoding | NSMacOSRomanStringEncoding | NSISOLatin1StringEncoding | NSUTF8StringEncoding => {
+            // FixClippyLen
+            safe_string.len() as NSUInteger
+        },
+        NSUTF16StringEncoding | NSUTF16LittleEndianStringEncoding | NSUTF16BigEndianStringEncoding => {
+            (safe_string.encode_utf16().count() * 2) as NSUInteger
+        },
+        _ => {
+            log!("WARNING: lengthOfBytesUsingEncoding unimplemented for encoding {}", encoding);
+            0
+        }
+    }
+}
+
+// These are the two methods that have to be overridden by subclasses, so these
+// implementations don't have to care about foreign subclasses.
 - (NSUInteger)length {
     if this == nil { return 0; }
     let host_object = env.objc.borrow_mut::<StringHostObject>(this);
@@ -532,6 +588,21 @@ pub const CLASSES: ClassExports = objc_classes! {
         string.len().try_into().unwrap()
     }
 }
+        let host_object = env.objc.borrow_mut::<StringHostObject>(this);
+
+        let (utf16, did_convert) = host_object.convert_to_utf16_inplace();
+        if did_convert {
+            log_dbg!("[{:?} characterAtIndex:{:?}]: converted string to UTF-16", this, index);
+        }
+
+        // SafeCharIndex
+        if index as usize >= utf16.len() {
+            println!("WARNING: characterAtIndex out of bounds! Index: {}, Len: {}", index, utf16.len());
+            return 0;
+        }
+
+        utf16[index as usize]
+    }
 
 - (NSRange)rangeOfString:(id)search_string {
     msg![env; this rangeOfString:search_string options:0u32]
@@ -705,6 +776,13 @@ pub const CLASSES: ClassExports = objc_classes! {
         );
         return NSOrderedDescending;
     }
+    // БРОНЕЖИЛЕТ ОТ NULL
+    if other == nil {
+        return NSOrderedSame;
+    }
+
+    // TODO: support foreign subclasses (perhaps via a helper function that
+    // copies the string first)
     let mut a_iter = env.objc.borrow::<StringHostObject>(this).iter_code_units().peekable();
     let mut b_iter = env.objc.borrow::<StringHostObject>(other).iter_code_units().peekable();
     let mask = if mask == 0 { NSLiteralSearch } else { mask };
@@ -962,6 +1040,16 @@ pub const CLASSES: ClassExports = objc_classes! {
         let res = ns_array::from_vec(env, vec![this]);
         return autorelease(env, res);
     }
+- (id)componentsSeparatedByString:(id)separator { // NSString*
+    // БРОНЕЖИЛЕТ ОТ NULL
+    if separator == nil {
+        let array = ns_array::from_vec(env, vec![this]);
+        return autorelease(env, array);
+    }
+    let mut main_iter = env.objc.borrow::<StringHostObject>(this)
+        .iter_code_units();
+    let sep_iter = env.objc.borrow::<StringHostObject>(separator)
+        .iter_code_units();
 
     let mut main_iter = env.objc.borrow::<StringHostObject>(this).iter_code_units();
     let sep_iter = env.objc.borrow::<StringHostObject>(separator).iter_code_units();
@@ -1027,6 +1115,31 @@ pub const CLASSES: ClassExports = objc_classes! {
             println!("Warning: cStringUsingEncoding requested with unknown encoding: {}, falling back to UTF-8", encoding);
             string.as_bytes().to_vec()
         }
+
+    // SanitizeLegacyString
+    let safe_string = if encoding == NSASCIIStringEncoding
+        || encoding == NSMacOSRomanStringEncoding
+        || encoding == NSISOLatin1StringEncoding
+    {
+        if !string.as_bytes().iter().all(|byte| byte.is_ascii()) {
+            let sanitized: String = string.chars().map(|c| if c.is_ascii() { c } else { '?' }).collect();
+            Cow::Owned(sanitized)
+        } else {
+            string
+        }
+    } else {
+        string
+    };
+
+    let bytes: Vec<u8> = match encoding {
+        NSASCIIStringEncoding | NSMacOSRomanStringEncoding | NSISOLatin1StringEncoding => {
+            safe_string.as_bytes().to_vec()
+        },
+        NSUTF8StringEncoding => {
+            safe_string.as_bytes().to_vec()
+        },
+        NSUTF16LittleEndianStringEncoding => safe_string.encode_utf16().flat_map(u16::to_le_bytes).collect(),
+        _ => unimplemented!("{}", encoding),
     };
     let null_size: GuestUSize = match encoding {
         NSUTF16LittleEndianStringEncoding | NSUnicodeStringEncoding | NSUTF16BigEndianStringEncoding => 2,
@@ -1043,6 +1156,13 @@ pub const CLASSES: ClassExports = objc_classes! {
     }
 
     let _: id = msg_class![env; NSData dataWithBytesNoCopy:(c_string.cast_void()) length:total_size];
+
+    // FixNullTerminator
+    let c_string: MutPtr<u8> = env.mem.calloc(total_size).cast();
+    _ = env.mem.bytes_at_mut(c_string, bytes_size).write(&bytes).unwrap();
+
+    let _: id = msg_class![env; NSData dataWithBytesNoCopy:(c_string.cast_void())
+                                                    length:total_size];
     c_string.cast_const()
 }
 
@@ -1152,6 +1272,9 @@ pub const CLASSES: ClassExports = objc_classes! {
     // эмулируем обработку исключения NSInvalidArgumentException.
     if other == nil {
         log!("Warning: [NSString stringByAppendingString:nil] called. This would throw NSInvalidArgumentException on iOS. Returning original string to prevent crash.");
+- (id)stringByAppendingString:(id)other { // NSString*
+    // БРОНЕЖИЛЕТ ОТ NULL
+    if other == nil {
         return this;
     }
 
@@ -1571,6 +1694,12 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())appendString:(id)a_string {
+- (())appendString:(id)a_string { // NSString*
+    // БРОНЕЖИЛЕТ ОТ NULL
+    if a_string == nil {
+        return;
+    }
+    // TODO: this is inefficient? append in place instead
     let new: id = msg![env; this stringByAppendingString:a_string];
     () = msg![env; this setString:new];
 }
@@ -1746,6 +1875,12 @@ pub const CLASSES: ClassExports = objc_classes! {
     this
 }
 
+- (id)initWithContentsOfURL:(id)_url {
+    // Заглушка
+    *env.objc.borrow_mut(this) = StringHostObject::Utf8(std::borrow::Cow::Borrowed(""));
+    this
+}
+
 - (id)initWithContentsOfFile:(id)path {
     if path == nil {
         release(env, this);
@@ -1759,6 +1894,13 @@ pub const CLASSES: ClassExports = objc_classes! {
             release(env, this);
             return nil;
         }
+    let nsstring_class: Class = msg_class![env; NSString class];
+    if !msg![env; path isKindOfClass:nsstring_class] {
+        return nil;
+    }
+    let path_str = to_rust_string(env, path);
+    let Ok(bytes) = env.fs.read(GuestPath::new(&path_str)) else {
+        return nil;
     };
     let len = bytes.len();
     let encoding = if len > 1 && (bytes[..2] == [0xFE, 0xFF] || bytes[..2] == [0xFF, 0xFE]) {
@@ -1776,6 +1918,18 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (id)initWithContentsOfFile:(id)path encoding:(NSStringEncoding)encoding error:(MutPtr<id>)error {
     if path == nil {
         release(env, this);
+- (id)initWithContentsOfFile:(id)path
+                    encoding:(NSStringEncoding)encoding
+                       error:(MutPtr<id>)_error {
+    if path == nil {
+        return nil;
+    }
+    let nsstring_class: Class = msg_class![env; NSString class];
+    if !msg![env; path isKindOfClass:nsstring_class] {
+        return nil;
+    }
+    let path_str = to_rust_string(env, path);
+    let Ok(bytes) = env.fs.read(GuestPath::new(&path_str)) else {
         return nil;
     }
     let path_str = to_rust_string(env, path);
@@ -1823,6 +1977,9 @@ pub const CLASSES: ClassExports = objc_classes! {
     if !enc.is_null() {
         env.mem.write(enc, encoding);
     }
+    let host_object = StringHostObject::decode(Cow::Owned(bytes), encoding);
+    *env.objc.borrow_mut(this) = host_object;
+
     let host_object = StringHostObject::decode(Cow::Owned(bytes), encoding);
     *env.objc.borrow_mut(this) = host_object;
     this
@@ -2025,6 +2182,23 @@ pub const CLASSES: ClassExports = objc_classes! {
     let res = from_u16_vec(env, host_string);
     autorelease(env, res)
 }
+        let host_object = env.objc.borrow_mut::<StringHostObject>(this);
+        let (orig_string, did_convert) = host_object.convert_to_utf16_inplace();
+        if did_convert {
+            log_dbg!("[{:?} substringWithRange]: converted string to UTF-16", this);
+        }
+        // SafeSubBounds
+        let start = range.location as usize;
+        let length = range.length as usize;
+        let end = start + length;
+        if start > orig_string.len() || end > orig_string.len() {
+            println!("WARNING: substringWithRange out of bounds! Range: {}:{}, Len: {}", start, length, orig_string.len());
+            return crate::objc::nil;
+        }
+        let host_string = orig_string[start..end].to_vec();
+        let res = from_u16_vec(env, host_string);
+        autorelease(env, res)
+    }
 
 - (NSRange)lineRangeForRange:(NSRange)range {
     let host_object = env.objc.borrow_mut::<StringHostObject>(this);
@@ -2213,6 +2387,13 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (())setString:(id)a_string {
     assert_ne!(a_string, nil);
+- (())setString:(id)a_string { // NSString*
+    // БРОНЕЖИЛЕТ ОТ NULL
+    if a_string == nil {
+        let host_object = StringHostObject::Utf8("".to_string().into());
+        *env.objc.borrow_mut(this) = host_object;
+        return;
+    }
     let str = to_rust_string(env, a_string);
     let host_object = StringHostObject::Utf8(str);
     *env.objc.borrow_mut(this) = host_object;
@@ -2234,6 +2415,50 @@ pub const CLASSES: ClassExports = objc_classes! {
 
     let host_string = orig_string[start..end].to_vec();
     let res = from_u16_vec(env, host_string);
+            let host_object = env.objc.borrow_mut::<StringHostObject>(this);
+            let (orig_string, did_convert) = host_object.convert_to_utf16_inplace();
+            if did_convert {
+                log_dbg!("[{:?} substringWithRange]: converted string to UTF-16", this);
+            }
+            // SafeSubBounds
+            let start = range.location as usize;
+            let length = range.length as usize;
+            let end = start + length;
+            if start > orig_string.len() || end > orig_string.len() {
+                println!("WARNING: substringWithRange out of bounds! Range: {}:{}, Len: {}", start, length, orig_string.len());
+                return crate::objc::nil;
+            }
+            let host_string = orig_string[start..end].to_vec();
+            let res = from_u16_vec(env, host_string);
+            autorelease(env, res)
+        }
+
+@end
+
+@implementation NSUUID: NSObject
+
++ (id)allocWithZone:(NSZonePtr)_zone {
+    // FakeNSUUIDAlloc
+    let host_object = Box::new(StringHostObject::Utf8(Cow::Borrowed("")));
+    env.objc.alloc_object(this, host_object, &mut env.mem)
+}
+
++ (id)UUID {
+    // FakeNSUUIDCreate
+    let new: id = msg![env; this alloc];
+    let new: id = msg![env; new init];
+    autorelease(env, new)
+}
+
+- (id)init {
+    // FakeNSUUIDInit
+    this
+}
+
+- (id)UUIDString {
+    // FakeNSUUIDString
+    let uuid_str = "12345678-1234-1234-1234-1234567890AB";
+    let res = from_rust_string(env, uuid_str.to_string());
     autorelease(env, res)
 }
 
@@ -2398,6 +2623,11 @@ pub fn to_rust_string(env: &mut Environment, string: id) -> Cow<'static, str> {
     if string == nil {
         return Cow::Borrowed("");
     }
+    let obj_class = ObjC::read_isa(string, &env.mem);
+    let nsstring_class = env.objc.get_known_class("NSString", &mut env.mem);
+    if !env.objc.class_is_subclass_of(obj_class, nsstring_class) {
+        return Cow::Borrowed("");
+    }
     env.objc
         .borrow_mut::<StringHostObject>(string)
         .to_utf8()
@@ -2454,6 +2684,11 @@ where
     F: FnMut(NSUInteger, u16),
 {
     if string == nil {
+        return;
+    }
+    let obj_class = ObjC::read_isa(string, &env.mem);
+    let nsstring_class = env.objc.get_known_class("NSString", &mut env.mem);
+    if !env.objc.class_is_subclass_of(obj_class, nsstring_class) {
         return;
     }
     let mut idx: NSUInteger = 0;
@@ -2746,6 +2981,43 @@ pub fn get_bytes_buffer_inner(
     let bytes_len: NSUInteger = bytes.len().try_into().unwrap();
     if buffer_size < bytes_len {
         return false;
+    let src = to_rust_string(env, str);
+
+    // SanitizeLegacyEncoding
+    let safe_src = if encoding == NSASCIIStringEncoding
+        || encoding == NSMacOSRomanStringEncoding
+        || encoding == NSISOLatin1StringEncoding
+    {
+        if !src.as_bytes().iter().all(|byte| byte.is_ascii()) {
+            let sanitized: String = src
+                .chars()
+                .map(|c| if c.is_ascii() { c } else { '?' })
+                .collect();
+            Cow::Owned(sanitized)
+        } else {
+            src
+        }
+    } else {
+        src
+    };
+
+    let dest = env.mem.bytes_at_mut(buffer, buffer_size);
+    let src_len = if include_null_terminator {
+        safe_src.len() + 1
+    } else {
+        safe_src.len()
+    };
+    if dest.len() < src_len {
+        return false;
+    }
+
+    let iter: Box<dyn Iterator<Item = &u8>> = if include_null_terminator {
+        Box::new(safe_src.as_bytes().iter().chain(b"\0".iter()))
+    } else {
+        Box::new(safe_src.as_bytes().iter())
+    };
+    for (i, &byte) in iter.enumerate() {
+        dest[i] = byte;
     }
 
     let dest = env.mem.bytes_at_mut(buffer, buffer_size as u32);
@@ -2768,6 +3040,22 @@ fn string_by_replacing_occurrences_inner(
         let res = msg![env; source copy];
         return autorelease(env, res);
     }
+    // БРОНЕЖИЛЕТ ОТ NULL
+    if source == nil {
+        return nil;
+    }
+    if target == nil {
+        let res = msg![env; source copy];
+        return autorelease(env, res);
+    }
+    let safe_replacement = if replacement == nil {
+        get_static_str(env, "")
+    } else {
+        replacement
+    };
+
+    // TODO: support foreign subclasses (perhaps via a helper function that
+    // copies the string first)
     let mut main_iter = env
         .objc
         .borrow::<StringHostObject>(source)
@@ -2778,7 +3066,7 @@ fn string_by_replacing_occurrences_inner(
         .iter_code_units();
     let replacement_iter = env
         .objc
-        .borrow::<StringHostObject>(replacement)
+        .borrow::<StringHostObject>(safe_replacement)
         .iter_code_units();
     if target_iter.clone().next().is_none() {
         let res = msg![env; source copy];

@@ -146,6 +146,8 @@ const k3DMixerParam_Distance: AudioUnitParameterID = 2;
 
 fn AudioUnitInitialize(env: &mut Environment, in_unit: AudioUnit) -> OSStatus {
     log_dbg!("AudioUnitInitialize({:?})", in_unit);
+    // TraceUnitInit
+    println!("AUDIO_TRACE: AudioUnitInitialize({:?})", in_unit);
     let run_loop = CFRunLoopGetMain(env);
     ns_run_loop::add_audio_unit(env, run_loop, in_unit);
     0
@@ -367,6 +369,40 @@ fn AudioUnitSetProperty(
             context.Sourcef(source, AL_REFERENCE_DISTANCE, params.reference_distance);
             context.Sourcef(source, AL_MAX_DISTANCE, params.maximum_distance);
             context.Sourcef(source, AL_ROLLOFF_FACTOR, params.rolloff_factor);
+    let result;
+    match in_id {
+        kAudioUnitProperty_SetRenderCallback => {
+            assert_eq!(in_scope, kAudioUnitScope_Global);
+            assert_eq!(in_data_size, guest_size_of::<AURenderCallbackStruct>());
+            let render_callback = env.mem.read(in_data.cast::<AURenderCallbackStruct>());
+            host_object.render_callback = Some(render_callback);
+            result = 0;
+            // TraceSetCallback
+            println!("AUDIO_TRACE: AudioUnitSetProperty({:?}, kAudioUnitProperty_SetRenderCallback, {:?}, {:?}, {:?}, {:?}) -> {:?}", in_unit, in_scope, in_element, render_callback, in_data_size, result);
+        }
+        kAudioUnitProperty_StreamFormat => {
+            assert_eq!(in_data_size, guest_size_of::<AudioStreamBasicDescription>());
+            let stream_format = env.mem.read(in_data.cast::<AudioStreamBasicDescription>());
+            log_if_broken_audio_format(&stream_format);
+            match in_scope {
+                kAudioUnitScope_Global => host_object.global_stream_format = stream_format,
+                kAudioUnitScope_Output => host_object.output_stream_format = Some(stream_format),
+                kAudioUnitScope_Input => host_object.input_stream_format = Some(stream_format),
+                _ => unimplemented!("in_scope {}", in_scope),
+            };
+            result = 0;
+            // TraceSetFormat
+            println!("AUDIO_TRACE: AudioUnitSetProperty({:?}, kAudioUnitProperty_StreamFormat, {:?}, {:?}, {:?}, {:?}) -> {:?}", in_unit, in_scope, in_element, stream_format, in_data_size, result);
+        }
+        kAudioOutputUnitProperty_EnableIO => {
+            assert_eq!(in_scope, kAudioUnitScope_Output);
+            assert_eq!(in_data_size, guest_size_of::<u32>());
+            let enabled = env.mem.read(in_data.cast::<u32>());
+            // Output is enabled by default.
+            assert_eq!(enabled, 1);
+            result = 0;
+            // TraceEnableIO
+            println!("AUDIO_TRACE: AudioUnitSetProperty({:?}, kAudioOutputUnitProperty_EnableIO, {:?}, {:?}, {:?}, {:?}) -> {:?}", in_unit, in_scope, in_element, enabled, in_data_size, result);
         }
     }
 
@@ -747,6 +783,22 @@ pub fn setup_audio_unit_for_render(env: &mut Environment, ci: AudioUnit) {
         obj.last_render_time = Some(now);
     }
     obj.started = true;
+    let audio_components_state = audio_components::State::get(&mut env.framework_state);
+    let audio_unit_state = audio_components_state
+        .audio_component_instances
+        .get_mut(&ci)
+        .unwrap();
+    audio_unit_state.al_source = Some(source);
+    audio_unit_state.last_render_time = Some(Instant::now());
+    audio_unit_state.started = true;
+
+    let result = 0; // Success
+                    // TraceUnitStart
+    println!(
+        "AUDIO_TRACE: AudioOutputUnitStart({:?}) -> {:?}",
+        ci, result
+    );
+    result
 }
 
 fn AudioOutputUnitStop(env: &mut Environment, ci: AudioUnit) -> OSStatus {
@@ -1042,6 +1094,9 @@ fn render_audio_unit_buses(env: &mut Environment, audio_unit: AudioUnit) {
             }
         }
     }
+    // TraceUnitStop
+    println!("AUDIO_TRACE: AudioOutputUnitStop({:?}) -> {:?}", ci, result);
+    result
 }
 
 pub fn render_audio_unit(env: &mut Environment, audio_unit: AudioUnit) {

@@ -218,6 +218,29 @@ pub const CLASSES: ClassExports = objc_classes! {
     new
 }
 
++ (id)autoupdatingCurrentLocale {
+    // AliasToCurrentLocale
+    if let Some(locale) = State::get(env).current_locale {
+        locale
+    } else {
+        let countries = get_preferred_countries(env);
+        let country_code = ns_string::from_rust_string(env, countries[0].clone());
+        let languages = get_preferred_languages(env);
+        let language_code = ns_string::from_rust_string(env, languages[0].clone());
+        let host_object = NSLocaleHostObject {
+            country_code,
+            language_code,
+        };
+        let new_locale = env.objc.alloc_object(
+            this,
+            Box::new(host_object),
+            &mut env.mem
+        );
+        State::get(env).current_locale = Some(new_locale);
+        new_locale
+    }
+}
+
 + (id)systemLocale {
     if let Some(locale) = State::get(env).system_locale {
         return locale;

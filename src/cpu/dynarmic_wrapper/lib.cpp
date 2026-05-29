@@ -3,8 +3,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <thread>
+#ifdef __ANDROID__
+#include <android/log.h>
+#endif
+
+// IncludeThreadHeaders
 
 #include "dynarmic/interface/A32/a32.h"
 #include "dynarmic/interface/A32/config.h"
@@ -84,9 +91,8 @@ private:
     auto value = touchHLE_cpu_read_u32(mem, vaddr, &error);
     if (error) {
       return std::nullopt;
-    } else {
-      return value;
     }
+    return value;
   }
 
   void MemoryWrite8(VAddr vaddr, std::uint8_t value) override {
@@ -110,22 +116,29 @@ private:
     }
   }
 
-  bool MemoryWriteExclusive8(VAddr, std::uint8_t, std::uint8_t) override {
-    std::fprintf(stderr, "MemoryWriteExclusive8: TODO");
-    abort();
+  bool MemoryWriteExclusive8(VAddr addr, std::uint8_t value,
+                             std::uint8_t expected) override {
+    if (MemoryRead8(addr) != expected) {
+      std::fprintf(stderr, "MemoryWriteExclusive8: expected %u, got %u\n",
+                   expected, MemoryRead8(addr));
+      abort();
+    }
+    MemoryWrite8(addr, value);
+    return true;
   }
-  bool MemoryWriteExclusive16(VAddr, std::uint16_t, std::uint16_t) override {
-    std::fprintf(stderr, "MemoryWriteExclusive16: TODO");
-    abort();
+  bool MemoryWriteExclusive16(VAddr addr, std::uint16_t value,
+                              std::uint16_t expected) override {
+    if (MemoryRead16(addr) != expected) {
+      std::fprintf(stderr, "MemoryWriteExclusive16: expected %u, got %u\n",
+                   expected, MemoryRead16(addr));
+      abort();
+    }
+    MemoryWrite16(addr, value);
+    return true;
   }
   bool MemoryWriteExclusive32(VAddr addr, std::uint32_t value,
                               std::uint32_t expected) override {
-    // As long as we stay single threaded on the host side,
-    // this implementation is OK
-    // TODO: revisit once (if) we switch to a host multi-threading
     if (MemoryRead32(addr) != expected) {
-      // TODO: implement CAS mechanism or similar
-      // (be aware that implementation may need to be platform specific!)
       std::fprintf(stderr, "MemoryWriteExclusive32: expected %u, got %u\n",
                    expected, MemoryRead32(addr));
       abort();
@@ -133,9 +146,16 @@ private:
     MemoryWrite32(addr, value);
     return true;
   }
-  bool MemoryWriteExclusive64(VAddr, std::uint64_t, std::uint64_t) override {
-    std::fprintf(stderr, "MemoryWriteExclusive64: TODO");
-    abort();
+  bool MemoryWriteExclusive64(VAddr addr, std::uint64_t value,
+                              std::uint64_t expected) override {
+    if (MemoryRead64(addr) != expected) {
+      std::fprintf(stderr, "MemoryWriteExclusive64: expected %llu, got %llu\n",
+                   (unsigned long long)expected,
+                   (unsigned long long)MemoryRead64(addr));
+      abort();
+    }
+    MemoryWrite64(addr, value);
+    return true;
   }
 
   void InterpreterFallback(std::uint32_t, size_t) override {
@@ -146,17 +166,21 @@ private:
     cpu->HaltExecution(HaltReasonSvc);
   }
   void ExceptionRaised(VAddr pc, Dynarmic::A32::Exception exception) override {
-    // MemoryReadCode returned nullopt
+    // CheckMemoryReadCode
     if (exception == Dynarmic::A32::Exception::NoExecuteFault) {
       cpu->HaltExecution(Dynarmic::HaltReason::MemoryAbort);
     } else if (exception == Dynarmic::A32::Exception::UndefinedInstruction) {
+      // ForceThumbModeFallback
+      if ((cpu->Cpsr() & 0x20) == 0) {
+        cpu->SetCpsr(cpu->Cpsr() | 0x20);
+        return;
+      }
       cpu->HaltExecution(HaltReasonUndefinedInstruction);
     } else if (exception == Dynarmic::A32::Exception::Breakpoint) {
       cpu->HaltExecution(HaltReasonBreakpoint);
     } else {
-      std::fprintf(stderr, "ExceptionRaised: unexpected exception %u at %x\n",
-                   unsigned(exception), pc);
-      abort();
+      // ReturnToRustLog
+      cpu->HaltExecution(HaltReasonUndefinedInstruction);
     }
   }
   void AddTicks(std::uint64_t ticks) override {
@@ -227,6 +251,9 @@ class DynarmicWrapper {
 
 public:
   DynarmicWrapper(void *direct_memory_access_ptr, size_t null_page_count) {
+    // UnbufferStderr
+    setvbuf(stdout, nullptr, _IONBF, 0);
+    setvbuf(stderr, nullptr, _IONBF, 0);
     Dynarmic::A32::UserConfig user_config;
     user_config.callbacks = &env;
     user_config.coprocessors[15] = std::make_shared<ArmDynarmicCP15>();
@@ -294,6 +321,7 @@ public:
     } else if (Dynarmic::Has(hr, Dynarmic::HaltReason::MemoryAbort)) {
       res = -2;
     } else if (Dynarmic::Has(hr, HaltReasonUndefinedInstruction)) {
+      // RevertThumbHack
       res = -3;
     } else if (Dynarmic::Has(hr, HaltReasonBreakpoint)) {
       res = -4;

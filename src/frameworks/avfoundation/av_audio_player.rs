@@ -100,6 +100,9 @@ pub const CLASSES: ClassExports = objc_classes! {
     let path: id = msg![env; url path];
     let path_str = ns_string::to_rust_string(env, path);
     log!("[(AVAudioPlayer*){:?} initWithContentsOfURL:{:?} {} outError:{:?}]", this, url, path_str, outError);
+    // TraceAvAudioInit
+    println!("AUDIO_TRACE: AVAudioPlayer initWithContentsOfURL: {}", path_str);
+    log_dbg!("[(AVAudioPlayer*){:?} initWithContentsOfURL:{:?} {} outError:{:?}]", this, url, path_str, outError);
 
     retain(env, url);
     env.objc.borrow_mut::<AVAudioPlayerHostObject>(this).audio_file_url = url;

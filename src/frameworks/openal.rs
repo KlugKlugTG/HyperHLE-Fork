@@ -167,6 +167,9 @@ fn alcOpenDevice(env: &mut Environment, devicename: ConstPtr<u8>) -> MutPtr<Gues
     let guest_res = env.mem.alloc_and_write(GuestALCdevice { _filler: 0 });
     State::get(env).devices.insert(guest_res, res);
     log_dbg!("alcOpenDevice(NULL) => {:?} (хост: {:?})", guest_res, res,);
+    // TraceAlcOpenDevice
+    println!("AUDIO_TRACE: alcOpenDevice(NULL) => {:?}", guest_res);
+    log_dbg!("alcOpenDevice(NULL) => {:?} (host: {:?})", guest_res, res,);
     guest_res
 }
 fn alcCloseDevice(env: &mut Environment, device: MutPtr<GuestALCdevice>) -> bool {
@@ -380,6 +383,12 @@ fn alcCreateContext(
 
     let guest_res = env.mem.alloc_and_write(GuestALCcontext { _filler: 0 });
 
+    // TraceAlcCreateContext
+    println!(
+        "AUDIO_TRACE: alcCreateContext({:?}) => {:?}",
+        device, guest_res
+    );
+
     log_dbg!(
         "alcCreateContext({:?}, ...) => {:?} (хост: {:?})",
         device,
@@ -483,6 +492,11 @@ fn alcMakeContextCurrent(env: &mut Environment, context: MutPtr<GuestALCcontext>
     } else {
         false
     };
+    // TraceAlcMakeCurrent
+    println!(
+        "AUDIO_TRACE: alcMakeContextCurrent({:?}) => {}",
+        context, res
+    );
     log_dbg!("alcMakeContextCurrent({:?}) => {}", context, res);
     res
 }
@@ -785,6 +799,9 @@ fn alGenSources(env: &mut Environment, n: ALsizei, sources: MutPtr<ALuint>) {
             return;
         }
     };
+    // TraceAlGenSources
+    println!("AUDIO_TRACE: alGenSources({})", n);
+    let n_usize: GuestUSize = n.try_into().unwrap();
     let sources = env.mem.ptr_at_mut(sources, n_usize);
     try_get_context!(env, context);
     unsafe { context.GenSources(n, sources) };
@@ -923,6 +940,8 @@ fn alGetSourceiv(env: &mut Environment, source: ALuint, param: ALenum, values: M
 }
 
 fn alSourcePlay(env: &mut Environment, source: ALuint) {
+    // TraceAlSourcePlay
+    println!("AUDIO_TRACE: alSourcePlay(source: {})", source);
     try_get_context!(env, context);
     unsafe { context.SourcePlay(source) };
     // Streaming sources call SourcePlay every audio buffer refill, so the
@@ -1092,6 +1111,12 @@ fn alBufferData(
             return;
         }
     };
+    // TraceAlBufferData
+    println!(
+        "AUDIO_TRACE: alBufferData(buffer: {}, format: {:#x}, size: {}, samplerate: {})",
+        buffer, format, size, samplerate
+    );
+    let size_usize: GuestUSize = size.try_into().unwrap();
     let data_ptr: *const ALvoid = if data.is_null() {
         std::ptr::null()
     } else {

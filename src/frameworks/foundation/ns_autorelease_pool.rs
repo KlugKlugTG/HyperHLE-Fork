@@ -105,6 +105,12 @@ pub const CLASSES: ClassExports = objc_classes! {
     msg![env; this release]
 }
 
+// Хак для защиты от Use-After-Free зомби-строк
+- (id)stringByAppendingFormat:(id)_format {
+    log!("Zombie object NSAutoreleasePool called as NSString!");
+    crate::objc::nil
+}
+
 - (())dealloc {
     let current_thread = env.current_thread;
     log_dbg!(

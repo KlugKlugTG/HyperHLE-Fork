@@ -10,6 +10,7 @@
 //! - [View Controller Programming Guide for iOS (Legacy)](https://developer.apple.com/library/archive/documentation/WindowsViews/Conceptual/ViewControllerPGforiOSLegacy/BasicViewControllers/BasicViewControllers.html)
 
 use crate::frameworks::core_graphics::{CGRect, CGSize};
+// RemoveUnusedImport
 use crate::frameworks::foundation::ns_objc_runtime::NSStringFromClass;
 use crate::frameworks::foundation::ns_string::{from_rust_string, get_static_str, to_rust_string};
 use crate::frameworks::foundation::NSUInteger;
@@ -271,6 +272,39 @@ pub const CLASSES: ClassExports = objc_classes! {
 
     let view = msg_class![env; UIView alloc];
     let view: id = msg![env; view initWithFrame:bounds];
+    // As a last resort, use plain UIVIew for the root view
+    let class: Class = msg![env; this class];
+    let class_name_str = env.objc.get_class_name(class).to_string();
+    log!("Unable to load {:?} {} view controller's view by nib, using fallback", this, class_name_str);
+
+    // FixNibEaglLayer
+    let mut view_class: Class = msg_class![env; UIView class];
+    if class_name_str.contains("EAGL") || class_name_str.contains("GL") {
+        let eagl_class = env.objc.link_class("EAGLView", false, &mut env.mem);
+        if eagl_class != nil {
+            view_class = eagl_class;
+            log!("Fallback to EAGLView class instead of UIView!");
+        }
+    }
+    let view_alloc: id = msg![env; view_class alloc];
+
+    // FixLandscapeFrame
+    let app_frame = crate::frameworks::core_graphics::CGRect {
+        origin: crate::frameworks::core_graphics::CGPoint { x: 0.0, y: 0.0 },
+        size: crate::frameworks::core_graphics::CGSize { width: 480.0, height: 320.0 },
+    };
+
+    let view: id = msg![env; view_alloc initWithFrame:app_frame];
+
+    let sel_opaque = env.objc.lookup_selector("setOpaque:").unwrap();
+    let _: () = crate::objc::msg_send_no_type_checking(env, (view, sel_opaque, 1u32));
+
+    // ForceTouchInteraction
+    let sel_user = env.objc.lookup_selector("setUserInteractionEnabled:").unwrap();
+    let _: () = crate::objc::msg_send_no_type_checking(env, (view, sel_user, 1u32));
+    let sel_multi = env.objc.lookup_selector("setMultipleTouchEnabled:").unwrap();
+    let _: () = crate::objc::msg_send_no_type_checking(env, (view, sel_multi, 1u32));
+
     () = msg![env; this setView:view];
     release(env, view); // setView сделает retain
 }
@@ -436,10 +470,27 @@ pub const CLASSES: ClassExports = objc_classes! {
     // TODO
 }
 
+// Заглушка для панели навигации
+- (id)navigationItem {
+    log!("TODO: [(UIViewController*){:?} navigationItem]", this);
+        nil
+        }
+
 - (bool)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)interface_orientation {
     interface_orientation == 3 || interface_orientation == 4
 }
 
+// ДОБАВЛЕННЫЙ МЕТОД:
+- (i32)interfaceOrientation {
+    log!("TODO: [(UIViewController*){:?} interfaceOrientation] -> 3 (LandscapeRight)", this);
+        3 // UIInterfaceOrientationLandscapeRight
+        }
+
+// UIResponder implementation
+// From the Apple UIView docs regarding [UIResponder nextResponder]:
+// "UIViewController similarly implements the method
+// and returns its view’s superview."
+// https://developer.apple.com/documentation/uikit/uiresponder/next?language=objc
 - (id)nextResponder {
     let view = msg![env; this view];
     let next_responder = msg![env; view superview];

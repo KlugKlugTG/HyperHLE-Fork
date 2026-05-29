@@ -77,6 +77,20 @@ pub const CLASSES: ClassExports = objc_classes! {
     let path: id = msg![env; bundle pathForResource:name ofType:nil];
     let name_str = ns_string::to_rust_string(env, name).to_string();
 
++ (id)imageWithCGImage:(CGImageRef)cg_image {
+    let new: id = msg![env; this alloc];
+    let new: id = msg![env; new initWithCGImage:cg_image];
+    autorelease(env, new)
+}
+
++ (id)imageNamed:(id)name {
+    let bundle: id = msg_class![env; NSBundle mainBundle];
+    let path: id = msg![env; bundle pathForResource:name ofType:nil];
+    let name_str = ns_string::to_rust_string(env, name).to_string();
+    if path == nil {
+        log!("Warning: [UIImage imageNamed:{:?}] => nil", name_str);
+        return nil;
+    }
     if State::get(env).cached_images.len() > CACHE_SIZE {
         let cache = std::mem::take(&mut State::get_mut(env).cached_images);
         for (_, img) in cache {
@@ -104,13 +118,13 @@ pub const CLASSES: ClassExports = objc_classes! {
     *State::get(env).cached_images.get(&name_str).unwrap()
 }
 
-+ (id)imageWithContentsOfFile:(id)path { // NSString*
++ (id)imageWithContentsOfFile:(id)path {
     let new: id = msg![env; this alloc];
     let new: id = msg![env; new initWithContentsOfFile:path];
     autorelease(env, new)
 }
 
-+ (id)imageWithData:(id)data { // NSData*
++ (id)imageWithData:(id)data {
     let new: id = msg![env; this alloc];
     let new: id = msg![env; new initWithData:data];
     autorelease(env, new)
@@ -141,6 +155,12 @@ pub const CLASSES: ClassExports = objc_classes! {
 // iOS 4.0+
 + (id)imageWithCGImage:(CGImageRef)cg_image scale:(CGFloat)scale {
     msg![env; this imageWithCGImage:cg_image scale:scale orientation:(0i32)]
+- (())dealloc {
+    let &UIImageHostObject { cg_image } = env.objc.borrow(this);
+    if cg_image != nil {
+        CGImageRelease(env, cg_image);
+    }
+    env.objc.dealloc_object(this, &mut env.mem)
 }
 
 // MARK: - Initializers
@@ -152,10 +172,14 @@ pub const CLASSES: ClassExports = objc_classes! {
     host.orientation = 0;
     host.left_cap_width = 0;
     host.top_cap_height = 0;
+    if cg_image != nil {
+        CGImageRetain(env, cg_image);
+    }
+    env.objc.borrow_mut::<UIImageHostObject>(this).cg_image = cg_image;
     this
 }
 
-- (id)initWithContentsOfFile:(id)path { // NSString*
+- (id)initWithContentsOfFile:(id)path {
     if path == nil {
         env.objc.borrow_mut::<UIImageHostObject>(this).cg_image = get_dummy_cg_image(env);
         return this;
@@ -197,6 +221,30 @@ pub const CLASSES: ClassExports = objc_classes! {
         width: width as _,
         height: height as _,
     }
+}
+
+    let path = ns_string::to_rust_string(env, path);
+    let Ok(bytes) = env.fs.read(GuestPath::new(&path)) else {
+        release(env, this);
+        return nil;
+    };
+    let image = Image::from_bytes(&bytes).unwrap();
+    let cg_image = cg_image::from_image(env, image);
+    env.objc.borrow_mut::<UIImageHostObject>(this).cg_image = cg_image;
+    this
+}
+
+- (id)initWithData:(id)data {
+    let slice = ns_data::to_rust_slice(env, data);
+    let image = Image::from_bytes(slice).unwrap();
+    let cg_image = cg_image::from_image(env, image);
+    env.objc.borrow_mut::<UIImageHostObject>(this).cg_image = cg_image;
+    this
+}
+
+- (id)stretchableImageWithLeftCapWidth:(NSInteger)_leftCapWidth
+                          topCapHeight:(NSInteger)_topCapHeight {
+    retain(env, this)
 }
 
 - (CGImageRef)CGImage {
@@ -247,6 +295,23 @@ pub const CLASSES: ClassExports = objc_classes! {
         }
     };
     CGContextDrawImage(env, context, rect, image);
+    0
+}
+
+- (CGSize)size {
+    let image = env.objc.borrow::<UIImageHostObject>(this).cg_image;
+    if image == nil {
+        return CGSize { width: 0.0, height: 0.0 };
+    }
+    let (width, height) = cg_image::borrow_image(&env.objc, image).dimensions();
+    CGSize {
+        width: width as _,
+        height: height as _,
+    }
+}
+
+- (CGFloat)scale {
+    1.0
 }
 
 - (())drawInRect:(CGRect)rect {
@@ -258,7 +323,9 @@ pub const CLASSES: ClassExports = objc_classes! {
     // частей (nine-patch)
     // и отрисовывать через CGContextDrawImage кусками. Пока рисуем целиком.
     let image = env.objc.borrow::<UIImageHostObject>(this).cg_image;
-    CGContextDrawImage(env, context, rect, image);
+    if image != nil && context != nil {
+        CGContextDrawImage(env, context, rect, image);
+    }
 }
 
 // `blendMode` and `alpha` arguments are accepted and validated, but applying
@@ -277,14 +344,16 @@ pub const CLASSES: ClassExports = objc_classes! {
     let context = UIGraphicsGetCurrentContext(env);
     if context == nil { return; }
     let image = env.objc.borrow::<UIImageHostObject>(this).cg_image;
-    let rect = CGRect {
-        origin: point,
-        size: CGSize {
-            width: CGImageGetWidth(env, image) as CGFloat,
-            height: CGImageGetHeight(env, image) as CGFloat,
-        }
-    };
-    CGContextDrawImage(env, context, rect, image);
+    if image != nil && context != nil {
+        let rect = CGRect {
+            origin: point,
+            size: CGSize {
+                width: CGImageGetWidth(env, image) as CGFloat,
+                height: CGImageGetHeight(env, image) as CGFloat,
+            }
+        };
+        CGContextDrawImage(env, context, rect, image);
+    }
 }
 
 // Apple: "Draws the image, tiled, in a rectangle." The receiver's CGImage is
@@ -359,6 +428,14 @@ pub const CLASSES: ClassExports = objc_classes! {
     }
 
     nil
+@implementation UIImageNibPlaceholder: UIImage
+
+- (id)initWithCoder:(id)coder {
+    release(env, this);
+    let key_ns_string = get_static_str(env, "UIResourceName");
+    let resource_name: id = msg![env; coder decodeObjectForKey:key_ns_string];
+    let res = msg_class![env; UIImage imageNamed:resource_name];
+    retain(env, res)
 }
 
 @end

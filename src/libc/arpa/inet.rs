@@ -72,6 +72,16 @@ fn inet_aton(env: &mut Environment, str: ConstPtr<u8>, addr_out: MutPtr<in_addr>
         Err(_) => {
             log!("inet_aton({:?}): invalid address, returning 0", s);
             0
+    let inet_addr_str = env.mem.cstr_at_utf8(str).unwrap_or("");
+    match inet_addr_str.parse::<Ipv4Addr>() {
+        Ok(address) => {
+            let res = u32::from_le_bytes(address.octets());
+            log_dbg!("inet_addr({:?}) => {}", inet_addr_str, res);
+            res
+        }
+        Err(_) => {
+            log_dbg!("inet_addr({:?}) => INADDR_NONE", inet_addr_str);
+            0xffffffff // INADDR_NONE
         }
     }
 }
@@ -240,6 +250,21 @@ fn inet_network(env: &mut Environment, str: ConstPtr<u8>) -> in_addr_t {
         Err(_) => {
             log!("inet_network({:?}): invalid, returning INADDR_NONE", s);
             INADDR_NONE
+    assert_eq!(af, AF_INET);
+    let str = env.mem.cstr_at_utf8(src.cast()).unwrap_or("");
+    log_dbg!("inet_pton '{}'", str);
+    match str.parse::<Ipv4Addr>() {
+        Ok(address) => {
+            let addr = in_addr {
+                s_addr: u32::from_le_bytes(address.octets()),
+            };
+            let addr_ptr: MutPtr<in_addr> = dst.cast();
+            env.mem.write(addr_ptr, addr);
+            1 // success
+        }
+        Err(_) => {
+            log_dbg!("inet_pton: invalid address");
+            0 // return 0 on invalid network address
         }
     }
 }

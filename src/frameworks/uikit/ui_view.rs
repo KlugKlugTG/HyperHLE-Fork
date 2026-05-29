@@ -128,6 +128,8 @@ pub(super) struct UIViewHostObject {
     accessibility_view_is_modal: bool,
     /// `BOOL shouldGroupAccessibilityChildren` (iOS 6+); default `NO`.
     should_group_accessibility_children: bool,
+    // RetinaScaleStub
+    content_scale_factor: CGFloat,
 }
 impl HostObject for UIViewHostObject {}
 impl Default for UIViewHostObject {
@@ -161,6 +163,8 @@ impl Default for UIViewHostObject {
             accessibility_elements_hidden: false,
             accessibility_view_is_modal: false,
             should_group_accessibility_children: false,
+            // RetinaScaleStub
+            content_scale_factor: 1.0,
         }
     }
 }
@@ -264,6 +268,11 @@ pub const CLASSES: ClassExports = objc_classes! {
 + (())commitAnimations {
     let block = std::mem::take(&mut env.framework_state.uikit.ui_view.animation_block);
     if !block.in_block { return; }
++ (())setAnimationsEnabled:(bool)enabled {
+    log!("TODO: +[UIView setAnimationsEnabled:{}]", enabled);
+}
+
+// TODO: accessors etc
 
     // Fire `setAnimationWillStartSelector:` synchronously. This is good enough
     // for the apps that touchHLE supports; iOS would normally fire it at the
@@ -1209,6 +1218,16 @@ pub const CLASSES: ClassExports = objc_classes! {
         accessibility_label, accessibility_hint, accessibility_value,
         accessibility_identifier, accessibility_language,
         ..
+        layer,
+        superview,
+        subviews,
+        view_controller,
+        tag: _,
+        clears_context_before_drawing: _,
+        user_interaction_enabled: _,
+        multiple_touch_enabled: _,
+        // IgnoreScaleField
+        content_scale_factor: _,
     } = std::mem::take(env.objc.borrow_mut(this));
     release(env, layer);
 
@@ -1409,6 +1428,26 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (())drawRect:(CGRect)_rect { }
 
 - (())drawLayer:(id)layer inContext:(CGContextRef)context {
+- (CGFloat)contentScaleFactor {
+    env.objc.borrow::<UIViewHostObject>(this).content_scale_factor
+}
+- (())setContentScaleFactor:(CGFloat)scale {
+    env.objc.borrow_mut::<UIViewHostObject>(this).content_scale_factor = scale;
+    let layer = env.objc.borrow::<UIViewHostObject>(this).layer;
+    let layer_class = msg![env; layer class];
+    if env.objc.class_has_method_named(layer_class, "setContentsScale:") {
+        () = msg![env; layer setContentsScale:scale]; // SyncScaleLayer
+    }
+}
+
+// Drawing stuff that views should override
+- (())drawRect:(CGRect)_rect {
+    // default implementation does nothing
+}
+
+// CALayerDelegate implementation
+- (())drawLayer:(id)layer // CALayer*
+      inContext:(CGContextRef)context {
     let mut bounds: CGRect = msg![env; layer bounds];
     bounds.origin = CGPoint { x: 0.0, y: 0.0 };
 
@@ -1431,6 +1470,17 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (id)hitTest:(CGPoint)point withEvent:(id)event {
     let is_inside: bool = msg![env; this pointInside:point withEvent:event];
+- (id)hitTest:(CGPoint)point
+    withEvent:(id)event { // UIEvent* (possibly nil)
+    let hidden: bool = msg![env; this isHidden];
+    let alpha: CGFloat = msg![env; this alpha];
+    if hidden || alpha < 0.01 {
+        return nil; // ForceTouchIgnoreAlpha
+    }
+    if !msg![env; this pointInside:point withEvent:event] {
+        return nil;
+    }
+    // TODO: avoid copy somehow?
     let subviews = env.objc.borrow::<UIViewHostObject>(this).subviews.clone();
 
     for subview in subviews.into_iter().rev() {

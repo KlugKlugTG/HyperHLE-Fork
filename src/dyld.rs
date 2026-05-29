@@ -144,6 +144,7 @@ pub enum HostConstant {
     NSString(&'static str),
     NullPtr,
     Custom(fn(&mut Environment) -> ConstVoidPtr),
+    Bytes(&'static [u8]),
 }
 
 /// Type for lists of constants exported by host implementations of  dynamic
@@ -1079,6 +1080,13 @@ impl Dyld {
                     null_ptr_ptr.cast().cast_const()
                 }
                 HostConstant::Custom(f) => f(env),
+                HostConstant::Bytes(bytes) => {
+                    let ptr = env.mem.alloc(bytes.len() as u32);
+                    for (i, &b) in bytes.iter().enumerate() {
+                        env.mem.write(ptr.cast::<u8>() + (i as u32), b);
+                    }
+                    ptr.cast_const()
+                }
             };
             env.mem.write(symbol_ptr_ptr, symbol_ptr.cast());
         }

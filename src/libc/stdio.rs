@@ -93,6 +93,15 @@ impl State {
             );
         }
         self.file_streams.get_mut(&file_ptr).unwrap()
+        let FILE { fd } = mem.read(file_ptr);
+
+        // Hack: create dummy file.
+        self.file_streams.entry(file_ptr).or_insert_with(|| {
+            log!("Unknown file fd {}. Creating dummy.", fd);
+            FILEHostObject {
+                pushbacks: Vec::new(),
+            }
+        })
     }
 }
 

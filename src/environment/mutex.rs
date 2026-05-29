@@ -160,7 +160,6 @@ impl Environment {
         let mutex: &mut _ = self.mutex_state.mutexes.get_mut(&mutex_id).unwrap();
 
         let Some((locking_thread, lock_count)) = mutex.locked else {
-            log_dbg!("Locked mutex #{} for thread {}.", mutex_id, current_thread);
             mutex.locked = Some((current_thread, NonZeroU32::new(1).unwrap()));
             return Ok(1);
         };
@@ -181,32 +180,21 @@ impl Environment {
                 }
                 MutexType::PTHREAD_MUTEX_ERRORCHECK => {
                     log_dbg!("Attempted to lock error-checking mutex #{} for thread {}, already locked by same thread! Returning EDEADLK.", mutex_id, current_thread);
+                MutexType::PTHREAD_MUTEX_NORMAL | MutexType::PTHREAD_MUTEX_ERRORCHECK => {
                     return Err(EDEADLK);
                 }
                 MutexType::PTHREAD_MUTEX_RECURSIVE => {
-                    log_dbg!(
-                        "Increasing lock level on recursive mutex #{}, currently locked by thread {}.",
-                        mutex_id,
-                        locking_thread,
-                    );
                     mutex.locked = Some((locking_thread, lock_count.checked_add(1).unwrap()));
                     return Ok(lock_count.get() + 1);
                 }
             }
         }
 
-        // Add to the waiting count, so that the mutex isn't destroyed. This is
-        // subtracted in relock_unblocked_mutex.
         mutex.waiting_count += 1;
-
-        // Mutex is already locked, block thread until it isn't.
         self.block_on_mutex(mutex_id);
-        // Lock count is always 1 after a thread-blocking lock.
         Ok(1)
     }
 
-    /// Unlocks a mutex and returns the lock count or an error (as errno).
-    /// Similar to `pthread_mutex_unlock`, but for host code.
     pub fn unlock_mutex(&mut self, mutex_id: MutexId) -> Result<u32, i32> {
         let current_thread = self.current_thread;
         let mutex: &mut _ = self.mutex_state.mutexes.get_mut(&mutex_id).unwrap();
@@ -229,43 +217,21 @@ impl Environment {
                     return Err(EPERM);
                 }
             }
+            return Err(EPERM);
         };
 
         if locking_thread != current_thread {
-            match mutex.type_ {
-                MutexType::PTHREAD_MUTEX_NORMAL => {
-                    // This case is undefined,
-                    // but tests on macOS/iOS shows it is allowed!
-                    log!(
-                        "Warning: Allowing to unlock non-error-checking mutex #{mutex_id} for thread {current_thread}, locked by different thread {locking_thread}!",
-                    );
-                }
-                MutexType::PTHREAD_MUTEX_ERRORCHECK | MutexType::PTHREAD_MUTEX_RECURSIVE => {
-                    log_dbg!(
-                        "Attempted to unlock error-checking or recursive mutex #{} for thread {}, locked by different thread {}! Returning EPERM.",
-                        mutex_id, current_thread, locking_thread,
-                    );
-                    return Err(EPERM);
-                }
+            if mutex.type_ != MutexType::PTHREAD_MUTEX_NORMAL {
+                return Err(EPERM);
             }
+            // AllowCrossThreadUnlock
+            log_dbg!("Cross-thread unlock allowed for NORMAL mutex #{}", mutex_id);
         }
 
         if lock_count.get() == 1 {
-            log_dbg!(
-                "Unlocked mutex #{} for thread {}.",
-                mutex_id,
-                current_thread
-            );
             mutex.locked = None;
             Ok(0)
         } else {
-            assert!(mutex.type_ == MutexType::PTHREAD_MUTEX_RECURSIVE);
-            log_dbg!(
-                "Decreasing lock level on recursive mutex #{} (count {}), currently locked by thread {}.",
-                mutex_id,
-                lock_count,
-                locking_thread
-            );
             mutex.locked = Some((
                 locking_thread,
                 NonZeroU32::new(lock_count.get() - 1).unwrap(),

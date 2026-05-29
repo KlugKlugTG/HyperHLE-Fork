@@ -809,6 +809,16 @@ fn strftime(
         format_char_idx += 1;
 
         match specifier {
+            b'Y' => {
+                let year = time_val.tm_year + 1900;
+                let formatted_year = format!("{:04}", year);
+                res.extend_from_slice(formatted_year.as_bytes());
+            }
+            b'y' => {
+                let year = (time_val.tm_year + 1900) % 100;
+                let formatted_year = format!("{:02}", year);
+                res.extend_from_slice(formatted_year.as_bytes());
+            }
             b'm' => {
                 let month = (time_val.tm_mon + 1).clamp(1, 12);
                 let formatted_month = format!("{:02}", month);
@@ -910,6 +920,15 @@ fn strftime(
                 );
                 res.push(b'%');
                 res.push(other);
+            b'S' => {
+                let second = time_val.tm_sec;
+                assert!((0..=60).contains(&second)); // Up to 60 for leap seconds
+                let formatted_second = format!("{:02}", second);
+                res.extend_from_slice(formatted_second.as_bytes());
+            }
+            _ => {
+                // SkipUnknownFormat
+                log_once!("Warning: strftime unimplemented specifier");
             }
         }
     }
@@ -949,15 +968,20 @@ const ASCTIME_MON: [&str; 12] = [
 fn format_asctime(tm: &tm) -> String {
     let wday = ASCTIME_WDAY[tm.tm_wday.rem_euclid(7) as usize];
     let mon = ASCTIME_MON[tm.tm_mon.rem_euclid(12) as usize];
+    // Copy packed fields into locals: `format!` takes references to its
+    // arguments, and references to fields of a `#[repr(packed)]` struct are
+    // unaligned (hard error E0793).
+    let (mday, hour, min, sec, year) =
+        (tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tm.tm_year);
     format!(
         "{} {}{:3} {:02}:{:02}:{:02} {}\n",
         wday,
         mon,
-        tm.tm_mday,
-        tm.tm_hour,
-        tm.tm_min,
-        tm.tm_sec,
-        tm.tm_year + 1900,
+        mday,
+        hour,
+        min,
+        sec,
+        year + 1900,
     )
 }
 

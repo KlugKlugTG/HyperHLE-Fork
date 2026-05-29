@@ -80,6 +80,21 @@ fn mkdir(env: &mut Environment, path: ConstPtr<u8>, mode: mode_t) -> i32 {
         return -1;
     }
 
+    // BypassMkdirLoop
+    let path_str = match env.mem.cstr_at_utf8(path) {
+        Ok(s) => {
+            if s.contains("//") {
+                return 0;
+            }
+            s
+        }
+        Err(_) => {
+            set_errno(env, ENOENT);
+            return 0;
+        }
+    };
+
+    // TODO: respect the mode
     match env.fs.create_dir(GuestPath::new(&path_str)) {
         Ok(()) => {
             log_dbg!("mkdir({:?} {:?}, {:#x}) => 0", path, path_str, mode);
@@ -124,6 +139,21 @@ fn mkdir(env: &mut Environment, path: ConstPtr<u8>, mode: mode_t) -> i32 {
                 }
             }
             -1
+            log!(
+                "Warning: mkdir({:?} {:?}, {:#x}) failed with {:?}, faking success",
+                path,
+                path_str,
+                mode,
+                err
+            );
+            match err {
+                FsError::AlreadyExist => set_errno(env, EEXIST),
+                FsError::NonexistentParentDir => set_errno(env, ENOENT),
+                FsError::ReadonlyParentDir => set_errno(env, EACCES),
+                _ => (),
+            };
+            // FakeSuccessOnFail
+            0
         }
     }
 }

@@ -1098,6 +1098,14 @@ fn fcntl(
             set_errno(env, EINVAL);
             return -1;
         }
+        _ => {
+            // BypassFcntl
+            println!(
+                "WARNING: Unimplemented fcntl cmd: {} for fd: {}. Bypassing.",
+                cmd, fd
+            );
+            return 0;
+        }
     }
     0
 }

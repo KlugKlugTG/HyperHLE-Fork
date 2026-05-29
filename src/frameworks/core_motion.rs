@@ -30,6 +30,7 @@ use crate::objc::{
 };
 use crate::Environment;
 use std::time::Instant;
+use crate::objc::{id, nil, objc_classes, ClassExports};
 
 pub const DYLIB: HostDylib = HostDylib {
     path: "/System/Library/Frameworks/CoreMotion.framework/CoreMotion",
@@ -317,6 +318,9 @@ const CLASSES: ClassExports = objc_classes! {
 - (bool)isGyroAvailable {
     // No gyroscope emulation available on desktop hosts.
     false
+    // FakeGyroCheck
+    log!("TODO: [(CMMotionManager *){:?} isGyroAvailable] -> true", this);
+    true
 }
 
 - (bool)isDeviceMotionAvailable {
@@ -428,6 +432,80 @@ const CLASSES: ClassExports = objc_classes! {
 // the property be queryable even when the hardware is absent.
 - (bool)isMagnetometerActive {
     false
+    // FakeDeviceMotion
+    log!("TODO: [(CMMotionManager *){:?} isDeviceMotionAvailable] -> true", this);
+    true
+}
+- (bool)isAccelerometerAvailable {
+    // FakeAccelerometerCheck
+    log!("TODO: [(CMMotionManager *){:?} isAccelerometerAvailable] -> true", this);
+    true
+}
+
+- (())setAccelerometerUpdateInterval:(f64)interval {
+    // FakeAccelInterval
+    log!("TODO: [(CMMotionManager *){:?} setAccelerometerUpdateInterval:{}]", this, interval);
+}
+
+- (())startAccelerometerUpdates {
+    // FakeAccelStart
+    log!("TODO: [(CMMotionManager *){:?} startAccelerometerUpdates]", this);
+}
+
+- (())setGyroUpdateInterval:(f64)interval {
+    // FakeGyroInterval
+    log!("TODO: [(CMMotionManager *){:?} setGyroUpdateInterval:{}]", this, interval);
+}
+
+- (())startGyroUpdates {
+    // FakeGyroStart
+    log!("TODO: [(CMMotionManager *){:?} startGyroUpdates]", this);
+}
+
+- (())setDeviceMotionUpdateInterval:(f64)interval {
+    // FakeMotionInterval
+    log!("TODO: [(CMMotionManager *){:?} setDeviceMotionUpdateInterval:{}]", this, interval);
+}
+
+- (())startDeviceMotionUpdates {
+    // FakeMotionStart
+    log!("TODO: [(CMMotionManager *){:?} startDeviceMotionUpdates]", this);
+}
+
+- (bool)isDeviceMotionActive {
+    // FakeMotionActive
+    log!("TODO: [(CMMotionManager *){:?} isDeviceMotionActive] -> true", this);
+    true
+}
+
+- (bool)isAccelerometerActive {
+    // FakeAccelActive
+    log!("TODO: [(CMMotionManager *){:?} isAccelerometerActive] -> true", this);
+    true
+}
+
+- (bool)isGyroActive {
+    // FakeGyroActive
+    log!("TODO: [(CMMotionManager *){:?} isGyroActive] -> true", this);
+    true
+}
+
+- (id)deviceMotion {
+    // FakeDeviceMotion
+    log!("TODO: [(CMMotionManager *){:?} deviceMotion] -> nil", this);
+    nil
+}
+
+- (id)accelerometerData {
+    // FakeAccelData
+    log!("TODO: [(CMMotionManager *){:?} accelerometerData] -> nil", this);
+    nil
+}
+
+- (id)gyroData {
+    // FakeGyroData
+    log!("TODO: [(CMMotionManager *){:?} gyroData] -> nil", this);
+    nil
 }
 
 // Companion symmetric APIs for the magnetometer-pull-mode API. Apple

@@ -105,6 +105,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     autorelease(env, new)
 }
 
+// Добавляем базовый init
 - (id)initWithURL:(id)url {
     msg![env; this initWithURL:url
                    cachePolicy:NSURLRequestUseProtocolCachePolicy
@@ -132,6 +133,20 @@ pub const CLASSES: ClassExports = objc_classes! {
         host.cache_policy     = cache_policy;
         host.timeout_interval = timeout_interval;
     }
+        cachePolicy:(NSURLRequestCachePolicy)cache_policy
+    timeoutInterval:(NSTimeInterval)timeout_interval {
+    // БЕЗОПАСНЫЙ РЕЖИМ
+    if url != nil {
+    let url_copy = msg![env; url copy];
+    env.objc.borrow_mut::<NSURLRequestHostObject>(this).url = url_copy;
+    }
+    env.objc.borrow_mut::<NSURLRequestHostObject>(this).cache_policy = cache_policy;
+    env.objc.borrow_mut::<NSURLRequestHostObject>(this).timeout_interval = timeout_interval;
+
+    if !env.options.network_access {
+        log!("Network access is disabled, but returning valid NSURLRequest to prevent C++ crashes");
+    }
+
     this
 }
 
@@ -486,6 +501,28 @@ pub const CLASSES: ClassExports = objc_classes! {
         msg_class![env; NSMutableDictionary new]
     };
     env.objc.borrow_mut::<NSURLRequestHostObject>(this).http_header_fields = copy;
+- (())setHTTPMethod:(id)http_method { // NSString *
+    if http_method == nil { return; }
+    let http_method_copy = msg![env; http_method copy];
+    let host_obj = env.objc.borrow_mut::<NSURLRequestHostObject>(this);
+    let old_http_method = std::mem::replace(&mut host_obj.http_method, http_method_copy);
+    release(env, old_http_method);
+}
+
+- (())setHTTPBody:(id)http_body { // NSData *
+    if http_body == nil { return; }
+    let http_body_copy = msg![env; http_body copy];
+    let host_obj = env.objc.borrow_mut::<NSURLRequestHostObject>(this);
+    let old_http_body = std::mem::replace(&mut host_obj.http_body, http_body_copy);
+    release(env, old_http_body);
+}
+
+- (())setValue:(id)value // NSString *
+    forHTTPHeaderField:(id)field { // NSString *
+    if value == nil || field == nil { return; }
+    log_dbg!("[(NSURLRequest*){:?} setValue:'{}' forHTTPHeaderField:'{}']", this, to_rust_string(env, value), to_rust_string(env, field));
+    let http_header_fields = env.objc.borrow_mut::<NSURLRequestHostObject>(this).http_header_fields;
+    () = msg![env; http_header_fields setObject:value forKey:field];
 }
 
 @end

@@ -36,6 +36,10 @@ const ALL_SPECIFIERS: [u8; 26] = [
 ];
 const INTEGER_SPECIFIERS: [u8; 9] = [b'd', b'i', b'o', b'u', b'x', b'X', b'D', b'U', b'O'];
 const FLOAT_SPECIFIERS: [u8; 8] = [b'f', b'F', b'e', b'E', b'g', b'G', b'a', b'A'];
+
+const INTEGER_SPECIFIERS: [u8; 9] = [b'd', b'i', b'o', b'u', b'x', b'X', b'D', b'U', b'O'];
+const FLOAT_SPECIFIERS: [u8; 3] = [b'f', b'e', b'g'];
+
 /// String formatting implementation for `printf` and `NSLog` function families.
 ///
 /// `NS_LOG` is [true] for the `NSLog` format string type, or [false] for the
@@ -73,10 +77,16 @@ pub fn printf_inner<const NS_LOG: bool, F: Fn(&Mem, GuestUSize) -> u8>(
             // Alternative form handling: adds 0x/0X prefix for hex, 0 prefix
             // for octal
             format_char_idx += 1;
+
+        // BypassAltFormPanic
+        let alternative_form = if get_format_char(&env.mem, format_char_idx) == b'#' {
+            format_char_idx += 1;
+            log_dbg!("printf_inner: '#' flag parsed and partially supported");
             true
         } else {
             false
         };
+
         let pad_char = if get_format_char(&env.mem, format_char_idx) == b'0' {
             format_char_idx += 1;
             '0'
@@ -214,6 +224,19 @@ pub fn printf_inner<const NS_LOG: bool, F: Fn(&Mem, GuestUSize) -> u8>(
                     assert!(pad_char == ' ' && pad_width == 0);
                     // TODO
                     res.push(c);
+                // FixCharPadding
+                assert!(!prepend_sign);
+                assert!(length_modifier.is_none());
+                let c: u8 = args.next(env);
+                if pad_width > 1 && !left_justified {
+                    res.extend(std::iter::repeat_n(
+                        pad_char as u8,
+                        (pad_width - 1) as usize,
+                    ));
+                }
+                res.push(c);
+                if pad_width > 1 && left_justified {
+                    res.extend(std::iter::repeat_n(b' ', (pad_width - 1) as usize));
                 }
             }
             // Apple extension?
@@ -230,7 +253,21 @@ pub fn printf_inner<const NS_LOG: bool, F: Fn(&Mem, GuestUSize) -> u8>(
                 // Заменяем .unwrap() на .unwrap_or('?'), чтобы не было паники
                 // на невалидном UTF-16!
                 let c = char::from_u32(c.into()).unwrap_or('?');
+                // FixWideCharPadding
+                assert!(!prepend_sign);
+                assert!(length_modifier.is_none());
+                let c: unichar = args.next(env);
+                let c = char::from_u32(c.into()).unwrap();
+                if pad_width > 1 && !left_justified {
+                    res.extend(std::iter::repeat_n(
+                        pad_char as u8,
+                        (pad_width - 1) as usize,
+                    ));
+                }
                 write!(&mut res, "{c}").unwrap();
+                if pad_width > 1 && left_justified {
+                    res.extend(std::iter::repeat_n(b' ', (pad_width - 1) as usize));
+                }
             }
             b's' => {
                 // assert!(!prepend_sign);
@@ -287,6 +324,30 @@ pub fn printf_inner<const NS_LOG: bool, F: Fn(&Mem, GuestUSize) -> u8>(
                 } else if length_modifier == Some("h") {
                     let int: i16 = args.next(env);
                     int.into()
+            // FixMissingOctal
+            b'd' | b'i' | b'u' | b'D' | b'U' | b'O' | b'o' => {
+                assert!(!left_justified);
+                // Note: on 32-bit system int and long are i32,
+                // so single length_modifier is ignored (but not double one!)
+                let int: i64 = if specifier == b'u'
+                    || specifier == b'U'
+                    || specifier == b'O'
+                    || specifier == b'o'
+                {
+                    if length_modifier == Some("ll") {
+                        let uint: u64 = args.next(env);
+                        uint.try_into().unwrap()
+                    } else if length_modifier == Some("hh") {
+                        let uint: u8 = args.next(env);
+                        uint.into()
+                    } else if length_modifier == Some("h") {
+                        let uint: u16 = args.next(env);
+                        uint.into()
+                    } else {
+                        assert!(length_modifier.is_none() || length_modifier == Some("l"));
+                        let uint: u32 = args.next(env);
+                        uint.into()
+                    }
                 } else {
                     let int: i32 = args.next(env);
                     int.into()
@@ -310,6 +371,20 @@ pub fn printf_inner<const NS_LOG: bool, F: Fn(&Mem, GuestUSize) -> u8>(
                 } else if length_modifier == Some("h") {
                     let uint: u16 = args.next(env);
                     uint.into()
+
+                // SupportAltFormO
+                let int_with_precision = if specifier == b'O' || specifier == b'o' {
+                    let mut oct_str = if precision.is_some_and(|value| value > 0) {
+                        format!("{:01$o}", int, precision.unwrap())
+                    } else {
+                        format!("{int:o}")
+                    };
+                    if alternative_form && int != 0 && !oct_str.starts_with('0') {
+                        oct_str.insert(0, '0');
+                    }
+                    oct_str
+                } else if precision.is_some_and(|value| value > 0) {
+                    format!("{:01$}", int, precision.unwrap())
                 } else {
                     let uint: u32 = args.next(env);
                     uint.into()
@@ -346,6 +421,15 @@ pub fn printf_inner<const NS_LOG: bool, F: Fn(&Mem, GuestUSize) -> u8>(
                 let _ = prepend_sign;
                 let uint: u64 = if length_modifier == Some("ll") {
                     args.next(env)
+            b'x' => {
+                // SupportAltFormX
+                assert!(!prepend_sign);
+                assert!(!left_justified);
+                // Note: on 32-bit system unsigned int and unsigned long
+                // are u32, so length_modifier is ignored
+                let uint: u32 = if length_modifier == Some("ll") {
+                    let uint: u64 = args.next(env);
+                    uint.try_into().unwrap()
                 } else if length_modifier == Some("hh") {
                     let uint: u8 = args.next(env);
                     uint.into()
@@ -361,6 +445,12 @@ pub fn printf_inner<const NS_LOG: bool, F: Fn(&Mem, GuestUSize) -> u8>(
                 } else {
                     ""
                 };
+
+                let mut prefix = "";
+                if alternative_form && uint != 0 {
+                    prefix = "0x";
+                }
+
                 if pad_width > 0 {
                     let pad_width = pad_width as usize;
                     let formatted = format!("{}{:o}", prefix, uint);
@@ -377,8 +467,16 @@ pub fn printf_inner<const NS_LOG: bool, F: Fn(&Mem, GuestUSize) -> u8>(
                         write!(&mut res, "{:<pad_width$}", formatted).unwrap();
                     } else {
                         write!(&mut res, "{:>pad_width$}", formatted).unwrap();
+                    if pad_char == '0' && precision.is_none() {
+                        let pad_len = pad_width.saturating_sub(prefix.len());
+                        res.extend_from_slice(prefix.as_bytes());
+                        write!(&mut res, "{uint:0>pad_len$x}").unwrap();
+                    } else {
+                        let tmp = format!("{}{:x}", prefix, uint);
+                        write!(&mut res, "{tmp:>pad_width$}").unwrap();
                     }
                 } else {
+                    res.extend_from_slice(prefix.as_bytes());
                     let tmp = if precision.is_some_and(|value| value > 0) {
                         let prec = precision.unwrap();
                         format!("{}{:0>prec$o}", prefix, uint, prec = prec)
@@ -452,6 +550,15 @@ pub fn printf_inner<const NS_LOG: bool, F: Fn(&Mem, GuestUSize) -> u8>(
                 let _ = prepend_sign;
                 let uint: u64 = if length_modifier == Some("ll") {
                     args.next(env)
+                // SupportAltFormUpperX
+                assert!(!prepend_sign);
+                assert!(!left_justified);
+                assert!(precision.is_none());
+                // Note: on 32-bit system unsigned int and unsigned long
+                // are u32, so length_modifier is ignored
+                let uint: u32 = if length_modifier == Some("ll") {
+                    let uint: u64 = args.next(env);
+                    uint.try_into().unwrap()
                 } else if length_modifier == Some("hh") {
                     let uint: u8 = args.next(env);
                     uint.into()
@@ -467,6 +574,12 @@ pub fn printf_inner<const NS_LOG: bool, F: Fn(&Mem, GuestUSize) -> u8>(
                 } else {
                     ""
                 };
+
+                let mut prefix = "";
+                if alternative_form && uint != 0 {
+                    prefix = "0X";
+                }
+
                 if pad_width > 0 {
                     let pad_width = pad_width as usize;
                     // When precision is specified, it gives minimum digits
@@ -504,6 +617,18 @@ pub fn printf_inner<const NS_LOG: bool, F: Fn(&Mem, GuestUSize) -> u8>(
                         format!("{}{:X}", prefix, uint)
                     };
                     res.extend_from_slice(tmp.as_bytes());
+                    if pad_char == '0' && precision.is_none() {
+                        let pad_len = pad_width.saturating_sub(prefix.len());
+                        res.extend_from_slice(prefix.as_bytes());
+                        write!(&mut res, "{uint:0>pad_len$X}").unwrap();
+                    } else {
+                        assert!(pad_char == ' '); // TODO
+                        let tmp = format!("{}{:X}", prefix, uint);
+                        write!(&mut res, "{tmp:>pad_width$}").unwrap();
+                    }
+                } else {
+                    res.extend_from_slice(prefix.as_bytes());
+                    res.extend_from_slice(format!("{uint:X}").as_bytes());
                 }
             }
             b'p' => {
@@ -1526,6 +1651,8 @@ where
                 // atof_inner_generic about a max-width budget; for now
                 // an over-read is the same behaviour as before.
                 let _ = max_width;
+            b'f' => {
+                // Bypass max_width assert
                 let res = atof_inner_generic(env, &getc_fn, &ungetc_fn, subject, src_char_idx);
                 let val = match res {
                     Ok((val, len)) => {
@@ -1681,6 +1808,8 @@ where
                 // so the destination buffer (sized for max_width+1) is
                 // not overrun. Used by LEGO Ninjago: Spinjitzu Scavenger
                 // Hunt's text loader (e.g. `sscanf(line, "%15[^=]=%s", …)`).
+                assert!(length_modifier.is_none());
+                // [set] case
                 assert_ne!(env.mem.read(format + format_char_idx), b']');
                 let mut c: u8;
                 let inverted = if env.mem.read(format + format_char_idx) == b'^' {
@@ -1727,6 +1856,17 @@ where
                         break;
                     }
                     let cc: u8 = x.unwrap().into();
+                let mut chars_read = 0;
+                let limit = if max_width > 0 { max_width } else { u32::MAX };
+                // Consume `src` while chars are not in the set
+                let mut cc = getc_fn(env, subject, src_char_idx).unwrap().into(); // TODO: EOF
+                src_char_idx += 1;
+                while set.contains(&cc) ^ inverted && cc != b'\0' && chars_read < limit {
+                    matched = true;
+                    env.mem.write(dst_ptr, cc);
+                    dst_ptr += 1;
+                    chars_read += 1;
+                    cc = getc_fn(env, subject, src_char_idx).unwrap().into(); // TODO: EOF
                     src_char_idx += 1;
 
                     if cc == b'\0' || !(set.contains(&cc) ^ inverted) {
@@ -1823,6 +1963,13 @@ where
                 let mut read_count: u32 = 0;
                 loop {
                     if read_count >= limit {
+                assert!(length_modifier.is_none());
+                let orig_dst_ptr: MutPtr<u8> = args.next(env);
+                let mut dst_ptr: MutPtr<u8> = orig_dst_ptr;
+                let mut chars_read = 0;
+                let limit = if max_width > 0 { max_width } else { u32::MAX };
+                loop {
+                    if chars_read >= limit {
                         break;
                     }
                     let x = getc_fn(env, subject, src_char_idx);
@@ -1840,6 +1987,8 @@ where
                         }
                         src_char_idx += 1;
                         read_count += 1;
+                        dst_ptr += 1;
+                        chars_read += 1;
                     } else {
                         ungetc_fn(env, subject, cc);
                         break;
@@ -2002,9 +2151,17 @@ fn vfprintf(env: &mut Environment, stream: MutPtr<FILE>, format: ConstPtr<u8>, a
         }
         STDOUT_FILENO => _ = std::io::stdout().write_all(&res),
         STDERR_FILENO => _ = std::io::stderr().write_all(&res),
+            log_dbg!("Warning: Unexpected write to STDIN in vfprintf");
+        }
+        STDOUT_FILENO => {
+            let _ = std::io::stdout().write_all(&res);
+        }
+        STDERR_FILENO => {
+            let _ = std::io::stderr().write_all(&res);
+        }
         _ => {
             let buf = env.mem.alloc_and_write_cstr(res.as_slice());
-            let result = fwrite(
+            let _result = fwrite(
                 env,
                 buf.cast_const().cast(),
                 1,
@@ -2018,6 +2175,7 @@ fn vfprintf(env: &mut Environment, stream: MutPtr<FILE>, format: ConstPtr<u8>, a
                     res.len()
                 );
             }
+            // BYPASS
             env.mem.free(buf.cast());
         }
     }

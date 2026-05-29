@@ -20,7 +20,6 @@ use crate::Environment;
 
 #[derive(Default)]
 pub struct State {
-    /// [UIApplication sharedApplication]
     shared_application: Option<id>,
     pub(super) status_bar_hidden: bool,
     /// Whether shake to edit is enabled
@@ -40,14 +39,46 @@ struct UIApplicationHostObject {
 }
 impl HostObject for UIApplicationHostObject {}
 
+struct UILocalNotificationHostObject {
+    fire_date: id,
+    time_zone: id,
+    alert_body: id,
+    alert_action: id,
+    sound_name: id,
+    user_info: id,
+    alert_launch_image: id,
+    badge_number: NSInteger,
+    repeat_interval: NSInteger,
+    has_action: bool,
+}
+impl Default for UILocalNotificationHostObject {
+    fn default() -> Self {
+        Self {
+            fire_date: nil,
+            time_zone: nil,
+            alert_body: nil,
+            alert_action: nil,
+            sound_name: nil,
+            user_info: nil,
+            alert_launch_image: nil,
+            badge_number: 0,
+            repeat_interval: 0,
+            has_action: false,
+        }
+    }
+}
+impl HostObject for UILocalNotificationHostObject {}
+
+#[derive(Default)]
+struct DummyHostObject {}
+impl HostObject for DummyHostObject {}
+
 pub type UIInterfaceOrientation = UIDeviceOrientation;
 #[allow(unused)]
 pub const UIInterfaceOrientationPortrait: UIInterfaceOrientation = UIDeviceOrientationPortrait;
 #[allow(unused)]
 pub const UIInterfaceOrientationPortraitUpsideDown: UIInterfaceOrientation =
     UIDeviceOrientationPortraitUpsideDown;
-// These are intentionally swapped and documented as such (the UI on the device
-// rotates in the opposite direction to how the device is rotated).
 pub const UIInterfaceOrientationLandscapeLeft: UIInterfaceOrientation =
     UIDeviceOrientationLandscapeRight;
 pub const UIInterfaceOrientationLandscapeRight: UIInterfaceOrientation =
@@ -65,7 +96,6 @@ pub const CLASSES: ClassExports = objc_classes! {
 (env, this, _cmd);
 @implementation UIApplication: UIResponder
 
-// This should only be called by UIApplicationMain
 + (id)allocWithZone:(NSZonePtr)_zone {
     let host_object = Box::new(UIApplicationHostObject {
         delegate: nil,
@@ -77,7 +107,14 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 + (id)sharedApplication {
-    env.framework_state.uikit.ui_application.shared_application.unwrap_or(nil)
+    if let Some(app) = env.framework_state.uikit.ui_application.shared_application {
+        return app;
+    }
+    let class = env.objc.get_known_class("UIApplication", &mut env.mem);
+    let app: id = msg![env; class alloc];
+    let app_init: id = msg![env; app init];
+    env.framework_state.uikit.ui_application.shared_application = Some(app_init);
+    app_init
 }
 
 - (())setNetworkActivityIndicatorVisible:(bool)visible {
@@ -93,12 +130,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // This should only be called by UIApplicationMain
 - (id)init {
-    assert!(env.framework_state.uikit.ui_application.shared_application.is_none());
     env.framework_state.uikit.ui_application.shared_application = Some(this);
     this
 }
 
-// This is a singleton, it shouldn't be deallocated.
 - (id)retain { this }
 - (id)autorelease { this }
 - (())release {}
@@ -106,9 +141,8 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (id)delegate {
     env.objc.borrow::<UIApplicationHostObject>(this).delegate
 }
-- (())setDelegate:(id)delegate { // something implementing UIApplicationDelegate
+- (())setDelegate:(id)delegate {
     let host_object = env.objc.borrow_mut::<UIApplicationHostObject>(this);
-    // This property is quasi-non-retaining: https://stackoverflow.com/a/14271150/736162
     let old_delegate = std::mem::replace(&mut host_object.delegate, delegate);
     if host_object.delegate_is_retained {
         host_object.delegate_is_retained = false;
@@ -124,14 +158,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (())setStatusBarHidden:(bool)hidden {
     env.framework_state.uikit.ui_application.status_bar_hidden = hidden;
 }
-- (())setStatusBarHidden:(bool)hidden
-                animated:(bool)_animated {
-    // TODO: animation
+- (())setStatusBarHidden:(bool)hidden animated:(bool)_animated {
     msg![env; this setStatusBarHidden:hidden]
 }
-- (())setStatusBarHidden:(bool)hidden
-           withAnimation:(UIStatusBarAnimation)_animation {
-    // TODO: animation
+- (())setStatusBarHidden:(bool)hidden withAnimation:(UIStatusBarAnimation)_animation {
     msg![env; this setStatusBarHidden:hidden]
 }
 
@@ -183,6 +213,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (())setStatusBarOrientation:(UIInterfaceOrientation)orientation
                      animated:(bool)_animated {
     // TODO: animation
+- (())setStatusBarOrientation:(UIInterfaceOrientation)orientation animated:(bool)_animated {
     msg![env; this setStatusBarOrientation:orientation]
 }
 
@@ -288,6 +319,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (bool)openURL:(id)url { // NSURL
+- (bool)openURL:(id)url {
     let ns_string = msg![env; url absoluteString];
     let url_string = ns_string::to_rust_string(env, ns_string);
     if let Err(e) = crate::window::open_url(env, &url_string) {
@@ -302,6 +334,8 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (())beginIgnoringInteractionEvents {
     env.framework_state.uikit.ui_application.ignoring_interaction_events_count += 1;
+-(())beginIgnoringInteractionEvents {
+    log!("TODO: ignoring beginIgnoringInteractionEvents");
 }
 
 - (bool)isIgnoringInteractionEvents {
@@ -457,31 +491,14 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (id)keyWindow {
-    let Some(key_window) = env
-        .framework_state
-        .uikit
-        .ui_view
-        .ui_window
-        .key_window else {
+    let Some(key_window) = env.framework_state.uikit.ui_view.ui_window.key_window else {
         return nil;
     };
-    assert!(env
-        .framework_state
-        .uikit
-        .ui_view
-        .ui_window
-        .windows
-        .contains(&key_window));
     key_window
 }
 
 - (id)windows {
-    let windows: Vec<id> = (*env
-        .framework_state
-        .uikit
-        .ui_view
-        .ui_window
-        .windows).to_vec();
+    let windows: Vec<id> = (*env.framework_state.uikit.ui_view.ui_window.windows).to_vec();
     for window in &windows {
         retain(env, *window);
     }
@@ -512,10 +529,39 @@ pub const CLASSES: ClassExports = objc_classes! {
 // Apple's [UIApplication Reference](https://developer.apple.com/documentation/uikit/uiapplication/1622918-applicationiconbadgenumber).
 - (NSInteger)applicationIconBadgeNumber {
     env.objc.borrow::<UIApplicationHostObject>(this).application_icon_badge_number
+- (UIRemoteNotificationType)enabledRemoteNotificationTypes {
+    0 // ReturnNone
 }
+
+- (NSInteger)applicationIconBadgeNumber { 0 }
 - (())setApplicationIconBadgeNumber:(NSInteger)bn {
     log_dbg!("setApplicationIconBadgeNumber:{}", bn);
     env.objc.borrow_mut::<UIApplicationHostObject>(this).application_icon_badge_number = bn;
+}
+
+- (id)scheduledLocalNotifications {
+    // Единственный безопасный способ
+    let empty_vec: Vec<id> = Vec::new();
+    let arr = ns_array::from_vec(env, empty_vec);
+    autorelease(env, arr)
+}
+
+- (NSInteger)applicationState { 0 }
+
+- (())setScheduledLocalNotifications:(id)_notifications {
+    log!("TODO: ignoring setScheduledLocalNotifications");
+}
+- (())cancelAllLocalNotifications {
+    log!("TODO: [UIApplication cancelAllLocalNotifications]");
+}
+- (())cancelLocalNotification:(id)_notification {
+    log!("TODO: [UIApplication cancelLocalNotification]");
+}
+- (())scheduleLocalNotification:(id)_notification {
+    log!("TODO: [UIApplication scheduleLocalNotification]");
+}
+- (())presentLocalNotificationNow:(id)_notification {
+    log!("TODO: [UIApplication presentLocalNotificationNow]");
 }
 
 - (id)nextResponder {
@@ -531,14 +577,152 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 @end
 
+@implementation UILocalNotification: NSObject
++ (id)allocWithZone:(NSZonePtr)_zone {
+    let host_object = Box::<UILocalNotificationHostObject>::default();
+    env.objc.alloc_object(this, host_object, &mut env.mem)
+}
+- (id)init {
+    this
+}
+- (())dealloc {
+    let &UILocalNotificationHostObject {
+        fire_date, time_zone, alert_body, alert_action, sound_name, user_info,
+        alert_launch_image, badge_number: _, repeat_interval: _, has_action: _,
+    } = env.objc.borrow(this);
+
+    release(env, fire_date);
+    release(env, time_zone);
+    release(env, alert_body);
+    release(env, alert_action);
+    release(env, sound_name);
+    release(env, alert_launch_image);
+    release(env, user_info);
+    env.objc.dealloc_object(this, &mut env.mem)
+}
+
+- (())setFireDate:(id)val {
+    let host = env.objc.borrow_mut::<UILocalNotificationHostObject>(this);
+    let old = std::mem::replace(&mut host.fire_date, val);
+    retain(env, val); release(env, old);
+}
+- (id)fireDate { env.objc.borrow::<UILocalNotificationHostObject>(this).fire_date }
+
+- (())setTimeZone:(id)val {
+    let host = env.objc.borrow_mut::<UILocalNotificationHostObject>(this);
+    let old = std::mem::replace(&mut host.time_zone, val);
+    retain(env, val); release(env, old);
+}
+- (id)timeZone { env.objc.borrow::<UILocalNotificationHostObject>(this).time_zone }
+
+- (())setAlertBody:(id)val {
+    let host = env.objc.borrow_mut::<UILocalNotificationHostObject>(this);
+    let old = std::mem::replace(&mut host.alert_body, val);
+    retain(env, val); release(env, old);
+}
+- (id)alertBody { env.objc.borrow::<UILocalNotificationHostObject>(this).alert_body }
+
+- (())setAlertAction:(id)val {
+    let host = env.objc.borrow_mut::<UILocalNotificationHostObject>(this);
+    let old = std::mem::replace(&mut host.alert_action, val);
+    retain(env, val); release(env, old);
+}
+- (id)alertAction { env.objc.borrow::<UILocalNotificationHostObject>(this).alert_action }
+
+- (())setSoundName:(id)val {
+    let host = env.objc.borrow_mut::<UILocalNotificationHostObject>(this);
+    let old = std::mem::replace(&mut host.sound_name, val);
+    retain(env, val); release(env, old);
+}
+- (id)soundName { env.objc.borrow::<UILocalNotificationHostObject>(this).sound_name }
+
+- (())setAlertLaunchImage:(id)val {
+    let host = env.objc.borrow_mut::<UILocalNotificationHostObject>(this);
+    let old = std::mem::replace(&mut host.alert_launch_image, val);
+    retain(env, val); release(env, old);
+}
+- (id)alertLaunchImage { env.objc.borrow::<UILocalNotificationHostObject>(this).alert_launch_image }
+
+- (())setUserInfo:(id)val {
+    let host = env.objc.borrow_mut::<UILocalNotificationHostObject>(this);
+    let old = std::mem::replace(&mut host.user_info, val);
+    retain(env, val); release(env, old);
+}
+- (id)userInfo { env.objc.borrow::<UILocalNotificationHostObject>(this).user_info }
+
+- (())setApplicationIconBadgeNumber:(NSInteger)val {
+    let host = env.objc.borrow_mut::<UILocalNotificationHostObject>(this);
+    host.badge_number = val;
+}
+- (NSInteger)applicationIconBadgeNumber { env.objc.borrow::<UILocalNotificationHostObject>(this).badge_number }
+
+- (())setRepeatInterval:(NSInteger)val {
+    let host = env.objc.borrow_mut::<UILocalNotificationHostObject>(this);
+    host.repeat_interval = val;
+}
+- (NSInteger)repeatInterval { env.objc.borrow::<UILocalNotificationHostObject>(this).repeat_interval }
+
+- (())setHasAction:(bool)val {
+    let host = env.objc.borrow_mut::<UILocalNotificationHostObject>(this);
+    host.has_action = val;
+}
+- (bool)hasAction { env.objc.borrow::<UILocalNotificationHostObject>(this).has_action }
+
+@end
+
+@implementation NSCalendar: NSObject
++ (id)allocWithZone:(NSZonePtr)_zone {
+    let class = env.objc.get_known_class("NSCalendar", &mut env.mem);
+    env.objc.alloc_object(class, Box::<DummyHostObject>::default(), &mut env.mem)
+}
++ (id)currentCalendar {
+    let class = env.objc.get_known_class("NSCalendar", &mut env.mem);
+    let obj: id = msg![env; class alloc];
+    msg![env; obj init]
+}
++ (id)autoupdatingCurrentCalendar { msg_class![env; NSCalendar currentCalendar] }
+- (id)components:(NSUInteger)_flags fromDate:(id)_date {
+    let class = env.objc.get_known_class("NSDateComponents", &mut env.mem);
+    let obj: id = msg![env; class alloc];
+    msg![env; obj init]
+}
+- (id)dateFromComponents:(id)_comps { msg_class![env; NSDate date] }
+- (id)dateByAddingComponents:(id)_comps
+                      toDate:(id)_date
+                     options:(NSUInteger)_opts {
+    msg_class![env; NSDate date]
+}
+- (id)calendarIdentifier { get_static_str(env, "gregorian") }
+@end
+
+@implementation NSDateComponents: NSObject
++ (id)allocWithZone:(NSZonePtr)_zone {
+    let class = env.objc.get_known_class("NSDateComponents", &mut env.mem);
+    env.objc.alloc_object(class, Box::<DummyHostObject>::default(), &mut env.mem)
+}
+- (NSInteger)year { 2026 }
+- (())setYear:(NSInteger)_v {}
+- (NSInteger)month { 1 }
+- (())setMonth:(NSInteger)_v {}
+- (NSInteger)day { 1 }
+- (())setDay:(NSInteger)_v {}
+- (NSInteger)hour { 0 }
+- (())setHour:(NSInteger)_v {}
+- (NSInteger)minute { 0 }
+- (())setMinute:(NSInteger)_v {}
+- (NSInteger)second { 0 }
+- (())setSecond:(NSInteger)_v {}
+@end
+
 };
 /// `UIApplicationMain`, the entry point of the application.
+
 pub(super) fn UIApplicationMain(
     env: &mut Environment,
     _argc: i32,
     _argv: MutPtr<MutPtr<u8>>,
-    principal_class_name: id, // NSString*
-    delegate_class_name: id,  // NSString*
+    principal_class_name: id,
+    delegate_class_name: id,
 ) {
     let ui_application = {
         let pool: id = msg_class![env; NSAutoreleasePool new];
@@ -549,7 +733,13 @@ pub(super) fn UIApplicationMain(
         } else {
             env.objc.get_known_class("UIApplication", &mut env.mem)
         };
-        let ui_application: id = msg![env; principal_class new];
+
+        let ui_application: id =
+            if let Some(app) = env.framework_state.uikit.ui_application.shared_application {
+                app
+            } else {
+                msg![env; principal_class new]
+            };
 
         let device_family = env.options.device_family;
         if let Some(main_nib_filename) = env
@@ -558,14 +748,15 @@ pub(super) fn UIApplicationMain(
             .map(str::to_owned)
         {
             let ns_main_nib_filename = from_rust_string(env, main_nib_filename);
+        if let Some(main_nib_filename) = env.bundle.main_nib_filename(device_family) {
+            let ns_main_nib_filename = from_rust_string(env, main_nib_filename.to_string());
             let type_: id = get_static_str(env, "nib");
             let bundle: id = msg_class![env; NSBundle mainBundle];
             let res: id = msg![env; bundle pathForResource:ns_main_nib_filename ofType:type_];
             if res != nil {
                 let nib: id = msg_class![env; UINib nibWithNibName:ns_main_nib_filename bundle:nil];
                 release(env, ns_main_nib_filename);
-                let _: id = msg![env; nib instantiateWithOwner:ui_application
-                                               options:nil];
+                let _: id = msg![env; nib instantiateWithOwner:ui_application options:nil];
             } else {
                 log!("Warning: couldn't load main nib file.");
             }
@@ -730,6 +921,7 @@ pub(super) fn exit(env: &mut Environment) {
 
     {
         let pool: id = msg_class![env; NSAutoreleasePool new];
+        // FixFakeFlag
         if !env.is_app_picker {
             let user_defaults: id = msg_class![env; NSUserDefaults standardUserDefaults];
             let _: bool = msg![env; user_defaults synchronize];
@@ -773,8 +965,11 @@ const UIApplicationWillResignActiveNotification: &str = "UIApplicationWillResign
 const UIApplicationWillTerminateNotification: &str = "UIApplicationWillTerminateNotification";
 const UIApplicationLaunchOptionsRemoteNotificationKey: &str =
     "UIApplicationLaunchOptionsRemoteNotificationKey";
+const UIApplicationLaunchOptionsLocalNotificationKey: &str =
+    "UIApplicationLaunchOptionsLocalNotificationKey";
 const UIApplicationDidReceiveMemoryWarningNotification: &str =
     "UIApplicationDidReceiveMemoryWarningNotification";
+const UILocalNotificationDefaultSoundName: &str = "UILocalNotificationDefaultSoundName";
 
 // Apple `UIApplication.h` declares these as
 // `UIKIT_EXTERN NSNotificationName const ...` (and `NSString * const` in
@@ -967,6 +1162,8 @@ pub const CONSTANTS: ConstantExports = &[
     (
         "_UIApplicationOpenURLOptionUniversalLinksOnly",
         HostConstant::NSString(UIApplicationOpenURLOptionUniversalLinksOnly),
+        "_UILocalNotificationDefaultSoundName",
+        HostConstant::NSString(UILocalNotificationDefaultSoundName),
     ),
 ];
 pub const FUNCTIONS: FunctionExports = &[export_c_func!(UIApplicationMain(_, _, _, _))];

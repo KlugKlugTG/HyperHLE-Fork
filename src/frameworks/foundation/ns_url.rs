@@ -836,6 +836,16 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (())removeCachedResponseForRequest:(id)_request { }
 - (())removeAllCachedResponses { }
++ (())setSharedURLCache:(id)cache {
+    log!("TODO: [NSURLCache setSharedURLCache:{:?}]", cache);
+}
+
+- (id)initWithMemoryCapacity:(NSUInteger)memoryCapacity
+                diskCapacity:(NSUInteger)diskCapacity
+                    diskPath:(id)path {
+    log!("TODO: [(NSURLCache*){:?} initWithMemoryCapacity:{} diskCapacity:{} diskPath:{:?}]", this, memoryCapacity, diskCapacity, path);
+    this
+}
 
 @end
 

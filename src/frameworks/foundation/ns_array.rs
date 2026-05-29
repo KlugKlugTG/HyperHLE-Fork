@@ -821,6 +821,12 @@ pub const CLASSES: ClassExports = objc_classes! {
         return nil;
     }
     env.objc.borrow::<ArrayHostObject>(this).array[index as usize]
+    // BypassOutOfBounds
+    let arr = &env.objc.borrow::<ArrayHostObject>(this).array;
+    if index as usize >= arr.len() {
+        return nil;
+    }
+    arr[index as usize]
 }
 // Modern Objective-C subscripting bridge:
 //   id obj = array[idx];   // compiled to objectAtIndexedSubscript:
@@ -1159,6 +1165,12 @@ pub const CLASSES: ClassExports = objc_classes! {
         return nil;
     }
     env.objc.borrow::<ArrayHostObject>(this).array[index as usize]
+    // BypassOutOfBounds
+    let arr = &env.objc.borrow::<ArrayHostObject>(this).array;
+    if index as usize >= arr.len() {
+        return nil;
+    }
+    arr[index as usize]
 }
 
 - (id)description {

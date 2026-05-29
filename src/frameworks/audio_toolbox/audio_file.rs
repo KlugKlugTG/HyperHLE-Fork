@@ -202,6 +202,15 @@ pub fn AudioFileOpenURL(
     if !out_audio_file.is_null() {
         env.mem.write(out_audio_file, guest_audio_file);
     }
+    env.mem.write(out_audio_file, guest_audio_file);
+
+    // TraceFileOpenURL
+    println!("AUDIO_TRACE: AudioFileOpenURL({:?})", in_file_ref);
+    log_dbg!(
+        "AudioFileOpenURL() opened path {:?}, new audio file handle: {:?}",
+        in_file_ref,
+        guest_audio_file
+    );
 
     kAudioFileSuccess
 }
@@ -354,6 +363,12 @@ pub fn AudioFileReadBytes(
         Some(obj) => obj,
         None => return kAudioFileNotOpenError,
     };
+    // TraceFileOpenCB
+    println!("AUDIO_TRACE: AudioFileOpenWithCallbacks()");
+    log_dbg!(
+        "AudioFileOpenWithCallbacks() opened, new audio file handle: {:?}",
+        guest_audio_file
+    );
 
     let bytes_to_read = env.mem.read(io_num_bytes);
     if bytes_to_read == 0 || out_buffer.is_null() {

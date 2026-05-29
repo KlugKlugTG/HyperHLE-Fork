@@ -79,6 +79,7 @@ fn notify_delegate_failure(env: &mut crate::Environment, connection: id, delegat
     let error = make_network_error(env);
     () = msg![env; delegate connection:connection didFailWithError:error];
 }
+use crate::objc::{autorelease, id, msg, nil, objc_classes, retain, ClassExports};
 
 pub const CLASSES: ClassExports = objc_classes! {
 
@@ -276,6 +277,14 @@ pub const CLASSES: ClassExports = objc_classes! {
         .delegate;
     release(env, delegate);
     env.objc.dealloc_object(this, &mut env.mem);
+- (id)initWithRequest:(id)_request
+             delegate:(id)delegate
+     startImmediately:(bool)start_immediately {
+    if start_immediately && delegate != nil {
+        retain(env, this);
+        let _: () = msg![env; delegate connection:this didFailWithError:nil];
+    }
+    this
 }
 
 @end

@@ -1,3 +1,62 @@
+XaView FORK:
+
+OpenGL ES 2.0: Partically ✅
+
+ES 2.0 Asphalt 8: Shows screen on half of swcond and dissapear (black screen), working on fixes 🕐
+
+ES 2.0 Asphalt 7: Fully working
+
+ES 2.0 Asphalt 6: 1.0.2 Demo (Debug shaders)
+
+iPhone: 1.1.6, 1.3.2, 1.3.3j, 1.3.4f, 1.3.7y, 1.3.8h ; iPad: 1.1.8a, 1.2.6, 1.4.6, 1.5.0x, 1.5.1h (Missing buttons, screens, textures)
+
+iPhone: 1.0.0p ; iPad: 1.0.0p (Missing buttons, screens, textures, invisible buttons in main menu)
+
+---
+
+Audi RS3: 1.0.0, 1.0.1 (Missing buttons, screens, textures)
+
+///
+
+=Device selection in quick settings (iPod, iPad, iPhone)
+
+=Retina and its scaling support
+
+=Asphalt Overdrive (IOS 6.0) 1.0.2 ver support  🕐
+
+=Asphalt 8 (IOS 5.0 Only) support: 🕐
+
+=Asphalt 7 (IOS 4.0-5.0) support: ✅
+
+Fully Working: [IOS 4.0]: 1.0.0k, 1.0.2a, 1.0.4c [IOS 4.3]: 1.0.9a [IOS 5.0]: 1.1.0, 1.8.1 (Black screen on first launch, you need to touch screen, white button will appear, click it)
+
+*1.0.1, 1.0.5, 1.0.6, 1.0.7, 1.0.8, 1.1.1 untested because i didnt find ipa's
+
+=Asphalt 6 support: ✅
+
+-Fully working: iPhone: 1.0.2c Demo, 1.1.6
+
+iPad: 1.0.0p, 1.1.8a
+
+-Working with issues: 1.0.0p [iPhone] (Have black texture issue in 360 garage, other one have glitch issue in main menu garage)
+
+1.3.2 and 1.3.3j (Freeze on some cars changing in car selection)
+
+1.3.4f (Freeze on some cars changing in car selection, perfomance better then 1.3.7y and 1.3.8h but still worse then 1.3.3j and older versions)
+
+1.3.7y and 1.3.8h (Freezes on some cars changing in car selection, random freezes in main menu, garage and in race (because of this you cant even finish any race), also bad perfomance)
+
+-Working on fixes right now: Others versions not in the list, searching in web right now, if you can help with finding them, it will be cool
+
+[ ! ] Dont turn on network, it will make Asphalt 6 black screen freeze
+
+=Audi RS3 (Demo ad build of Asphalt 6) support: ✅
+1.0.0, 1.0.1
+
+=More Asphalt 5 versions support: ❌
+
+///
+
 # touchHLE: high-level emulator for iPhone OS apps
 
 **touchHLE** is a high-level emulator for iPhone OS apps. It runs on modern desktop operating systems and Android, and is written in Rust.

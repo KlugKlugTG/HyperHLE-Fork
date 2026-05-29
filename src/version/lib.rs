@@ -27,6 +27,6 @@ pub fn branding() -> &'static str {
     if (GITHUB_REPOSITORY, GITHUB_REF_NAME) == (Some("touchHLE/touchHLE"), Some("trunk")) {
         "PREVIEW"
     } else {
-        "UNOFFICIAL"
+        "XAVIEW"
     }
 }

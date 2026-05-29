@@ -129,5 +129,8 @@ fn main() {
         .std("c++17")
         .include(dynarmic_out.join("include"))
         .compile("dynarmic_wrapper");
+    if os.eq_ignore_ascii_case("android") {
+        println!("cargo:rustc-link-lib=log");
+    }
     rerun_if_changed(&package_root.join("lib.cpp"));
 }

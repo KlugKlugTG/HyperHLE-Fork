@@ -170,4 +170,10 @@ fn main() {
     )
     .write_bindings(GlobalGenerator, &mut file)
     .unwrap();
+
+    // GlesTwoBuild
+    let mut file = File::create(out_dir.join("gles20.rs")).unwrap();
+    Registry::new(Api::Gles2, (2, 0), Profile::Core, Fallbacks::None, [])
+        .write_bindings(GlobalGenerator, &mut file)
+        .unwrap();
 }

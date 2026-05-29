@@ -206,6 +206,18 @@ fn AudioComponentFindNext(
         comp_sub_type,
         comp_manufacturer,
         state.audio_component
+    let out_component: AudioComponent = state.audio_component;
+
+    // TraceComponentFind
+    println!(
+        "AUDIO_TRACE: AudioComponentFindNext({:?}) -> {:?}",
+        in_desc, out_component
+    );
+    log!(
+        "TODO: AudioComponentFindNext({:?}, {:?}) -> {:?}",
+        in_component,
+        in_desc,
+        out_component
     );
     state.audio_component
 }
@@ -236,6 +248,11 @@ fn AudioComponentInstanceNew(
         "AudioComponentInstanceNew(component={:?}) -> instance={:?}",
         in_component,
         guest_instance
+    let result = 0; // success
+                    // TraceNewInstance
+    println!(
+        "AUDIO_TRACE: AudioComponentInstanceNew({:?}, {:?}) -> {:?}",
+        in_component, out_instance, result
     );
     0
 }
@@ -270,6 +287,21 @@ fn AudioComponentInstanceDispose(
     env.mem.free(in_instance.cast());
 
     0
+    let result = if in_instance.is_null() {
+        paramErr
+    } else {
+        State::get(&mut env.framework_state)
+            .audio_component_instances
+            .remove(&in_instance);
+        env.mem.free(in_instance.cast());
+        0
+    };
+    // TraceDisposeInstance
+    println!(
+        "AUDIO_TRACE: AudioComponentInstanceDispose({:?}) -> {:?}",
+        in_instance, result
+    );
+    result
 }
 
 pub const FUNCTIONS: FunctionExports = &[

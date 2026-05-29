@@ -258,6 +258,8 @@ pub fn AudioQueueNewOutput(
         log_dbg!("Warning: Audio queue {:?} will be ignored because its format is not yet supported: {:#?}", aq_ref, format);
     }
 
+    // TraceQueueNewOutput
+    println!("AUDIO_TRACE: AudioQueueNewOutput() format: {:#?}", format);
     log_dbg!(
         "AudioQueueNewOutput() for format {:#?}, new audio queue handle: {:?}",
         format,
@@ -1503,6 +1505,8 @@ pub fn AudioQueueStart(
         return 0;
     }
 
+    // TraceQueueStart
+    println!("AUDIO_TRACE: AudioQueueStart({:?})", in_aq);
     notify_aq_is_running(env, in_aq);
 
     0 // success

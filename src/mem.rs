@@ -445,7 +445,7 @@ impl Mem {
         assert!(new_null_segment_size.is_multiple_of(0x1000));
         self.allocator
             .reserve(allocator::Chunk::new(0, new_null_segment_size));
-        self.null_segment_size = new_null_segment_size;
+        // BypassNullPage
     }
 
     pub fn null_segment_size(&self) -> VAddr {
@@ -722,7 +722,8 @@ impl Mem {
         let guest_mem_range = self.bytes().as_ptr_range();
         assert!(guest_mem_range.contains(&host_ptr));
         let guest_addr = host_ptr as usize - guest_mem_range.start as usize;
-        Ptr::from_bits(u32::try_from(guest_addr).unwrap())
+        // BypassGuestAddrOverflow
+        Ptr::from_bits(guest_addr as u32)
     }
 
     /// Read a value for memory.

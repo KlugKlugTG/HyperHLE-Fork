@@ -58,6 +58,7 @@ const _SC_2_SW_DEV: SysConfName = 24;
 const _SC_2_UPE: SysConfName = 25;
 const _SC_STREAM_MAX: SysConfName = 26;
 const _SC_TZNAME_MAX: SysConfName = 27;
+const _SC_CLK_TCK: SysConfName = 3;
 const _SC_PAGESIZE: SysConfName = 29;
 const _SC_NPROCESSORS_CONF: SysConfName = 57;
 const _SC_NPROCESSORS_ONLN: SysConfName = 58;
@@ -138,6 +139,15 @@ fn access(env: &mut Environment, path: ConstPtr<u8>, mode: i32) -> i32 {
             set_errno(env, ENOENT);
             return -1;
         }
+    // BypassAccessLoop
+    let binding = match env.mem.cstr_at_utf8(path) {
+        Ok(s) => {
+            if s.contains("//") {
+                return 0;
+            }
+            s
+        }
+        Err(_) => return 0,
     };
     let guest_path = GuestPath::new(&binding);
     let (exists, read, write, execute) = env.fs.access(guest_path);
@@ -276,6 +286,18 @@ fn unlink(env: &mut Environment, path: ConstPtr<u8>) -> i32 {
 
     log_dbg!("unlink({:?} '{}')", path, path_owned);
 
+    // BypassUnlinkUnwrap
+    let path_str = match env.mem.cstr_at_utf8(path) {
+        Ok(s) => s,
+        Err(_) => {
+            set_errno(env, ENOENT);
+            return -1;
+        }
+    };
+
+    log_dbg!("unlink({:?} '{:?}')", path, path_str);
+
+    let guest_path = GuestPath::new(&path_str);
     match env.fs.remove(guest_path) {
         Ok(()) => 0,
         Err(e) => {
@@ -484,6 +506,12 @@ fn readlink(
         "readlink({:?} '{}', {:?}, {}) => -1, errno=EINVAL (no symlinks in guest filesystem)",
         path,
         env.mem.cstr_at_utf8(path).unwrap_or("<invalid utf8>"),
+    // BypassReadlinkUnwrap
+    let path_str = env.mem.cstr_at_utf8(path).unwrap_or_default();
+    log!(
+        "TODO: readlink({:?} '{}', {:?}, {}) -> -1",
+        path,
+        path_str,
         buf,
         buf_size,
     );
@@ -501,6 +529,7 @@ fn getdtablesize(_env: &mut Environment) -> i32 {
 
 fn sysconf(_env: &mut Environment, name: SysConfName) -> i32 {
     match name {
+        _SC_CLK_TCK => 100, // ImplSysconfClock
         _SC_PAGESIZE => PAGE_SIZE.try_into().unwrap(),
         _SC_NPROCESSORS_CONF | _SC_NPROCESSORS_ONLN => 1,
         _SC_PHYS_PAGES => 131072, // ~512 MiB / 4 KiB pages

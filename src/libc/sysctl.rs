@@ -15,6 +15,11 @@ use crate::mem::{guest_size_of, ConstPtr, GuestUSize, MutPtr, MutVoidPtr, PAGE_S
 use crate::Environment;
 
 static SYSCTL_VALUES: [((i32, i32), &str, SysInfoType); 29] = [
+// Clippy complains about the type.
+// Below values corresponds to the original iPhone.
+// Reference https://www.mail-archive.com/misc@openbsd.org/msg80988.html
+// Numerical values are from xnu/bsd/sys/sysctl.h
+static SYSCTL_VALUES: [((i32, i32), &str, SysInfoType); 18] = [
     // Generic CPU, I/O
     ((6,1), "hw.machine" , String(b"iPhone1,1")), // overridden dynamically below
     ((6,2), "hw.model" , String(b"M68AP")),
@@ -56,6 +61,12 @@ static SYSCTL_VALUES: [((i32, i32), &str, SysInfoType); 29] = [
     // kern.proc.pid is a node for process information. Some games probe
     // it with sysctl([CTL_KERN, KERN_PROC, ...]) and only need success.
     ((1,65), "kern.proc.pid", SysInfoType::Bytes(b"")),
+    ((1,2), "kern.osrelease" , String(b"10.0.0d3")),
+    ((1,3), "kern.osversion" , String(b"7A341")),
+    ((1,10), "kern.hostname" , String(b"touchHLE")), // this is arbitrary
+    ((1,4), "kern.version" , String(b"Darwin Kernel Version 10.0.0d3: Wed May 13 22:11:58 PDT 2009; root:xnu-1357.2.89~4/RELEASE_ARM_S5L8900X")),
+    ((1,65), "kern.osversion_65" , String(b"7A341")), // FakeKernOsVersion65
+    ((1,21), "kern.boottime" , SysInfoType::Int64(1000000000)), // FakeBootTime
 ];
 
 static STRING_MAP: LazyLock<HashMap<&str, SysInfoType>> = LazyLock::new(|| {
@@ -111,6 +122,17 @@ fn sysctl(
     if name_len < 2 {
         log!("sysctl(): name_len {} < 2, returning -1", name_len);
         return -1;
+    if name_len != 2 {
+        log!(
+            "TODO: sysctl called with name_len = {} (expected 2). Faking empty response to avoid crash.",
+            name_len
+        );
+        // Если игра запрашивает размер данных
+        if !oldlenp.is_null() {
+            env.mem.write(oldlenp, 0);
+        }
+        // ОБЯЗАТЕЛЬНО возвращаем 0 (успех)
+        return 0;
     }
 
     let (name0, name1) = (env.mem.read(name), env.mem.read(name + 1));
@@ -153,6 +175,60 @@ fn sysctl(
                 return None;
             };
             Some((*name_str, val.clone()))
+        |env| {
+            // MutateEnvCapture
+            let Some(mut val) = INT_MAP.get(&(name0, name1)).cloned() else {
+                unimplemented!("Unknown sysctl parameter ({name0}, {name1})!")
+            };
+            if let Some(model) = &env.options.device_model {
+                // CheckModelOverride
+                if name0 == 6 && name1 == 1 {
+                    let hw_machine: &[u8] = match model.as_str() {
+                        // MatchHwMachine
+                        "iPod5,1" => b"iPod5,1",
+                        "iPod4,1" => b"iPod4,1",
+                        "iPod3,1" => b"iPod3,1",
+                        "iPod2,1" => b"iPod2,1",
+                        "iPod1,1" => b"iPod1,1",
+                        "iPad2,5" => b"iPad2,5",
+                        "iPad3,4" => b"iPad3,4",
+                        "iPad3,1" => b"iPad3,1",
+                        "iPad2,1" => b"iPad2,1",
+                        "iPad1,1" => b"iPad1,1",
+                        "iPhone5,3" => b"iPhone5,3",
+                        "iPhone5,1" => b"iPhone5,1",
+                        "iPhone4,1" => b"iPhone4,1",
+                        "iPhone3,1" => b"iPhone3,1",
+                        "iPhone2,1" => b"iPhone2,1",
+                        "iPhone1,2" => b"iPhone1,2",
+                        _ => b"iPhone1,1",
+                    };
+                    val.1 = SysInfoType::String(hw_machine); // OverrideMachine
+                } else if name0 == 6 && name1 == 2 {
+                    let hw_model: &[u8] = match model.as_str() {
+                        // MatchHwModel
+                        "iPod5,1" => b"N78AP",
+                        "iPod4,1" => b"N81AP",
+                        "iPod3,1" => b"N18AP",
+                        "iPod2,1" => b"N72AP",
+                        "iPod1,1" => b"N45AP",
+                        "iPad2,5" => b"P105AP",
+                        "iPad3,4" => b"P101AP",
+                        "iPad3,1" => b"J1AP",
+                        "iPad2,1" => b"K93AP",
+                        "iPad1,1" => b"K48AP",
+                        "iPhone5,3" => b"N48AP",
+                        "iPhone5,1" => b"N41AP",
+                        "iPhone4,1" => b"N94AP",
+                        "iPhone3,1" => b"N90AP",
+                        "iPhone2,1" => b"N88AP",
+                        "iPhone1,2" => b"N82AP",
+                        _ => b"M68AP",
+                    };
+                    val.1 = SysInfoType::String(hw_model); // OverrideModel
+                }
+            }
+            val
         },
         oldp,
         oldlenp,
@@ -184,6 +260,7 @@ fn sysctlbyname(
     sysctl_generic(
         env,
         |env| {
+            // MutateEnvCapture
             let name_str = env.mem.cstr_at_utf8(name).unwrap();
             let Some((name_str, val)) = STRING_MAP.get_key_value(name_str) else {
                 log!(
@@ -193,6 +270,61 @@ fn sysctlbyname(
                 return None;
             };
             Some((name_str, val.clone()))
+            let Some((name_str, mut val)) = STRING_MAP
+                .get_key_value(name_str)
+                .map(|(k, v)| (*k, v.clone()))
+            else {
+                unimplemented!("Unknown sysctlbyname parameter {name_str}!")
+            };
+            if let Some(model) = &env.options.device_model {
+                // CheckModelOverride
+                if name_str == "hw.machine" {
+                    let hw_machine: &[u8] = match model.as_str() {
+                        // MatchHwMachine
+                        "iPod5,1" => b"iPod5,1",
+                        "iPod4,1" => b"iPod4,1",
+                        "iPod3,1" => b"iPod3,1",
+                        "iPod2,1" => b"iPod2,1",
+                        "iPod1,1" => b"iPod1,1",
+                        "iPad2,5" => b"iPad2,5",
+                        "iPad3,4" => b"iPad3,4",
+                        "iPad3,1" => b"iPad3,1",
+                        "iPad2,1" => b"iPad2,1",
+                        "iPad1,1" => b"iPad1,1",
+                        "iPhone5,3" => b"iPhone5,3",
+                        "iPhone5,1" => b"iPhone5,1",
+                        "iPhone4,1" => b"iPhone4,1",
+                        "iPhone3,1" => b"iPhone3,1",
+                        "iPhone2,1" => b"iPhone2,1",
+                        "iPhone1,2" => b"iPhone1,2",
+                        _ => b"iPhone1,1",
+                    };
+                    val = SysInfoType::String(hw_machine); // OverrideMachine
+                } else if name_str == "hw.model" {
+                    let hw_model: &[u8] = match model.as_str() {
+                        // MatchHwModel
+                        "iPod5,1" => b"N78AP",
+                        "iPod4,1" => b"N81AP",
+                        "iPod3,1" => b"N18AP",
+                        "iPod2,1" => b"N72AP",
+                        "iPod1,1" => b"N45AP",
+                        "iPad2,5" => b"P105AP",
+                        "iPad3,4" => b"P101AP",
+                        "iPad3,1" => b"J1AP",
+                        "iPad2,1" => b"K93AP",
+                        "iPad1,1" => b"K48AP",
+                        "iPhone5,3" => b"N48AP",
+                        "iPhone5,1" => b"N41AP",
+                        "iPhone4,1" => b"N94AP",
+                        "iPhone3,1" => b"N90AP",
+                        "iPhone2,1" => b"N88AP",
+                        "iPhone1,2" => b"N82AP",
+                        _ => b"M68AP",
+                    };
+                    val = SysInfoType::String(hw_model); // OverrideModel
+                }
+            }
+            (name_str, val)
         },
         oldp,
         oldlenp,

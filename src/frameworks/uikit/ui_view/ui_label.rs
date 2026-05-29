@@ -245,6 +245,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (())setAdjustsFontSizeToFitWidth:(bool)adjusts {
     env.objc.borrow_mut::<UILabelHostObject>(this).adjusts_font_size_to_fit_width = adjusts;
     () = msg![env; this setNeedsDisplay];
+    log!("TODO: setAdjustsFontSizeToFitWidth:{}", adjusts);
 }
 
 - (CGFloat)minimumFontSize {

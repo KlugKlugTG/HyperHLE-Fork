@@ -204,16 +204,28 @@ pub const CLASSES: ClassExports = objc_classes! {
     env.framework_state.uikit.ui_view.ui_window.key_window == Some(this)
 }
 
+// MakeKeyVisibleFix
 - (())makeKeyAndVisible {
-    // TODO: We don't currently have send any non-touch events to windows,
-    // so there's no meaning in it yet.
-
-    // FIXME: This should also bump the window to the top of the list.
-
     () = msg![env; this makeKeyWindow];
-
-    // TODO: post UIWindowDidBecomeVisibleNotification
     () = msg![env; this setHidden:false];
+
+    let screen: id = msg_class![env; UIScreen mainScreen];
+    let bounds: CGRect = msg![env; screen bounds];
+    let frame: CGRect = msg![env; this frame];
+    //DebugMakeKeyVis
+    log!("DEBUG_UIWINDOW: makeKeyAndVisible on {:?} | Screen Bounds: {:?} | Window Frame: {:?}", this, bounds, frame);
+
+    if frame.size.width <= 0.0 || frame.size.height <= 0.0 {
+        log!("Fixing empty window frame to {:?}", bounds);
+        () = msg![env; this setFrame:bounds];
+    }
+
+    let list = &mut env.framework_state.uikit.ui_view.ui_window.windows;
+    if let Some(idx) = list.iter().position(|&w| w == this) {
+        let w = list.remove(idx);
+        list.push(w);
+        log!("Bumped window {:?} to top of touch list", w);
+    }
 }
 
 // Legacy iOS 2/3 pattern: [window setContentView:someView]
@@ -308,6 +320,18 @@ pub const CLASSES: ClassExports = objc_classes! {
 // "UIWindow returns the application object."
 - (id)nextResponder {
     msg_class![env; UIApplication sharedApplication]
+}
+
+- (id)screen {
+    msg_class![env; UIScreen mainScreen] // ReturnMainScreen
+}
+
+- (())setScreen:(id)_screen {
+    // DropExternalWindow
+    let list = &mut env.framework_state.uikit.ui_view.ui_window.windows;
+    if let Some(idx) = list.iter().position(|&w| w == this) {
+        list.remove(idx);
+    }
 }
 
 - (())addSubview:(id)view {
@@ -489,7 +513,28 @@ pub const UIKeyboardWillHideNotification: &str = "UIKeyboardWillHideNotification
 pub const UIKeyboardDidHideNotification: &str = "UIKeyboardDidHideNotification";
 pub const UIKeyboardBoundsUserInfoKey: &str = "UIKeyboardBoundsUserInfoKey";
 
+// ScreenNotifications
+pub const UIScreenDidConnectNotification: &str = "UIScreenDidConnectNotification";
+pub const UIScreenDidDisconnectNotification: &str = "UIScreenDidDisconnectNotification";
+pub const UIScreenModeDidChangeNotification: &str = "UIScreenModeDidChangeNotification";
+
 pub const CONSTANTS: ConstantExports = &[
+    (
+        "_UIEdgeInsetsZero",
+        HostConstant::Bytes(&[0; 16]), // RealEdgeInsetsZero
+    ),
+    (
+        "_UIScreenDidConnectNotification",
+        HostConstant::NSString(UIScreenDidConnectNotification), // FakeScreenConnect
+    ),
+    (
+        "_UIScreenDidDisconnectNotification",
+        HostConstant::NSString(UIScreenDidDisconnectNotification), // FakeScreenDisconnect
+    ),
+    (
+        "_UIScreenModeDidChangeNotification",
+        HostConstant::NSString(UIScreenModeDidChangeNotification), // FakeScreenMode
+    ),
     (
         "_UIWindowDidBecomeKeyNotification",
         HostConstant::NSString(UIWindowDidBecomeKeyNotification),
