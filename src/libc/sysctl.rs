@@ -185,6 +185,15 @@ fn sysctlbyname(
         env,
         |env| {
             let name_str = env.mem.cstr_at_utf8(name).unwrap();
+            // hw.machine depends on the emulated device family, like in the
+            // numeric sysctl() path above. The static table value is only a
+            // placeholder; without this, apps that check the device model via
+            // sysctlbyname (e.g. BioShock's device whitelist) would always
+            // see the first-gen iPhone regardless of --device-family.
+            if name_str == "hw.machine" {
+                let machine: &'static str = env.window().device_family().machine_name();
+                return Some(("hw.machine", String(machine.as_bytes())));
+            }
             let Some((name_str, val)) = STRING_MAP.get_key_value(name_str) else {
                 log!(
                     "sysctlbyname(): unknown parameter {}, returning -1",

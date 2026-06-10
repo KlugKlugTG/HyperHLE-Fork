@@ -345,6 +345,32 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(NSDeallocateObject(_)),
 ];
 
+/// Copy a file, or a directory and its contents recursively, like
+/// `-[NSFileManager copyItemAtPath:toPath:error:]` does on real iOS.
+/// (Previously touchHLE only handled plain files here, so apps that copy a
+/// whole directory — e.g. BioShock copying its `Config` directory from the
+/// bundle into Documents on first launch — would get a spurious error.)
+fn copy_item_recursive(env: &mut Environment, src: &GuestPath, dst: &GuestPath) -> Result<(), ()> {
+    if env.fs.is_dir(src) {
+        env.fs.create_dir_all(dst).map_err(|_| ())?;
+        let children = env.fs.enumerate_recursive(src)?;
+        for relative_path in children {
+            let src_child = src.join(relative_path.as_str());
+            let dst_child = dst.join(relative_path.as_str());
+            if env.fs.is_dir(&src_child) {
+                env.fs.create_dir_all(&dst_child).map_err(|_| ())?;
+            } else {
+                let data = env.fs.read(&src_child)?;
+                env.fs.write(&dst_child, &data)?;
+            }
+        }
+        Ok(())
+    } else {
+        let data = env.fs.read(src)?;
+        env.fs.write(dst, &data)
+    }
+}
+
 #[derive(Default)]
 pub struct State {
     default_manager: Option<id>,
@@ -820,31 +846,24 @@ pub const CLASSES: ClassExports = objc_classes! {
 
     let src_str = ns_string::to_rust_string(env, src);
     let dst_str = ns_string::to_rust_string(env, dst);
+    log_dbg!("copyItemAtPath:{:?} toPath:{:?}", src_str, dst_str);
 
-    let data = match env.fs.read(GuestPath::new(src_str.as_ref())) {
-        Ok(d) => d,
-        Err(_) => {
+    match copy_item_recursive(
+        env,
+        GuestPath::new(src_str.as_ref()),
+        GuestPath::new(dst_str.as_ref()),
+    ) {
+        Ok(()) => true,
+        Err(()) => {
             if !error.is_null() {
                 let domain = get_static_str(env, NSCocoaErrorDomain);
                 let ns_error = msg_class![env; NSError alloc];
                 let ns_error = msg![env; ns_error initWithDomain:domain code:NSFileReadNoSuchFileError userInfo:nil];
                 env.mem.write(error, ns_error);
             }
-            return false;
+            false
         }
-    };
-
-    if env.fs.write(GuestPath::new(dst_str.as_ref()), &data).is_err() {
-        if !error.is_null() {
-            let domain = get_static_str(env, NSCocoaErrorDomain);
-            let ns_error = msg_class![env; NSError alloc];
-            let ns_error = msg![env; ns_error initWithDomain:domain code:NSFileReadNoSuchFileError userInfo:nil];
-            env.mem.write(error, ns_error);
-        }
-        return false;
     }
-
-    true
 }
 
 - (bool)moveItemAtPath:(id)path

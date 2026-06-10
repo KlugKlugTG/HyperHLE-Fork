@@ -277,3 +277,7 @@ com.madfingergames.Samurai: --force-composition
 
 # NEX
 com.StarByte.NEX: --landscape-left --force-composition
+
+# BioShock (requires a newer device model; the game refuses to start its
+# engine if it detects an unsupported device like the original iPhone)
+com.2k.bioshock: --landscape-right --device-family=iphone5

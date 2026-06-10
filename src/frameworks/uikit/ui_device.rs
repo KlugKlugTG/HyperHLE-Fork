@@ -272,15 +272,20 @@ pub const CLASSES: ClassExports = objc_classes! {
     }
 }
 
-// MARK: - Hardware info (read-only stubs matching iPhone 2G/3G era)
+// MARK: - Hardware info
 
 - (id)platform {
-    // Matches the sysctl hw.machine value on a first-gen iPhone.
-    ns_string::get_static_str(env, "iPhone1,1")
+    // Matches the sysctl hw.machine value for the emulated device family.
+    // This must agree with sysctl/uname: apps with device whitelists (e.g.
+    // BioShock) check the model through UIDevice categories like this one
+    // and refuse to start the engine if they see an unsupported device.
+    let machine_name = env.window().device_family().machine_name();
+    ns_string::get_static_str(env, machine_name)
 }
 
 - (id)hwModel {
-    ns_string::get_static_str(env, "iPhone1,1")
+    let machine_name = env.window().device_family().machine_name();
+    ns_string::get_static_str(env, machine_name)
 }
 
 // MARK: - Notifications (post helpers used by subcomponents)
