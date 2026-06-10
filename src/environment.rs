@@ -494,6 +494,8 @@ impl Environment {
             })
             .unwrap();
 
+        let entry_point_is_lc_main = executable.entry_point_is_lc_main;
+
         let entry_point_addr = abi::GuestFunction::from_addr_with_thumb_bit(entry_point_addr);
 
         log_dbg!("Address of start function: {:?}", entry_point_addr);
@@ -582,7 +584,14 @@ impl Environment {
 
                         let envp = envp_ref_list.as_slice();
                         let apple = &[bin_path_apple_key.as_str()];
-                        stack::prep_stack_for_start(&mut env.mem, &mut env.cpu, &argv, envp, apple);
+                        stack::prep_stack_for_start(
+                            &mut env.mem,
+                            &mut env.cpu,
+                            &argv,
+                            envp,
+                            apple,
+                            entry_point_is_lc_main,
+                        );
                     }
 
                     // Manually call here, since running call_from_host pushes
@@ -794,7 +803,7 @@ impl Environment {
             let argv = &[];
             let envp = &[];
             let apple = &[];
-            stack::prep_stack_for_start(&mut env.mem, &mut env.cpu, argv, envp, apple);
+            stack::prep_stack_for_start(&mut env.mem, &mut env.cpu, argv, envp, apple, false);
         }
 
         env.cpu.set_cpsr(cpu::Cpu::CPSR_USER_MODE);
