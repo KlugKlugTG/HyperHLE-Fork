@@ -9,6 +9,7 @@
 mod av_audio_player;
 pub mod av_audio_session;
 pub mod av_capture;
+pub mod av_player;
 
 use crate::dyld::{ConstantExports, HostConstant};
 use crate::objc::id;
@@ -23,6 +24,9 @@ pub struct State {
     /// subclass-specific state (the AVCaptureSession the layer is bound to,
     /// the videoGravity string, etc.) lives here keyed by layer `id`.
     pub av_capture_preview_extras: HashMap<id, av_capture::AVCapturePreviewLayerExtra>,
+    /// State for AVPlayer / AVPlayerLayer stubs (side-tables and pending
+    /// finish notifications). See [av_player].
+    pub av_player: av_player::State,
 }
 
 /// Constants commonly referenced from iOS 5/6 binaries that don't yet have a
@@ -318,6 +322,7 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
         av_audio_player::CLASSES,
         av_audio_session::CLASSES,
         av_capture::CLASSES,
+        av_player::CLASSES,
     ],
     constant_exports: &[
         av_audio_session::CONSTANTS,
