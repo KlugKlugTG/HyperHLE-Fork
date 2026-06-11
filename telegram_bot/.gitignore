@@ -1,5 +1,6 @@
 .env
 .venv/
+*.pickle
 __pycache__/
 *.pyc
 *.egg-info/

@@ -97,9 +97,11 @@ STRINGS: dict[str, dict[str, str]] = {
             "{user} started the bot?)."
         ),
         "cancelled": "Cancelled. Send /start whenever you're ready.",
+        "language_set": "✅ Language set to English.",
         "help": (
             "I file *app fix requests* for HyperHLE.\n\n"
             "/start — start a new request (IPA link, log file, bug description)\n"
+            "/language — change the language (English / Русский)\n"
             "/cancel — abort the current request\n"
             "/help — this message\n\n"
             "Requests are pinned to the latest build from {actions} and "
@@ -198,9 +200,11 @@ STRINGS: dict[str, dict[str, str]] = {
             "писал(а) ли {user} боту хоть раз?)."
         ),
         "cancelled": "Отменено. Отправьте /start, когда будете готовы.",
+        "language_set": "✅ Язык переключён на русский.",
         "help": (
             "Я создаю *запросы на исправление приложений* для HyperHLE.\n\n"
             "/start — новый запрос (ссылка на IPA, файл лога, описание бага)\n"
+            "/language — сменить язык (English / Русский)\n"
             "/cancel — прервать текущий запрос\n"
             "/help — это сообщение\n\n"
             "Запросы привязываются к последней сборке из {actions} и "

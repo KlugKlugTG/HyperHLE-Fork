@@ -21,14 +21,15 @@ When the request is complete the bot:
 
 ## Conversation flow
 
-The bot speaks **English and Russian** — `/start` begins with a language
-picker, and every prompt after that is shown in the chosen language. (The
-GitHub issue and the maintainer forward stay in English.) The choice is
-remembered for the user's next request.
+The bot speaks **English and Russian**. The first `/start` begins with a
+language picker; the choice is saved (and survives bot restarts via a pickle
+file, see `PERSISTENCE_FILE`), so later `/start` runs skip straight to the
+questions. `/language` re-opens the picker at any time, even mid-request.
+(The GitHub issue and the maintainer forward stay in English.)
 
 ```
 /start
- → 🇬🇧 English / 🇷🇺 Русский
+ → 🇬🇧 English / 🇷🇺 Русский   (first time only — /language to change later)
  → app name
  → app version            (/skip)
  → IPA link(s)            (required — one or more http(s) URLs)
@@ -65,6 +66,7 @@ python -m bot.main
 | `GITHUB_OWNER` / `GITHUB_REPO` | no | Defaults to `HyperHLE` / `HyperHLE`. |
 | `GITHUB_ISSUE_LABELS` | no | Comma-separated labels, default `app fix request`. |
 | `GITHUB_BUILD_WORKFLOW` | no | Build workflow file, default `HyperHLE_release.yml`. |
+| `PERSISTENCE_FILE` | no | Pickle file for saved user languages, default `bot_state.pickle` next to the project. |
 
 #### Forwarding to @Tog991
 

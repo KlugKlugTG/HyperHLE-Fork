@@ -39,6 +39,7 @@ class Config:
     github_repo: str
     issue_labels: list[str]
     build_workflow: str
+    persistence_file: Path
 
     @property
     def repo_slug(self) -> str:
@@ -72,6 +73,13 @@ def load_config() -> Config:
         if s.strip()
     ]
 
+    persistence_raw = os.environ.get("PERSISTENCE_FILE", "").strip()
+    persistence_file = (
+        Path(persistence_raw)
+        if persistence_raw
+        else Path(__file__).resolve().parent.parent / "bot_state.pickle"
+    )
+
     return Config(
         telegram_token=token,
         forward_chat_id=forward_chat_id,
@@ -81,4 +89,5 @@ def load_config() -> Config:
         github_repo=os.environ.get("GITHUB_REPO", "HyperHLE").strip(),
         issue_labels=labels,
         build_workflow=os.environ.get("GITHUB_BUILD_WORKFLOW", "HyperHLE_release.yml").strip(),
+        persistence_file=persistence_file,
     )

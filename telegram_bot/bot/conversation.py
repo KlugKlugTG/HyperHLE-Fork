@@ -53,25 +53,30 @@ def _reporter(update: Update) -> str:
     return user.full_name or str(user.id)
 
 
-def _language_keyboard() -> InlineKeyboardMarkup:
+def _language_keyboard(prefix: str = "lang") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton("🇬🇧 English", callback_data="lang:en"),
-                InlineKeyboardButton("🇷🇺 Русский", callback_data="lang:ru"),
+                InlineKeyboardButton("🇬🇧 English", callback_data=f"{prefix}:en"),
+                InlineKeyboardButton("🇷🇺 Русский", callback_data=f"{prefix}:ru"),
             ]
         ]
     )
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    # Keep the previously chosen language as the default for messages shown
-    # before the user picks again (the picker itself is bilingual anyway).
+    # A returning user's language survives the reset; they are only asked to
+    # pick once. /language changes it later.
     lang = context.user_data.get("lang")
     context.user_data.clear()
     if lang:
         context.user_data["lang"] = lang
     context.user_data[_REQUEST_KEY] = FixRequest(reporter=_reporter(update))
+    if lang:
+        await update.message.reply_text(
+            t(context, "intro"), parse_mode=ParseMode.MARKDOWN
+        )
+        return APP_NAME
     await update.message.reply_text(
         t(context, "choose_language"),
         reply_markup=_language_keyboard(),
@@ -362,6 +367,25 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ConversationHandler.END
 
 
+async def language_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Standalone /language: re-show the picker, also usable mid-conversation.
+
+    Uses the "setlang:" callback prefix so it never collides with the
+    conversation's own LANGUAGE/CONFIRM callback handlers.
+    """
+    await update.message.reply_text(
+        t(context, "choose_language"),
+        reply_markup=_language_keyboard(prefix="setlang"),
+    )
+
+
+async def on_setlang(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    context.user_data["lang"] = query.data.removeprefix("setlang:")
+    await query.edit_message_text(t(context, "language_set"))
+
+
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     cfg: Config = context.bot_data["config"]
     await update.message.reply_text(
@@ -411,3 +435,7 @@ def build_conversation() -> ConversationHandler:
 def register_handlers(application: Application) -> None:
     application.add_handler(build_conversation())
     application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("language", language_command))
+    application.add_handler(
+        CallbackQueryHandler(on_setlang, pattern=r"^setlang:(en|ru)$")
+    )
