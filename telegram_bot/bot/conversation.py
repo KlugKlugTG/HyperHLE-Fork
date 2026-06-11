@@ -1,4 +1,4 @@
-"""The /fix conversation: collect a request, file it, forward it."""
+"""The /start conversation: pick a language, collect a request, file it, forward it."""
 from __future__ import annotations
 
 import logging
@@ -6,7 +6,6 @@ import logging
 from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    ReplyKeyboardMarkup,
     ReplyKeyboardRemove,
     Update,
 )
@@ -23,12 +22,13 @@ from telegram.ext import (
 
 from .config import Config
 from .github_client import GitHubClient
+from .i18n import t
 from .request import FixRequest, LogFile
 
 log = logging.getLogger(__name__)
 
 # Conversation states.
-APP_NAME, APP_VERSION, IPA_LINKS, BUG, LOGS, ENV, MEDIA, CONFIRM = range(8)
+LANGUAGE, APP_NAME, APP_VERSION, IPA_LINKS, BUG, LOGS, ENV, MEDIA, CONFIRM = range(9)
 
 # Telegram bot API caps downloads at 20 MB; logs above that are rejected.
 MAX_LOG_BYTES = 20 * 1024 * 1024
@@ -53,48 +53,71 @@ def _reporter(update: Update) -> str:
     return user.full_name or str(user.id)
 
 
+def _language_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("🇬🇧 English", callback_data="lang:en"),
+                InlineKeyboardButton("🇷🇺 Русский", callback_data="lang:ru"),
+            ]
+        ]
+    )
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    # Keep the previously chosen language as the default for messages shown
+    # before the user picks again (the picker itself is bilingual anyway).
+    lang = context.user_data.get("lang")
+    context.user_data.clear()
+    if lang:
+        context.user_data["lang"] = lang
     context.user_data[_REQUEST_KEY] = FixRequest(reporter=_reporter(update))
     await update.message.reply_text(
-        "🛠️ *HyperHLE app-fix request*\n\n"
-        "I'll collect everything needed to get an app fixed:\n"
-        "1️⃣ the *IPA link(s)*\n"
-        "2️⃣ a *log file*\n"
-        "3️⃣ a description of the *bug/crash*\n\n"
-        "Your request will be filed against the *latest HyperHLE build from "
-        "Actions* and forwarded to a maintainer.\n\n"
-        "Send /cancel any time to stop.\n\n"
-        "First — what's the *app / game name*?",
+        t(context, "choose_language"),
+        reply_markup=_language_keyboard(),
+    )
+    return LANGUAGE
+
+
+async def on_language(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    context.user_data["lang"] = query.data.removeprefix("lang:")
+    await query.edit_message_text(
+        t(context, "intro"),
         parse_mode=ParseMode.MARKDOWN,
-        reply_markup=ReplyKeyboardRemove(),
     )
     return APP_NAME
+
+
+async def language_reprompt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text(
+        t(context, "choose_language"),
+        reply_markup=_language_keyboard(),
+    )
+    return LANGUAGE
 
 
 async def got_app_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     _req(context).app_name = update.message.text.strip()
     await update.message.reply_text(
-        "Got it. What's the *app version*? (e.g. `1.0`)\n"
-        "Send /skip if you don't know.",
-        parse_mode=ParseMode.MARKDOWN,
+        t(context, "ask_version"), parse_mode=ParseMode.MARKDOWN
     )
     return APP_VERSION
 
 
 async def got_app_version(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     _req(context).app_version = update.message.text.strip()
-    return await _ask_ipa(update)
+    return await _ask_ipa(update, context)
 
 
 async def skip_app_version(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    return await _ask_ipa(update)
+    return await _ask_ipa(update, context)
 
 
-async def _ask_ipa(update: Update) -> int:
+async def _ask_ipa(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text(
-        "🔗 Now send the *IPA link(s)* — a direct download URL to the `.ipa` "
-        "(or zipped `.app`). You can paste several, one per line.",
-        parse_mode=ParseMode.MARKDOWN,
+        t(context, "ask_ipa"), parse_mode=ParseMode.MARKDOWN
     )
     return IPA_LINKS
 
@@ -104,17 +127,12 @@ async def got_ipa_links(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     links = req.extract_links(update.message.text)
     if not links:
         await update.message.reply_text(
-            "I couldn't find a valid `http(s)://…` link there. Please paste a "
-            "direct download URL to the IPA.",
-            parse_mode=ParseMode.MARKDOWN,
+            t(context, "no_link"), parse_mode=ParseMode.MARKDOWN
         )
         return IPA_LINKS
     req.ipa_links = links
     await update.message.reply_text(
-        f"✅ Saved {len(links)} link(s).\n\n"
-        "🐞 Now *describe the bug or crash*. What happens, and where does it "
-        "fail (boot, menu, level, gameplay)?",
-        parse_mode=ParseMode.MARKDOWN,
+        t(context, "links_saved", n=len(links)), parse_mode=ParseMode.MARKDOWN
     )
     return BUG
 
@@ -122,9 +140,7 @@ async def got_ipa_links(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 async def got_bug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     _req(context).bug_description = update.message.text.strip()
     await update.message.reply_text(
-        "📄 Now send the *log file(s)*. Attach the log as a document, or paste "
-        "the log text directly. Send /done when you've added at least one.",
-        parse_mode=ParseMode.MARKDOWN,
+        t(context, "ask_logs"), parse_mode=ParseMode.MARKDOWN
     )
     return LOGS
 
@@ -132,10 +148,7 @@ async def got_bug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def got_log_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     doc = update.message.document
     if doc.file_size and doc.file_size > MAX_LOG_BYTES:
-        await update.message.reply_text(
-            "That file is larger than 20 MB, which is the most I can download. "
-            "Please trim the log or paste the relevant part as text."
-        )
+        await update.message.reply_text(t(context, "file_too_big"))
         return LOGS
     try:
         tg_file = await context.bot.get_file(doc.file_id)
@@ -143,15 +156,12 @@ async def got_log_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         text = bytes(data).decode("utf-8", errors="replace")
     except Exception:  # noqa: BLE001 - surface a friendly message, keep collecting
         log.exception("failed to download log document")
-        await update.message.reply_text(
-            "Sorry, I couldn't download that file. Try again or paste the text."
-        )
+        await update.message.reply_text(t(context, "download_failed"))
         return LOGS
     name = doc.file_name or f"log-{len(_req(context).logs) + 1}.txt"
     _req(context).logs.append(LogFile(name=name, content=text))
     await update.message.reply_text(
-        f"✅ Added log `{name}`. Send another, or /done to continue.",
-        parse_mode=ParseMode.MARKDOWN,
+        t(context, "log_added", name=name), parse_mode=ParseMode.MARKDOWN
     )
     return LOGS
 
@@ -160,24 +170,17 @@ async def got_log_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     req = _req(context)
     name = f"pasted-log-{len(req.logs) + 1}.txt"
     req.logs.append(LogFile(name=name, content=update.message.text))
-    await update.message.reply_text(
-        "✅ Added pasted log. Send another log, or /done to continue."
-    )
+    await update.message.reply_text(t(context, "pasted_log_added"))
     return LOGS
 
 
 async def logs_done(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     req = _req(context)
     if not req.logs:
-        await update.message.reply_text(
-            "A log is required so the crash can be investigated. Please attach "
-            "or paste at least one log before /done."
-        )
+        await update.message.reply_text(t(context, "log_required"))
         return LOGS
     await update.message.reply_text(
-        "🖥️ Optional: what *OS* and *GPU* did you test on? (e.g. "
-        "`Windows 11 / NVIDIA GTX 1660`)\nSend /skip to leave it out.",
-        parse_mode=ParseMode.MARKDOWN,
+        t(context, "ask_env"), parse_mode=ParseMode.MARKDOWN
     )
     return ENV
 
@@ -191,19 +194,16 @@ async def got_env(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         req.gpu = gpu_part.strip()
     else:
         req.operating_system = text
-    return await _ask_media(update)
+    return await _ask_media(update, context)
 
 
 async def skip_env(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    return await _ask_media(update)
+    return await _ask_media(update, context)
 
 
-async def _ask_media(update: Update) -> int:
+async def _ask_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text(
-        "📷 Optional: send any *screenshots or a short video* that show the "
-        "problem. They'll be forwarded to the maintainer.\nSend /done when "
-        "you're finished (or to skip).",
-        parse_mode=ParseMode.MARKDOWN,
+        t(context, "ask_media"), parse_mode=ParseMode.MARKDOWN
     )
     return MEDIA
 
@@ -214,9 +214,7 @@ async def got_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     media_ids.append(update.message.message_id)
     count = len(media_ids)
     _req(context).media_note = f"{count} attachment(s) forwarded to the maintainer."
-    await update.message.reply_text(
-        f"✅ Saved attachment {count}. Send more, or /done to review."
-    )
+    await update.message.reply_text(t(context, "media_saved", n=count))
     return MEDIA
 
 
@@ -230,25 +228,24 @@ async def _show_confirmation(
     req = _req(context)
     missing = req.missing()
     if missing:
-        await update.message.reply_text(
-            "Still missing: " + ", ".join(missing) + ". Use /cancel to start over."
-        )
+        items = ", ".join(t(context, f"missing_{key}") for key in missing)
+        await update.message.reply_text(t(context, "missing", items=items))
         return MEDIA
 
-    summary = (
-        f"*Please review your request:*\n\n"
-        f"*App:* {req.app_name}"
-        + (f" {req.app_version}" if req.app_version else "")
-        + "\n"
-        f"*IPA link(s):* {len(req.ipa_links)}\n"
-        f"*Logs:* {len(req.logs)}\n"
-        f"*Bug:* {req.bug_description[:300]}"
+    app_label = req.app_name + (f" {req.app_version}" if req.app_version else "")
+    summary = t(
+        context,
+        "review",
+        app=app_label,
+        links=len(req.ipa_links),
+        logs=len(req.logs),
+        bug=req.bug_description[:300],
     )
     keyboard = InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton("✅ Submit", callback_data="submit"),
-                InlineKeyboardButton("❌ Cancel", callback_data="abort"),
+                InlineKeyboardButton(t(context, "btn_submit"), callback_data="submit"),
+                InlineKeyboardButton(t(context, "btn_cancel"), callback_data="abort"),
             ]
         ]
     )
@@ -262,15 +259,19 @@ async def on_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
     if query.data == "abort":
+        lang = context.user_data.get("lang")
+        cancelled_text = t(context, "cancelled_inline")
         context.user_data.clear()
-        await query.edit_message_text("Cancelled. Send /fix to start again.")
+        if lang:
+            context.user_data["lang"] = lang
+        await query.edit_message_text(cancelled_text)
         return ConversationHandler.END
 
     req: FixRequest = _req(context)
     cfg: Config = context.bot_data["config"]
     gh: GitHubClient = context.bot_data["github"]
 
-    await query.edit_message_text("⏳ Submitting your request…")
+    await query.edit_message_text(t(context, "submitting"))
 
     # Pin the request to the latest build from Actions.
     build = await gh.latest_build()
@@ -279,41 +280,39 @@ async def on_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         req.hyperhle_version_url = build.url
 
     # 1) Open a GitHub issue (or fall back to a prefilled link).
-    issue_line = ""
     issue = await gh.create_issue(req.issue_title(), req.issue_body(), cfg.issue_labels)
     if issue is not None:
-        issue_line = f"\n📌 GitHub issue: {issue.url}"
+        issue_line = t(context, "issue_line_ok", url=issue.url)
     elif not gh.can_open_issues:
-        issue_line = (
-            "\n📌 No GitHub token configured — prefilled issue link:\n"
-            + gh.new_issue_link(req.issue_title(), req.issue_body())
+        issue_line = t(
+            context,
+            "issue_line_no_token",
+            url=gh.new_issue_link(req.issue_title(), req.issue_body()),
         )
     else:
-        issue_line = "\n⚠️ Couldn't open the GitHub issue automatically (it was still forwarded)."
+        issue_line = t(context, "issue_line_failed")
 
     # 2) Forward to the maintainer.
     forwarded = await _forward_to_maintainer(update, context, req, issue)
 
     build_line = (
-        f"\n🧪 Filed against latest build: {req.hyperhle_version}"
-        if req.hyperhle_version
-        else ""
+        t(context, "build_line", v=req.hyperhle_version) if req.hyperhle_version else ""
     )
-    forward_status = (
-        f"\n📨 Forwarded to {cfg.forward_username}."
-        if forwarded
-        else f"\n⚠️ Couldn't forward to {cfg.forward_username} (is FORWARD_CHAT_ID set and has {cfg.forward_username} started the bot?)."
+    forward_status = t(
+        context,
+        "forward_ok" if forwarded else "forward_failed",
+        user=cfg.forward_username,
     )
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text="✅ *Request submitted!* Thanks for the details."
-        + build_line
-        + issue_line
-        + forward_status,
+        text=t(context, "submitted") + build_line + issue_line + forward_status,
         parse_mode=ParseMode.MARKDOWN,
         disable_web_page_preview=True,
     )
+    lang = context.user_data.get("lang")
     context.user_data.clear()
+    if lang:
+        context.user_data["lang"] = lang
     return ConversationHandler.END
 
 
@@ -352,10 +351,13 @@ async def _forward_to_maintainer(
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    lang = context.user_data.get("lang")
+    cancelled_text = t(context, "cancelled")
     context.user_data.clear()
+    if lang:
+        context.user_data["lang"] = lang
     await update.message.reply_text(
-        "Cancelled. Send /fix whenever you're ready.",
-        reply_markup=ReplyKeyboardRemove(),
+        cancelled_text, reply_markup=ReplyKeyboardRemove()
     )
     return ConversationHandler.END
 
@@ -363,12 +365,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     cfg: Config = context.bot_data["config"]
     await update.message.reply_text(
-        "I file *app fix requests* for HyperHLE.\n\n"
-        "/fix — start a new request (IPA link, log file, bug description)\n"
-        "/cancel — abort the current request\n"
-        "/help — this message\n\n"
-        f"Requests are pinned to the latest build from {cfg.actions_url} and "
-        f"forwarded to {cfg.forward_username}.",
+        t(context, "help", actions=cfg.actions_url, user=cfg.forward_username),
         parse_mode=ParseMode.MARKDOWN,
         disable_web_page_preview=True,
     )
@@ -376,8 +373,12 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 def build_conversation() -> ConversationHandler:
     return ConversationHandler(
-        entry_points=[CommandHandler("fix", start)],
+        entry_points=[CommandHandler("start", start)],
         states={
+            LANGUAGE: [
+                CallbackQueryHandler(on_language, pattern=r"^lang:(en|ru)$"),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, language_reprompt),
+            ],
             APP_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, got_app_name)],
             APP_VERSION: [
                 CommandHandler("skip", skip_app_version),
@@ -400,7 +401,7 @@ def build_conversation() -> ConversationHandler:
                     (filters.PHOTO | filters.VIDEO | filters.Document.ALL), got_media
                 ),
             ],
-            CONFIRM: [CallbackQueryHandler(on_confirm)],
+            CONFIRM: [CallbackQueryHandler(on_confirm, pattern=r"^(submit|abort)$")],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
         allow_reentry=True,
@@ -409,4 +410,4 @@ def build_conversation() -> ConversationHandler:
 
 def register_handlers(application: Application) -> None:
     application.add_handler(build_conversation())
-    application.add_handler(CommandHandler(["start", "help"], help_command))
+    application.add_handler(CommandHandler("help", help_command))

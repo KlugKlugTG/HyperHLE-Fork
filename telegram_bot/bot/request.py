@@ -43,15 +43,16 @@ class FixRequest:
         return bool(self.app_name and self.ipa_links and self.bug_description and self.logs)
 
     def missing(self) -> list[str]:
+        """Stable keys for whatever is still missing (localized by the UI)."""
         out = []
         if not self.app_name:
-            out.append("app name")
+            out.append("app_name")
         if not self.ipa_links:
-            out.append("IPA link(s)")
+            out.append("ipa")
         if not self.logs:
-            out.append("log file(s)")
+            out.append("logs")
         if not self.bug_description:
-            out.append("bug/crash description")
+            out.append("bug")
         return out
 
     def _version_line(self) -> str:

@@ -21,8 +21,14 @@ When the request is complete the bot:
 
 ## Conversation flow
 
+The bot speaks **English and Russian** — `/start` begins with a language
+picker, and every prompt after that is shown in the chosen language. (The
+GitHub issue and the maintainer forward stay in English.) The choice is
+remembered for the user's next request.
+
 ```
-/fix
+/start
+ → 🇬🇧 English / 🇷🇺 Русский
  → app name
  → app version            (/skip)
  → IPA link(s)            (required — one or more http(s) URLs)
@@ -93,7 +99,8 @@ telegram_bot/
 └── bot/
     ├── config.py          # env-driven configuration + .env loader
     ├── github_client.py   # latest-build lookup + issue creation
+    ├── i18n.py            # English / Russian strings
     ├── request.py         # FixRequest model + issue/forward renderers
-    ├── conversation.py    # the /fix ConversationHandler
+    ├── conversation.py    # the /start ConversationHandler
     └── main.py            # entry point (run_polling)
 ```
