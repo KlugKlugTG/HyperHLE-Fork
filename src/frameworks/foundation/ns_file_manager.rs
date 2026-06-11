@@ -267,6 +267,7 @@ fn NSSearchPathForDirectoriesInDomains(
         NSAutosavedInformationDirectory => {
             env.fs.home_directory().join("Library/Autosave Information")
         }
+        NSAllApplicationsDirectory => GuestPath::new(crate::fs::APPLICATIONS).to_owned(),
         _ => {
             log!(
                 "Warning: Unimplemented NSSearchPathDirectory {}, returning home directory",

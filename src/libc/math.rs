@@ -651,6 +651,46 @@ fn __fpclassifyf(_env: &mut Environment, arg: f32) -> GuestFPCategory {
     }
 }
 
+// Type-specific classification helpers from `<math.h>`. The standard
+// `isnan`/`isinf` macros on Apple platforms (and glibc) expand to these
+// underlying functions: `__isnanf`/`__isnand` for NaN tests and
+// `__isinff`/`__isinfd` for infinity tests. Each returns a C `int`:
+// `__isnan*` returns nonzero (1) for NaN, otherwise 0; `__isinf*` returns
+// 1 for +inf, -1 for -inf, otherwise 0. See the `math.h` declarations
+// `extern int __isnanf(float)`, `extern int __isnand(double)`,
+// `extern int __isinff(float)`, `extern int __isinfd(double)`.
+fn __isnanf(_env: &mut Environment, arg: f32) -> i32 {
+    arg.is_nan() as i32
+}
+
+fn __isnand(_env: &mut Environment, arg: f64) -> i32 {
+    arg.is_nan() as i32
+}
+
+fn __isinff(_env: &mut Environment, arg: f32) -> i32 {
+    if arg.is_infinite() {
+        if arg.is_sign_positive() {
+            1
+        } else {
+            -1
+        }
+    } else {
+        0
+    }
+}
+
+fn __isinfd(_env: &mut Environment, arg: f64) -> i32 {
+    if arg.is_infinite() {
+        if arg.is_sign_positive() {
+            1
+        } else {
+            -1
+        }
+    } else {
+        0
+    }
+}
+
 // Честные 64-битные целочисленные операции (Compiler Intrinsics)
 
 // ___udivdi3: unsigned long long / unsigned long long
@@ -945,6 +985,10 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(hypot(_, _)),
     export_c_func!(hypotf(_, _)),
     export_c_func!(__fpclassifyf(_)),
+    export_c_func!(__isnanf(_)),
+    export_c_func!(__isnand(_)),
+    export_c_func!(__isinff(_)),
+    export_c_func!(__isinfd(_)),
     export_c_func!(__udivdi3(_, _)), // <--- 2 подчеркивания
     export_c_func!(__umoddi3(_, _)), // <--- 2 подчеркивания
     export_c_func!(__divdi3(_, _)),  // <--- 2 подчеркивания

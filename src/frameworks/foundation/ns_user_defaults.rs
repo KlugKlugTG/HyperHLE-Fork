@@ -73,9 +73,19 @@ pub const CLASSES: ClassExports = objc_classes! {
     }
 }
 
-+ (id)initWithSuiteName:(id)_suite_name { // NSString*
-    log_dbg!("NSUserDefaults initWithSuiteName: — returning standard defaults");
-    msg_class![env; NSUserDefaults standardUserDefaults]
+- (id)initWithSuiteName:(id)_suite_name { // NSString*
+    // Apple docs: `- (instancetype)initWithSuiteName:(NSString *)suitename` is
+    // an INSTANCE method (called via `[[NSUserDefaults alloc]
+    // initWithSuiteName:]`), see
+    // <https://developer.apple.com/documentation/foundation/userdefaults/init(suitename:)>.
+    // It returns a defaults object whose search list also includes the named
+    // suite (a shared container, typically used by app extensions). touchHLE
+    // does not implement separate suite domains, so we initialize the receiver
+    // exactly like `-init` and ignore the suite name; reads/writes go to the
+    // app's standard domain. This is sufficient for apps that merely expect a
+    // usable NSUserDefaults instance back.
+    log_dbg!("NSUserDefaults initWithSuiteName: — ignoring suite name, using standard app domain");
+    msg![env; this init]
 }
 
 + (())resetStandardUserDefaults {
