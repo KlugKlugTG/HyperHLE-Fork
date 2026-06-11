@@ -9,15 +9,19 @@ touching GitHub. It walks the user through the three things a fix actually needs
 
 When the request is complete the bot:
 
-- pins it to the **latest HyperHLE build from
-  [Actions](https://github.com/HyperHLE/HyperHLE/actions)** (it queries the
-  GitHub API for the newest successful *Build HyperHLE* run, falling back to the
-  latest release),
+- **verifies the build from the log itself**: it reads the build hash out of
+  the log header and compares it with the latest commit on the branch the log
+  was built from, warning the user (and flagging the issue) if their build is
+  outdated relative to
+  [Actions](https://github.com/HyperHLE/HyperHLE/actions),
 - opens a GitHub issue using the same fields as the
   [`Request an app fix (IPA + logs)`](../.github/ISSUE_TEMPLATE/app_fix_request.yml)
   issue template, and
 - **forwards** the whole request (and any screenshots/video) to the maintainer
   **[@Tog991](https://t.me/Tog991)** on Telegram.
+
+Logs are validated as they come in: attached files must be plain-text
+`.txt`/`.log` files, and empty logs (attached or pasted) are rejected.
 
 ## Conversation flow
 
@@ -65,7 +69,6 @@ python -m bot.main
 | `GITHUB_TOKEN` | for auto-filing | Token with `repo` / `issues:write` scope. |
 | `GITHUB_OWNER` / `GITHUB_REPO` | no | Defaults to `HyperHLE` / `HyperHLE`. |
 | `GITHUB_ISSUE_LABELS` | no | Comma-separated labels, default `app fix request`. |
-| `GITHUB_BUILD_WORKFLOW` | no | Build workflow file, default `HyperHLE_release.yml`. |
 | `PERSISTENCE_FILE` | no | Pickle file for saved user languages, default `bot_state.pickle` next to the project. |
 
 #### Forwarding to @Tog991
@@ -79,17 +82,27 @@ numeric chat id. Have **@Tog991 send the bot any message once**, then read the
 
 With `GITHUB_TOKEN` set, the bot opens the issue directly and replies with the
 link. Without it, the bot still forwards to the maintainer and replies with a
-**prefilled "new issue" link** the user can click to file it themselves.
+**prefilled "new issue" link** the user can click to file it themselves. A
+token also lifts the anonymous API rate limit on the latest-commit check.
 
-## How "latest version from Actions" is resolved
+## How the "latest version" check works
 
-`bot/github_client.py` calls
-`GET /repos/{owner}/{repo}/actions/workflows/{build}/runs?status=success&per_page=1`
-and reports `branch @ shortsha` linked to that run. If no successful run is
-visible (or there's no token for private data), it falls back to
-`GET /repos/{owner}/{repo}/releases/latest`. The resolved build is written into
-both the GitHub issue and the maintainer forward, so every request is anchored
-to the newest build rather than whatever the user happened to have.
+HyperHLE logs identify their own build in the first two lines:
+
+```
+touchHLE UNOFFICIAL 8d65eca — https://touchhle.org/
+Built from branch "trunk" of "HyperHLE/HyperHLE" by GitHub Actions workflow run https://github.com/HyperHLE/HyperHLE/actions/runs/27085497648.
+```
+
+At submit time `bot/request.py` parses the commit hash, branch and workflow-run
+URL out of the uploaded log, and `bot/github_client.py` fetches
+`GET /repos/{owner}/{repo}/commits/{branch}` to get the branch head. If the
+log's hash is a prefix of the head SHA the build is **up to date**; otherwise
+the user is warned to grab the newest build from Actions (the request is still
+submitted), and the GitHub issue and the maintainer forward both show
+`outdated — latest is <sha>`. If the log has no hash (e.g. a release build like
+`v1.0.2`) or the API can't be reached, the build is reported as unverified
+rather than blocking the request.
 
 ## Layout
 
@@ -100,7 +113,7 @@ telegram_bot/
 ├── README.md
 └── bot/
     ├── config.py          # env-driven configuration + .env loader
-    ├── github_client.py   # latest-build lookup + issue creation
+    ├── github_client.py   # latest-commit lookup + issue creation
     ├── i18n.py            # English / Russian strings
     ├── request.py         # FixRequest model + issue/forward renderers
     ├── conversation.py    # the /start ConversationHandler

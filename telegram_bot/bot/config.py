@@ -38,7 +38,6 @@ class Config:
     github_owner: str
     github_repo: str
     issue_labels: list[str]
-    build_workflow: str
     persistence_file: Path
 
     @property
@@ -88,6 +87,5 @@ def load_config() -> Config:
         github_owner=os.environ.get("GITHUB_OWNER", "HyperHLE").strip(),
         github_repo=os.environ.get("GITHUB_REPO", "HyperHLE").strip(),
         issue_labels=labels,
-        build_workflow=os.environ.get("GITHUB_BUILD_WORKFLOW", "HyperHLE_release.yml").strip(),
         persistence_file=persistence_file,
     )

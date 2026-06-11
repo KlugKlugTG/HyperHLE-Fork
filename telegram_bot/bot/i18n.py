@@ -50,6 +50,11 @@ STRINGS: dict[str, dict[str, str]] = {
             "download. Please trim the log or paste the relevant part as text."
         ),
         "download_failed": "Sorry, I couldn't download that file. Try again or paste the text.",
+        "log_not_txt": (
+            "Logs must be plain-text `.txt` or `.log` files. Please attach "
+            "the log as a `.txt` file, or paste its text as a message."
+        ),
+        "log_empty": "That log is empty. Please send a non-empty log.",
         "log_added": "✅ Added log `{name}`. Send another, or /done to continue.",
         "pasted_log_added": "✅ Added pasted log. Send another log, or /done to continue.",
         "log_required": (
@@ -83,7 +88,17 @@ STRINGS: dict[str, dict[str, str]] = {
         "cancelled_inline": "Cancelled. Send /start to begin again.",
         "submitting": "⏳ Submitting your request…",
         "submitted": "✅ *Request submitted!* Thanks for the details.",
-        "build_line": "\n🧪 Filed against latest build: {v}",
+        "build_ok": "\n🧪 Build from your log: {v} — ✅ up to date with the latest commit.",
+        "build_outdated": (
+            "\n⚠️ Build {v} from your log is *OUTDATED* — the latest commit is "
+            "{latest}. Please download the newest build from {actions} and "
+            "re-test; the bug may already be fixed. (The request was still "
+            "submitted.)"
+        ),
+        "build_unknown": (
+            "\n🧪 I couldn't find a HyperHLE build hash in your log, so I "
+            "couldn't verify it's the latest build."
+        ),
         "issue_line_ok": "\n📌 GitHub issue: {url}",
         "issue_line_no_token": (
             "\n📌 No GitHub token configured — prefilled issue link:\n{url}"
@@ -149,6 +164,11 @@ STRINGS: dict[str, dict[str, str]] = {
             "Обрежьте лог или вставьте нужную часть текстом."
         ),
         "download_failed": "Не удалось скачать файл. Попробуйте ещё раз или вставьте текст.",
+        "log_not_txt": (
+            "Лог должен быть текстовым файлом `.txt` или `.log`. Прикрепите "
+            "лог как `.txt` или вставьте его текст сообщением."
+        ),
+        "log_empty": "Этот лог пустой. Пришлите непустой лог.",
         "log_added": "✅ Лог `{name}` добавлен. Пришлите ещё один или /done, чтобы продолжить.",
         "pasted_log_added": (
             "✅ Текст лога добавлен. Пришлите ещё один лог или /done, чтобы продолжить."
@@ -185,7 +205,16 @@ STRINGS: dict[str, dict[str, str]] = {
         "cancelled_inline": "Отменено. Отправьте /start, чтобы начать заново.",
         "submitting": "⏳ Отправляю ваш запрос…",
         "submitted": "✅ *Запрос отправлен!* Спасибо за подробности.",
-        "build_line": "\n🧪 Привязано к последней сборке: {v}",
+        "build_ok": "\n🧪 Сборка из вашего лога: {v} — ✅ совпадает с последним коммитом.",
+        "build_outdated": (
+            "\n⚠️ Сборка {v} из вашего лога *УСТАРЕЛА* — последний коммит: "
+            "{latest}. Скачайте свежую сборку из {actions} и проверьте ещё "
+            "раз; баг, возможно, уже исправлен. (Запрос всё равно отправлен.)"
+        ),
+        "build_unknown": (
+            "\n🧪 Я не нашёл хеш сборки HyperHLE в вашем логе, поэтому не "
+            "смог проверить, последняя ли это версия."
+        ),
         "issue_line_ok": "\n📌 Issue на GitHub: {url}",
         "issue_line_no_token": (
             "\n📌 GitHub-токен не настроен — ссылка с предзаполненным issue:\n{url}"

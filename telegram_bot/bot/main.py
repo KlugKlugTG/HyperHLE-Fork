@@ -33,7 +33,6 @@ def build_application() -> Application:
         owner=cfg.github_owner,
         repo=cfg.github_repo,
         token=cfg.github_token,
-        build_workflow=cfg.build_workflow,
     )
 
     register_handlers(application)

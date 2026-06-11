@@ -23,7 +23,7 @@ from telegram.ext import (
 from .config import Config
 from .github_client import GitHubClient
 from .i18n import t
-from .request import FixRequest, LogFile
+from .request import FixRequest, LogBuildInfo, LogFile, extract_build_info
 
 log = logging.getLogger(__name__)
 
@@ -152,6 +152,11 @@ async def got_bug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 async def got_log_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     doc = update.message.document
+    if doc.file_name and not doc.file_name.lower().endswith((".txt", ".log")):
+        await update.message.reply_text(
+            t(context, "log_not_txt"), parse_mode=ParseMode.MARKDOWN
+        )
+        return LOGS
     if doc.file_size and doc.file_size > MAX_LOG_BYTES:
         await update.message.reply_text(t(context, "file_too_big"))
         return LOGS
@@ -163,6 +168,9 @@ async def got_log_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         log.exception("failed to download log document")
         await update.message.reply_text(t(context, "download_failed"))
         return LOGS
+    if not text.strip():
+        await update.message.reply_text(t(context, "log_empty"))
+        return LOGS
     name = doc.file_name or f"log-{len(_req(context).logs) + 1}.txt"
     _req(context).logs.append(LogFile(name=name, content=text))
     await update.message.reply_text(
@@ -173,6 +181,9 @@ async def got_log_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 async def got_log_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     req = _req(context)
+    if not update.message.text.strip():
+        await update.message.reply_text(t(context, "log_empty"))
+        return LOGS
     name = f"pasted-log-{len(req.logs) + 1}.txt"
     req.logs.append(LogFile(name=name, content=update.message.text))
     await update.message.reply_text(t(context, "pasted_log_added"))
@@ -278,11 +289,21 @@ async def on_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     await query.edit_message_text(t(context, "submitting"))
 
-    # Pin the request to the latest build from Actions.
-    build = await gh.latest_build()
-    if build is not None:
-        req.hyperhle_version = build.label
-        req.hyperhle_version_url = build.url
+    # Read the build identity out of the user's log header and compare it
+    # with the latest commit on the branch the log says it was built from.
+    info = LogBuildInfo()
+    for log_file in req.logs:
+        candidate = extract_build_info(log_file.content)
+        if candidate.version:
+            info = candidate
+            break
+    req.hyperhle_version = info.commit or info.version
+    req.hyperhle_version_url = info.run_url
+    latest = await gh.latest_commit(info.branch or "trunk")
+    if latest is not None:
+        req.latest_commit_sha = latest.sha
+        if info.commit:
+            req.up_to_date = latest.sha.lower().startswith(info.commit)
 
     # 1) Open a GitHub issue (or fall back to a prefilled link).
     issue = await gh.create_issue(req.issue_title(), req.issue_body(), cfg.issue_labels)
@@ -300,9 +321,18 @@ async def on_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     # 2) Forward to the maintainer.
     forwarded = await _forward_to_maintainer(update, context, req, issue)
 
-    build_line = (
-        t(context, "build_line", v=req.hyperhle_version) if req.hyperhle_version else ""
-    )
+    if req.up_to_date is True:
+        build_line = t(context, "build_ok", v=req.hyperhle_version)
+    elif req.up_to_date is False:
+        build_line = t(
+            context,
+            "build_outdated",
+            v=req.hyperhle_version,
+            latest=req.latest_commit_sha[:7],
+            actions=cfg.actions_url,
+        )
+    else:
+        build_line = t(context, "build_unknown")
     forward_status = t(
         context,
         "forward_ok" if forwarded else "forward_failed",

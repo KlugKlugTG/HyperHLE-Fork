@@ -2,14 +2,15 @@
 
 Two responsibilities:
 
-* Report the **latest HyperHLE build from Actions** so every request is pinned
-  to the newest version (preferring the latest successful build-workflow run,
-  falling back to the latest published release).
+* Look up the **latest commit** on a branch, so the build hash found in the
+  user's log can be checked against the newest code (HyperHLE logs start with
+  ``touchHLE UNOFFICIAL <shortsha> — …`` and name the branch they were built
+  from).
 * Open an issue from a collected fix request.
 
 All methods degrade gracefully: if there is no token, or the network call
-fails, the bot keeps working (it just can't auto-file an issue and falls back
-to a prefilled "new issue" link).
+fails, the bot keeps working (the build check is reported as "could not
+verify" and issue filing falls back to a prefilled "new issue" link).
 """
 from __future__ import annotations
 
@@ -22,11 +23,9 @@ API_ROOT = "https://api.github.com"
 
 
 @dataclass(frozen=True)
-class LatestBuild:
-    """A pointer to the newest HyperHLE build a request should target."""
-
-    label: str  # human string, e.g. "v1.0.2" or "trunk @ abcdef0"
-    url: str  # link to the run or release
+class LatestCommit:
+    sha: str
+    url: str
 
 
 @dataclass(frozen=True)
@@ -36,17 +35,10 @@ class CreatedIssue:
 
 
 class GitHubClient:
-    def __init__(
-        self,
-        owner: str,
-        repo: str,
-        token: str | None,
-        build_workflow: str,
-    ) -> None:
+    def __init__(self, owner: str, repo: str, token: str | None) -> None:
         self._owner = owner
         self._repo = repo
         self._token = token
-        self._build_workflow = build_workflow
 
     def _headers(self) -> dict[str, str]:
         headers = {
@@ -62,46 +54,19 @@ class GitHubClient:
     def can_open_issues(self) -> bool:
         return self._token is not None
 
-    async def latest_build(self) -> LatestBuild | None:
-        """Best-effort newest build, preferring a successful Actions run."""
-        run = await self._latest_successful_build_run()
-        if run is not None:
-            return run
-        return await self._latest_release()
-
-    async def _latest_successful_build_run(self) -> LatestBuild | None:
+    async def latest_commit(self, branch: str = "trunk") -> LatestCommit | None:
+        """Head commit of `branch`, or None if it can't be fetched."""
         path = (
-            f"/repos/{self._owner}/{self._repo}/actions/workflows/"
-            f"{urllib.parse.quote(self._build_workflow)}/runs"
+            f"/repos/{self._owner}/{self._repo}/commits/"
+            f"{urllib.parse.quote(branch)}"
         )
-        params = {"status": "success", "per_page": "1"}
-        try:
-            async with httpx.AsyncClient(timeout=15) as client:
-                resp = await client.get(
-                    API_ROOT + path, headers=self._headers(), params=params
-                )
-            if resp.status_code != 200:
-                return None
-            runs = resp.json().get("workflow_runs") or []
-            if not runs:
-                return None
-            run = runs[0]
-            sha = (run.get("head_sha") or "")[:7]
-            branch = run.get("head_branch") or "?"
-            return LatestBuild(label=f"{branch} @ {sha}", url=run.get("html_url", ""))
-        except (httpx.HTTPError, ValueError, KeyError):
-            return None
-
-    async def _latest_release(self) -> LatestBuild | None:
-        path = f"/repos/{self._owner}/{self._repo}/releases/latest"
         try:
             async with httpx.AsyncClient(timeout=15) as client:
                 resp = await client.get(API_ROOT + path, headers=self._headers())
             if resp.status_code != 200:
                 return None
             data = resp.json()
-            tag = data.get("tag_name") or "latest"
-            return LatestBuild(label=tag, url=data.get("html_url", ""))
+            return LatestCommit(sha=data["sha"], url=data.get("html_url", ""))
         except (httpx.HTTPError, ValueError, KeyError):
             return None
 
