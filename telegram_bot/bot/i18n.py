@@ -29,11 +29,28 @@ STRINGS: dict[str, dict[str, str]] = {
         ),
         "ask_ipa": (
             "🔗 Now send the *IPA link(s)* — a direct download URL to the "
-            "`.ipa` (or zipped `.app`). You can paste several, one per line."
+            "`.ipa` (or zipped `.app`) — or *attach the IPA file directly*. "
+            "You can paste several links (one per line) or send several "
+            "files; send /done when you've attached your file(s)."
         ),
         "no_link": (
             "I couldn't find a valid `http(s)://…` link there. Please paste a "
-            "direct download URL to the IPA."
+            "direct download URL to the IPA, or attach the `.ipa` file itself."
+        ),
+        "ipa_not_ipa": (
+            "That file doesn't look like an IPA — please send a `.ipa` (or a "
+            "zipped `.app`), or paste a direct download link."
+        ),
+        "ipa_file_saved": (
+            "✅ Saved IPA file `{name}`. Send another file or a link, or "
+            "/done to continue."
+        ),
+        "ipa_required": (
+            "I still need at least one IPA link or IPA file before continuing."
+        ),
+        "ask_bug": (
+            "🐞 Now *describe the bug or crash*. What happens, and where does "
+            "it fail (boot, menu, level, gameplay)?"
         ),
         "links_saved": (
             "✅ Saved {n} link(s).\n\n"
@@ -142,12 +159,28 @@ STRINGS: dict[str, dict[str, str]] = {
         ),
         "ask_ipa": (
             "🔗 Теперь отправьте *ссылку (ссылки) на IPA* — прямой URL для "
-            "скачивания `.ipa` (или `.app` в zip-архиве). Можно несколько, "
-            "по одной на строку."
+            "скачивания `.ipa` (или `.app` в zip-архиве) — или *прикрепите "
+            "сам файл IPA*. Можно несколько ссылок (по одной на строку) или "
+            "несколько файлов; после файлов отправьте /done."
         ),
         "no_link": (
-            "Я не нашёл корректной ссылки `http(s)://…`. Пожалуйста, "
-            "пришлите прямую ссылку на скачивание IPA."
+            "Я не нашёл корректной ссылки `http(s)://…`. Пришлите прямую "
+            "ссылку на скачивание IPA или прикрепите сам файл `.ipa`."
+        ),
+        "ipa_not_ipa": (
+            "Этот файл не похож на IPA — пришлите `.ipa` (или `.app` в "
+            "zip-архиве) либо вставьте прямую ссылку на скачивание."
+        ),
+        "ipa_file_saved": (
+            "✅ Файл IPA `{name}` сохранён. Пришлите ещё файл или ссылку, "
+            "либо /done, чтобы продолжить."
+        ),
+        "ipa_required": (
+            "Мне всё ещё нужна хотя бы одна ссылка на IPA или файл IPA."
+        ),
+        "ask_bug": (
+            "🐞 Теперь *опишите баг или вылет*. Что происходит и на каком "
+            "этапе (запуск, меню, уровень, геймплей)?"
         ),
         "links_saved": (
             "✅ Сохранено ссылок: {n}.\n\n"

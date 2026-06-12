@@ -142,6 +142,42 @@ async def got_ipa_links(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     return BUG
 
 
+async def got_ipa_file(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """An IPA sent as a Telegram document instead of a link.
+
+    The file is never downloaded — its message is forwarded verbatim to the
+    maintainer at submit time (forwarding has no size limit), and the GitHub
+    issue notes that the IPA was attached via Telegram.
+    """
+    req = _req(context)
+    doc = update.message.document
+    if doc.file_name and not doc.file_name.lower().endswith((".ipa", ".zip")):
+        await update.message.reply_text(
+            t(context, "ipa_not_ipa"), parse_mode=ParseMode.MARKDOWN
+        )
+        return IPA_LINKS
+    name = doc.file_name or f"app-{len(req.ipa_files) + 1}.ipa"
+    req.ipa_files.append(name)
+    context.user_data.setdefault("ipa_message_ids", []).append(
+        update.message.message_id
+    )
+    await update.message.reply_text(
+        t(context, "ipa_file_saved", name=name), parse_mode=ParseMode.MARKDOWN
+    )
+    return IPA_LINKS
+
+
+async def ipa_done(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    req = _req(context)
+    if not (req.ipa_links or req.ipa_files):
+        await update.message.reply_text(t(context, "ipa_required"))
+        return IPA_LINKS
+    await update.message.reply_text(
+        t(context, "ask_bug"), parse_mode=ParseMode.MARKDOWN
+    )
+    return BUG
+
+
 async def got_bug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     _req(context).bug_description = update.message.text.strip()
     await update.message.reply_text(
@@ -253,7 +289,7 @@ async def _show_confirmation(
         context,
         "review",
         app=app_label,
-        links=len(req.ipa_links),
+        links=len(req.ipa_links) + len(req.ipa_files),
         logs=len(req.logs),
         bug=req.bug_description[:300],
     )
@@ -369,8 +405,11 @@ async def _forward_to_maintainer(
             text=text,
             disable_web_page_preview=True,
         )
-        # Forward each saved screenshot/video verbatim.
-        for msg_id in context.user_data.get("media_message_ids", []):
+        # Forward attached IPA files and screenshots/videos verbatim.
+        attachment_ids = context.user_data.get("ipa_message_ids", []) + context.user_data.get(
+            "media_message_ids", []
+        )
+        for msg_id in attachment_ids:
             try:
                 await context.bot.forward_message(
                     chat_id=cfg.forward_chat_id,
@@ -438,7 +477,11 @@ def build_conversation() -> ConversationHandler:
                 CommandHandler("skip", skip_app_version),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, got_app_version),
             ],
-            IPA_LINKS: [MessageHandler(filters.TEXT & ~filters.COMMAND, got_ipa_links)],
+            IPA_LINKS: [
+                CommandHandler("done", ipa_done),
+                MessageHandler(filters.Document.ALL, got_ipa_file),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, got_ipa_links),
+            ],
             BUG: [MessageHandler(filters.TEXT & ~filters.COMMAND, got_bug)],
             LOGS: [
                 CommandHandler("done", logs_done),

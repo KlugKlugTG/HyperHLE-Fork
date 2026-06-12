@@ -61,6 +61,7 @@ class FixRequest:
     app_name: str = ""
     app_version: str = ""
     ipa_links: list[str] = field(default_factory=list)
+    ipa_files: list[str] = field(default_factory=list)  # names of attached IPAs
     bug_description: str = ""
     logs: list[LogFile] = field(default_factory=list)
     media_note: str = ""  # text note about attached screenshots/video
@@ -81,14 +82,19 @@ class FixRequest:
 
     @property
     def has_required(self) -> bool:
-        return bool(self.app_name and self.ipa_links and self.bug_description and self.logs)
+        return bool(
+            self.app_name
+            and (self.ipa_links or self.ipa_files)
+            and self.bug_description
+            and self.logs
+        )
 
     def missing(self) -> list[str]:
         """Stable keys for whatever is still missing (localized by the UI)."""
         out = []
         if not self.app_name:
             out.append("app_name")
-        if not self.ipa_links:
+        if not (self.ipa_links or self.ipa_files):
             out.append("ipa")
         if not self.logs:
             out.append("logs")
@@ -129,8 +135,17 @@ class FixRequest:
         ver = f" {self.app_version}" if self.app_version else ""
         return f"[App fix] {name}{ver}"
 
+    def _ipa_block(self) -> str:
+        lines = [f"- {link}" for link in self.ipa_links]
+        lines += [
+            f"- `{name}` — IPA file attached via Telegram and forwarded to "
+            "the maintainer (no public link)"
+            for name in self.ipa_files
+        ]
+        return "\n".join(lines)
+
     def issue_body(self) -> str:
-        ipa = "\n".join(f"- {link}" for link in self.ipa_links)
+        ipa = self._ipa_block()
         lines = [
             f"**App / game:** {self.app_name}",
         ]
@@ -165,7 +180,10 @@ class FixRequest:
 
     def forward_text(self) -> str:
         """Plain-text summary for the maintainer DM."""
-        ipa = "\n".join(f"  • {link}" for link in self.ipa_links)
+        ipa = "\n".join(
+            [f"  • {link}" for link in self.ipa_links]
+            + [f"  • {name} (file — forwarded below)" for name in self.ipa_files]
+        )
         log_names = ", ".join(log.name for log in self.logs) or "none"
         if self.up_to_date is True:
             build_status = " (up to date)"
