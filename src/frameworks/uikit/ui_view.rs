@@ -79,6 +79,16 @@ pub struct State {
     pub(super) animation_block: AnimationBlockState,
 }
 
+/// Find the `UIView` whose layer is `layer`, if any.
+pub fn view_for_layer(env: &Environment, layer: id) -> Option<id> {
+    for &view in &env.framework_state.uikit.ui_view.views {
+        if env.objc.borrow::<UIViewHostObject>(view).layer == layer {
+            return Some(view);
+        }
+    }
+    None
+}
+
 pub(crate) struct UIViewHostObject {
     layer: id,
     subviews: Vec<id>,

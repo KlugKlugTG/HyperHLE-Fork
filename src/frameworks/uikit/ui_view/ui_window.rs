@@ -23,7 +23,62 @@ use crate::frameworks::uikit::ui_device::{
     UIDeviceOrientationLandscapeLeft, UIDeviceOrientationLandscapeRight,
 };
 use crate::objc::{id, msg, msg_class, msg_super, nil, objc_classes, release, retain, ClassExports};
+use crate::window::DeviceOrientation;
+use crate::Environment;
 use std::collections::HashMap;
+use std::f32::consts::FRAC_PI_2;
+
+fn apply_view_controller_autorotation(env: &mut Environment, window: id, view: id, vc: id) {
+    let device_orientation = env.window().current_rotation();
+    if matches!(device_orientation, DeviceOrientation::Portrait) {
+        () = msg![env; view setTransform:CGAffineTransformIdentity];
+        let window_frame: CGRect = msg![env; window frame];
+        () = msg![env; view setFrame:window_frame];
+        return;
+    }
+
+    let interface_orientation = match device_orientation {
+        DeviceOrientation::LandscapeLeft => UIDeviceOrientationLandscapeLeft,
+        DeviceOrientation::LandscapeRight => UIDeviceOrientationLandscapeRight,
+        DeviceOrientation::Portrait => unreachable!(),
+    };
+
+    let should: bool = msg![env; vc shouldAutorotateToInterfaceOrientation:interface_orientation];
+    log_dbg!(
+        "[refresh_autorotation] {:?} shouldAutorotateToInterfaceOrientation:{:?} => {:?}",
+        vc,
+        interface_orientation,
+        should
+    );
+    if !should {
+        return;
+    }
+
+    let transform = match interface_orientation {
+        UIInterfaceOrientationLandscapeLeft => {
+            CGAffineTransform::make_rotation(-FRAC_PI_2)
+        }
+        UIInterfaceOrientationLandscapeRight => {
+            CGAffineTransform::make_rotation(FRAC_PI_2)
+        }
+        other => {
+            log!(
+                "Warning: UIWindow autorotation: unsupported interface orientation {}; using identity transform.",
+                other
+            );
+            CGAffineTransformIdentity
+        }
+    };
+
+    log_dbg!(
+        "Applying autorotation transform to view {:?} for device orientation {:?}.",
+        view,
+        device_orientation
+    );
+    () = msg![env; view setTransform:transform];
+    let window_frame: CGRect = msg![env; window frame];
+    () = msg![env; view setFrame:window_frame];
+}
 
 #[derive(Default)]
 pub struct State {
@@ -360,73 +415,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         () = msg![env; vc viewDidAppear:false];
     }
 
-    // Support auto-rotation. This is currently only for apps that request a
-    // non-portrait interface orientation via Info.plist, as we do not yet
-    // support changes of orientation caused by device rotation (TODO).
-    // FIXME: It's unclear when and where this auto-rotation is supposed to
-    //        happen. It must have something to do with mounting the view
-    //        controller to a window, so we do it here. QA1688 (see top of file)
-    //        mentions a breaking behaviour change in iOS 6 that makes
-    //        auto-rotation rely on rootViewController (a property only found in
-    //        iOS 6), so the current implementation is specific to iOS <= 5.
-    // FIXME: Are we supposed to notify the view somehow of the rotation?
-    // FIXME: What do we do if shouldAutorotateToInterfaceOrientation:
-    //        returns false? The status bar has already been rotated…
-    // FIXME: The device orientation stored on env.window can come from one of
-    //        three places (user/default options, setStatusBarOrientation: etc,
-    //        Info.plist UIInterfaceOrientation etc). It's not clear if these
-    //        are really equivalent and should all trigger autorotation.
-    if let Some(orientation) = match env.window.as_ref().unwrap().current_rotation() {
-        crate::window::DeviceOrientation::LandscapeLeft => Some(UIDeviceOrientationLandscapeLeft),
-        crate::window::DeviceOrientation::LandscapeRight => Some(UIDeviceOrientationLandscapeRight),
-        // Portrait is the default so we don't do anything here.
-        crate::window::DeviceOrientation::Portrait => None,
-    } {
-        // (UIInterfaceOrientation and UIDeviceOrientation are compatible enums,
-        //  here we use whichever is clearer contextually.)
-        let should = msg![env; vc shouldAutorotateToInterfaceOrientation:orientation];
-        log_dbg!("[{:?} shouldAutorotateToInterfaceOrientation:{:?}] => {:?}", vc, orientation, should);
-        if should {
-            log_dbg!("App requested autorotation; applying orientation transform to view {:?}.", view);
-            let transform = match orientation {
-                UIInterfaceOrientationLandscapeLeft => CGAffineTransform::make_rotation(-std::f32::consts::FRAC_PI_2),
-                UIInterfaceOrientationLandscapeRight => CGAffineTransform::make_rotation(std::f32::consts::FRAC_PI_2),
-                other => {
-                    // UIInterfaceOrientation has Portrait/PortraitUpsideDown/
-                    // LandscapeLeft/LandscapeRight; the first two are filtered
-                    // out earlier (Portrait => None and PortraitUpsideDown
-                    // isn't reachable from window::DeviceOrientation today).
-                    // Fall back to the identity transform so an unexpected
-                    // orientation can't take down the host.
-                    log!(
-                        "Warning: UIWindow autorotation: unsupported interface orientation {}; using identity transform.",
-                        other
-                    );
-                    CGAffineTransformIdentity
-                }
-            };
-
-            let window_frame: CGRect = msg![env; this frame];
-            log_dbg!("Window frame: {window_frame:?}");
-            let view_frame: CGRect = msg![env; view frame];
-            log_dbg!("Old view frame: {view_frame:?}");
-
-            () = msg![env; view setTransform:transform];
-
-            // Re-apply the view's old frame to compensate for the rotation
-            // effectively offseting its center position and changing the size.
-            // FIXME: I have no idea if this is how this should be solved, but
-            //        it works for DMC4 Refrain at least.
-
-            let view_frame: CGRect = msg![env; view frame];
-            log_dbg!("Old view frame after transform: {view_frame:?}");
-
-            () = msg![env; view setFrame:window_frame];
-
-            let view_frame: CGRect = msg![env; view frame];
-            log_dbg!("New view frame after re-applying old view frame: {view_frame:?}");
-        }
-    }
+    apply_view_controller_autorotation(env, this, view, vc);
 }
 
 - (CGPoint)convertPoint:(CGPoint)point

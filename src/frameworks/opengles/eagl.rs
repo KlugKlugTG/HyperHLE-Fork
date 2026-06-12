@@ -9,11 +9,15 @@ use crate::dyld::{export_c_func, ConstantExports, FunctionExports, HostConstant}
 use crate::frameworks::core_animation::ca_eagl_layer::{
     find_fullscreen_eagl_layer, get_pixels_vec_for_presenting, present_pixels,
 };
+use crate::frameworks::core_graphics::cg_affine_transform::CGAffineTransform;
 use crate::frameworks::core_graphics::{CGRect, CGSize};
 use crate::frameworks::foundation::ns_string::get_static_str;
 use crate::frameworks::foundation::NSUInteger;
 use crate::frameworks::uikit;
+use crate::frameworks::uikit::ui_view;
 use crate::gles::gles11_raw as gles11; // constants only
+use crate::matrix::Matrix;
+use crate::window::{DeviceFamily, DeviceOrientation};
 use crate::gles::gles11_raw::types::*;
 use crate::gles::present::{present_frame, FpsCounter};
 use crate::gles::{
@@ -1193,6 +1197,60 @@ unsafe fn ensure_present_program(gles: &mut dyn GLES) -> Option<PresentProgram> 
     Some(result)
 }
 
+fn drawable_for_renderbuffer(env: &Environment, renderbuffer: GLuint) -> Option<id> {
+    let eagl_ctx = (*env
+        .framework_state
+        .opengles
+        .current_ctxs
+        .get(&env.current_thread)?)?;
+    env.objc
+        .borrow::<EAGLContextHostObject>(eagl_ctx)
+        .renderbuffer_drawable_bindings
+        .borrow()
+        .get(&renderbuffer)
+        .copied()
+}
+
+/// Matrix for rotating a portrait-sized renderbuffer when presenting to the
+/// host window.
+///
+/// iPhone landscape games fall into two categories:
+/// - Apps that launched in landscape (or had UIKit autorotation applied at
+///   `-[UIWindow addSubview:]` time) draw upright in the EAGL layer's portrait
+///   bounds; touchHLE must rotate at present time (same as Core Animation would).
+/// - Apps that rotate the window at runtime via `setStatusBarOrientation:` and
+///   rotate their own GL (e.g. Call of Duty: Zombies) must not get an extra
+///   present-time rotation, or the image ends up sideways.
+fn present_rotation_matrix(
+    env: &mut Environment,
+    drawable: id,
+    device_family: DeviceFamily,
+    device_orientation: DeviceOrientation,
+) -> Matrix<2> {
+    if matches!(device_orientation, DeviceOrientation::Portrait) {
+        return Matrix::identity();
+    }
+
+    let window_rotation = env.window().rotation_matrix();
+
+    if matches!(device_family, DeviceFamily::iPad) {
+        // UIKit autorotation + CA composition expects an extra 180° for iPad
+        // landscape; see the comment in present_renderbuffer's history.
+        return window_rotation.multiply(&Matrix::z_rotation(std::f32::consts::PI));
+    }
+
+    // iPhone: only rotate at present time when UIKit already applied the
+    // autorotation affine transform to the EAGL view (landscape launch path).
+    if let Some(view) = ui_view::view_for_layer(env, drawable) {
+        let transform: CGAffineTransform = msg![env; view transform];
+        if !transform.is_identity() {
+            return window_rotation;
+        }
+    }
+
+    Matrix::identity()
+}
+
 /// Copies the pixels in a renderbuffer bound to `GL_RENDERBUFFER_BINDING_OES`
 /// (which should be provided by the app) to a texture and presents it with
 /// [present_frame], trying to avoid noticeably modifying OpenGL ES state while
@@ -1206,37 +1264,24 @@ unsafe fn present_renderbuffer(env: &mut Environment) {
     let viewport = env.window.as_mut().unwrap().viewport();
     let device_family = env.window.as_mut().unwrap().device_family();
     let device_orientation = env.window.as_mut().unwrap().current_rotation();
-    // For iPad apps in a non-portrait orientation, the UIKit auto-rotation
-    // path (`UIWindow addSubview:` in ui_window.rs) applies a rotation
-    // transform to the rootViewController's view so that the app, which
-    // typically draws content "upright" inside the EAGL layer's portrait
-    // bounds, ends up rotated for landscape display when Core Animation
-    // composites it. touchHLE bypasses CA composition for EAGL apps that
-    // call `presentRenderbuffer:` directly, so we have to replicate that
-    // additional rotation here. Without it, iPad landscape games (e.g.
-    // Plants vs. Zombies HD) render upside-down. iPhone-only landscape
-    // games (e.g. Plants vs. Zombies, the iPhone version) typically rotate
-    // their drawing themselves, so we must NOT apply the extra rotation
-    // for them.
-    // FIXME: A cleaner solution would be to read the actual transform from
-    //        the EAGL layer's view hierarchy and apply it here, instead of
-    //        using a device-family heuristic.
-    let needs_autorotation_compensation =
-        matches!(device_family, crate::window::DeviceFamily::iPad)
-            && !matches!(
-                device_orientation,
-                crate::window::DeviceOrientation::Portrait
-            );
-    let rotation_matrix = if needs_autorotation_compensation {
-        env.window
-            .as_mut()
-            .unwrap()
-            .rotation_matrix()
-            .multiply(&crate::matrix::Matrix::z_rotation(std::f32::consts::PI))
-    } else {
-        env.window.as_mut().unwrap().rotation_matrix()
-    };
     let virtual_cursor_visible_at = env.window.as_mut().unwrap().virtual_cursor_visible_at();
+
+    let renderbuffer: GLuint = {
+        let window = env.window.as_mut().unwrap();
+        if let Some(mut gles) = super::sync_context(
+            &mut env.framework_state.opengles,
+            &mut env.objc,
+            window,
+            env.current_thread,
+        ) {
+            get_int(gles.as_mut(), gles11::RENDERBUFFER_BINDING_OES) as GLuint
+        } else {
+            0
+        }
+    };
+    let drawable = drawable_for_renderbuffer(env, renderbuffer).unwrap_or(nil);
+    let rotation_matrix =
+        present_rotation_matrix(env, drawable, device_family, device_orientation);
 
     let Some(gles_ctx) = super::get_thread_context(
         &mut env.framework_state.opengles,

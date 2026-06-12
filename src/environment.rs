@@ -251,6 +251,29 @@ fn generate_binary_load_order(graph: &[BinaryDependencyNode]) -> Result<Vec<usiz
 static ENVIRONMENT_INSTANCE_EXISTS: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
+/// Map an Info.plist `UIInterfaceOrientation` string to a host window rotation.
+///
+/// UI interface orientations are flipped relative to device orientations: the
+/// content must rotate in the opposite direction to how the device rotates.
+fn device_orientation_from_ui_interface_orientation(
+    ui_interface_orientation: &str,
+) -> window::DeviceOrientation {
+    match ui_interface_orientation {
+        "UIInterfaceOrientationLandscapeLeft" => window::DeviceOrientation::LandscapeRight,
+        "UIInterfaceOrientationLandscapeRight" => window::DeviceOrientation::LandscapeLeft,
+        "UIInterfaceOrientationLandscape" => window::DeviceOrientation::LandscapeLeft,
+        "UIInterfaceOrientationPortraitUpsideDown" => window::DeviceOrientation::Portrait,
+        "UIInterfaceOrientationPortrait" => window::DeviceOrientation::Portrait,
+        other => {
+            log!(
+                "Warning: Unsupported UI interface orientation {:?}; defaulting to Portrait.",
+                other
+            );
+            window::DeviceOrientation::Portrait
+        }
+    }
+}
+
 impl Environment {
     /// Loads the binary and sets up the emulator.
     pub fn new(
@@ -283,6 +306,21 @@ impl Environment {
         let portrait_supported = bundle
             .supported_interface_orientations().contains(&"UIInterfaceOrientationPortrait");
         if options.initial_orientation == window::DeviceOrientation::Portrait
+            && portrait_supported
+        {
+            if let Some(launch_orientation) = bundle.launch_interface_orientation() {
+                if launch_orientation != "UIInterfaceOrientationPortrait" {
+                    options.initial_orientation =
+                        device_orientation_from_ui_interface_orientation(launch_orientation);
+                    log!(
+                        "Using Info.plist UIInterfaceOrientation {:?} as initial device orientation {:?}.",
+                        launch_orientation,
+                        options.initial_orientation
+                    );
+                }
+            }
+        }
+        if options.initial_orientation == window::DeviceOrientation::Portrait
             && !portrait_supported
         {
             if let Some(&non_portrait_orientation) = bundle
@@ -293,33 +331,8 @@ impl Environment {
                 // TODO: Overwriting the options might not be ideal; do we need
                 //       to distinguish this kind of orientation change from
                 //       others?
-                options.initial_orientation = match non_portrait_orientation {
-                    // UIInterfaceOrientation values are flipped relative to
-                    // (UI)DeviceOrientation values (content has to rotate in
-                    // the opposite direction to how the device rotates).
-                    "UIInterfaceOrientationLandscapeLeft" => {
-                        window::DeviceOrientation::LandscapeRight
-                    }
-                    "UIInterfaceOrientationLandscapeRight" => {
-                        window::DeviceOrientation::LandscapeLeft
-                    }
-                    // This appears to be an older way set the orientation.
-                    // From testing, it seems to correspond to left.
-                    "UIInterfaceOrientationLandscape" => window::DeviceOrientation::LandscapeLeft,
-
-                    // ДОБАВЛЯЕМ СЮДА ПРИВЯЗКУ К ОБЫЧНОМУ ПОРТРЕТУ:
-                    "UIInterfaceOrientationPortraitUpsideDown" => {
-                        window::DeviceOrientation::Portrait
-                    }
-
-                    other => {
-                        log!(
-                            "Warning: Unsupported startup orientation: {:?}; defaulting to Portrait.",
-                            other
-                        );
-                        window::DeviceOrientation::Portrait
-                    }
-                };
+                options.initial_orientation =
+                    device_orientation_from_ui_interface_orientation(non_portrait_orientation);
                 log!("App needs non-portrait user interface orientation {:?}, applying device orientation {:?}.", non_portrait_orientation, options.initial_orientation);
             }
         }

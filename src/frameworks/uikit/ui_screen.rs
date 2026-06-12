@@ -67,10 +67,25 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (CGRect)applicationFrame {
     let mut bounds: CGRect = msg![env; this bounds];
-    const STATUS_BAR_HEIGHT: CGFloat = 20.0;
-    if !env.framework_state.uikit.ui_application.status_bar_hidden {
-        bounds.origin.y    += STATUS_BAR_HEIGHT;
-        bounds.size.height -= STATUS_BAR_HEIGHT;
+    let status_bar_hidden = env.framework_state.uikit.ui_application.status_bar_hidden;
+    if !status_bar_hidden {
+        // Apple documents applicationFrame as the screen area not covered by the status bar.
+        // On pre-iOS 8 devices the screen geometry is portrait-based, so landscape layouts
+        // should lose width rather than height.
+        const STATUS_BAR_SIZE: CGFloat = 20.0;
+        match env.window().current_rotation() {
+            crate::window::DeviceOrientation::Portrait => {
+                bounds.origin.y += STATUS_BAR_SIZE;
+                bounds.size.height -= STATUS_BAR_SIZE;
+            }
+            crate::window::DeviceOrientation::LandscapeLeft => {
+                bounds.origin.x += STATUS_BAR_SIZE;
+                bounds.size.width -= STATUS_BAR_SIZE;
+            }
+            crate::window::DeviceOrientation::LandscapeRight => {
+                bounds.size.width -= STATUS_BAR_SIZE;
+            }
+        }
     }
     bounds
 }

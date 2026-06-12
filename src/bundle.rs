@@ -457,6 +457,18 @@ impl Bundle {
         vec!["UIInterfaceOrientationPortrait"]
     }
 
+    /// Value of the `UIInterfaceOrientation` launch-orientation key, if present.
+    ///
+    /// This is separate from [Self::supported_interface_orientations]: on a
+    /// real device the supported-orientations array takes precedence, but the
+    /// launch key is still a useful hint for touchHLE when the user has not
+    /// overridden orientation on the command line.
+    pub fn launch_interface_orientation(&self) -> Option<&str> {
+        self.plist
+            .get("UIInterfaceOrientation")
+            .and_then(|v| v.as_string())
+    }
+
     pub fn device_family_array(&self) -> Vec<DeviceFamily> {
         // Apple docs: UIDeviceFamily is an Array of Numbers (1=iPhone, 2=iPad).
         // https://developer.apple.com/documentation/bundleresources/information-property-list/uidevicefamily
