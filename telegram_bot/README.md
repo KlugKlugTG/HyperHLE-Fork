@@ -35,7 +35,7 @@ questions. `/language` re-opens the picker at any time, even mid-request.
 
 ```
 /start
- → 🇬🇧 English / 🇷🇺 Русский / 🇸🇦 العربية   (first time only — /language to change later)
+ → 🇺🇸 English / 🇷🇺 Русский / 🇸🇦 العربية   (first time only — /language to change later)
  → app name
  → app version            (/skip)
  → IPA link(s) or file(s) (required — http(s) URLs, or attach the .ipa/.zip itself, then /done)
