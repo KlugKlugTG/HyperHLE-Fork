@@ -59,6 +59,7 @@ def _language_keyboard(prefix: str = "lang") -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton("🇬🇧 English", callback_data=f"{prefix}:en"),
                 InlineKeyboardButton("🇷🇺 Русский", callback_data=f"{prefix}:ru"),
+                InlineKeyboardButton("🇸🇦 العربية", callback_data=f"{prefix}:ar"),
             ]
         ]
     )
@@ -469,7 +470,7 @@ def build_conversation() -> ConversationHandler:
         entry_points=[CommandHandler("start", start)],
         states={
             LANGUAGE: [
-                CallbackQueryHandler(on_language, pattern=r"^lang:(en|ru)$"),
+                CallbackQueryHandler(on_language, pattern=r"^lang:(en|ru|ar)$"),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, language_reprompt),
             ],
             APP_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, got_app_name)],
@@ -510,5 +511,5 @@ def register_handlers(application: Application) -> None:
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("language", language_command))
     application.add_handler(
-        CallbackQueryHandler(on_setlang, pattern=r"^setlang:(en|ru)$")
+        CallbackQueryHandler(on_setlang, pattern=r"^setlang:(en|ru|ar)$")
     )

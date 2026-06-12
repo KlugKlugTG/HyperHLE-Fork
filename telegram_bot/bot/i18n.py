@@ -1,4 +1,4 @@
-"""User-facing strings in English and Russian.
+"""User-facing strings in English, Russian and Arabic.
 
 The GitHub issue body and the maintainer forward stay in English (they are
 read by maintainers); only the Telegram conversation is localized.
@@ -11,7 +11,7 @@ DEFAULT_LANG = "en"
 
 STRINGS: dict[str, dict[str, str]] = {
     "en": {
-        "choose_language": "🌐 Choose your language / Выберите язык:",
+        "choose_language": "🌐 Choose your language / Выберите язык / اختر لغتك:",
         "intro": (
             "🛠️ *HyperHLE app-fix request*\n\n"
             "I'll collect everything needed to get an app fixed:\n"
@@ -133,7 +133,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "help": (
             "I file *app fix requests* for HyperHLE.\n\n"
             "/start — start a new request (IPA link, log file, bug description)\n"
-            "/language — change the language (English / Русский)\n"
+            "/language — change the language (English / Русский / العربية)\n"
             "/cancel — abort the current request\n"
             "/help — this message\n\n"
             "Requests are pinned to the latest build from {actions} and "
@@ -141,7 +141,7 @@ STRINGS: dict[str, dict[str, str]] = {
         ),
     },
     "ru": {
-        "choose_language": "🌐 Choose your language / Выберите язык:",
+        "choose_language": "🌐 Choose your language / Выберите язык / اختر لغتك:",
         "intro": (
             "🛠️ *Запрос на исправление приложения в HyperHLE*\n\n"
             "Я соберу всё, что нужно, чтобы приложение исправили:\n"
@@ -266,11 +266,139 @@ STRINGS: dict[str, dict[str, str]] = {
         "help": (
             "Я создаю *запросы на исправление приложений* для HyperHLE.\n\n"
             "/start — новый запрос (ссылка на IPA, файл лога, описание бага)\n"
-            "/language — сменить язык (English / Русский)\n"
+            "/language — сменить язык (English / Русский / العربية)\n"
             "/cancel — прервать текущий запрос\n"
             "/help — это сообщение\n\n"
             "Запросы привязываются к последней сборке из {actions} и "
             "пересылаются {user}."
+        ),
+    },
+    "ar": {
+        "choose_language": "🌐 Choose your language / Выберите язык / اختر لغتك:",
+        "intro": (
+            "🛠️ *طلب إصلاح تطبيق في HyperHLE*\n\n"
+            "سأجمع كل ما يلزم لإصلاح التطبيق:\n"
+            "1️⃣ *رابط (روابط) ملف IPA*\n"
+            "2️⃣ *ملف السجل*\n"
+            "3️⃣ وصف *الخطأ/الانهيار*\n\n"
+            "سيُربط طلبك بأحدث نسخة من HyperHLE من Actions ويُحوَّل إلى "
+            "المشرف.\n\n"
+            "أرسل /cancel في أي وقت للإلغاء.\n\n"
+            "أولاً — ما اسم *التطبيق / اللعبة*؟"
+        ),
+        "ask_version": (
+            "حسناً. ما *إصدار التطبيق*؟ (مثل `1.0`)\n"
+            "أرسل /skip إذا كنت لا تعرف."
+        ),
+        "ask_ipa": (
+            "🔗 الآن أرسل *رابط (روابط) IPA* — رابط تنزيل مباشر لملف `.ipa` "
+            "(أو `.app` مضغوط) — أو *أرفق ملف IPA مباشرة*. يمكنك لصق عدة "
+            "روابط (كل رابط في سطر) أو إرسال عدة ملفات؛ أرسل /done بعد "
+            "إرفاق ملفاتك."
+        ),
+        "no_link": (
+            "لم أجد رابطاً صالحاً يبدأ بـ `http(s)://…`. الرجاء لصق رابط "
+            "تنزيل مباشر لملف IPA، أو إرفاق ملف `.ipa` نفسه."
+        ),
+        "ipa_not_ipa": (
+            "هذا الملف لا يبدو ملف IPA — أرسل ملف `.ipa` (أو `.app` مضغوطاً) "
+            "أو الصق رابط تنزيل مباشراً."
+        ),
+        "ipa_file_saved": (
+            "✅ تم حفظ ملف IPA‏ `{name}`. أرسل ملفاً أو رابطاً آخر، أو /done "
+            "للمتابعة."
+        ),
+        "ipa_required": (
+            "ما زلت بحاجة إلى رابط IPA واحد أو ملف IPA واحد على الأقل قبل "
+            "المتابعة."
+        ),
+        "ask_bug": (
+            "🐞 الآن *صِف الخطأ أو الانهيار*. ماذا يحدث، وأين يفشل التطبيق "
+            "(الإقلاع، القائمة، المرحلة، اللعب)؟"
+        ),
+        "links_saved": (
+            "✅ تم حفظ {n} رابط/روابط.\n\n"
+            "🐞 الآن *صِف الخطأ أو الانهيار*. ماذا يحدث، وأين يفشل "
+            "(الإقلاع، القائمة، المرحلة، اللعب)؟"
+        ),
+        "ask_logs": (
+            "📄 الآن أرسل *ملف(ات) السجل*. أرفق السجل كمستند، أو الصق نص "
+            "السجل مباشرة. أرسل /done بعد إضافة ملف واحد على الأقل."
+        ),
+        "file_too_big": (
+            "هذا الملف أكبر من 20 ميغابايت، وهو أقصى ما أستطيع تنزيله. "
+            "الرجاء اقتصاص السجل أو لصق الجزء المهم كنص."
+        ),
+        "download_failed": "عذراً، لم أستطع تنزيل الملف. حاول مرة أخرى أو الصق النص.",
+        "log_not_txt": (
+            "يجب أن يكون السجل ملفاً نصياً بامتداد `.txt` أو `.log`. أرفق "
+            "السجل كملف `.txt` أو الصق نصه كرسالة."
+        ),
+        "log_empty": "هذا السجل فارغ. الرجاء إرسال سجل غير فارغ.",
+        "log_added": "✅ تمت إضافة السجل `{name}`. أرسل سجلاً آخر، أو /done للمتابعة.",
+        "pasted_log_added": "✅ تمت إضافة نص السجل. أرسل سجلاً آخر، أو /done للمتابعة.",
+        "log_required": (
+            "السجل إلزامي حتى يمكن التحقيق في الانهيار. الرجاء إرفاق أو لصق "
+            "سجل واحد على الأقل قبل /done."
+        ),
+        "ask_env": (
+            "🖥️ اختياري: ما *نظام التشغيل* و*بطاقة الرسوميات (GPU)* اللذان "
+            "جرّبت عليهما؟ (مثل `Windows 11 / NVIDIA GTX 1660`)\n"
+            "أرسل /skip للتخطي."
+        ),
+        "ask_media": (
+            "📷 اختياري: أرسل *لقطات شاشة أو فيديو قصيراً* يوضح المشكلة. "
+            "سيتم تحويلها إلى المشرف.\nأرسل /done عند الانتهاء (أو للتخطي)."
+        ),
+        "media_saved": "✅ تم حفظ المرفق {n}. أرسل المزيد، أو /done للمراجعة.",
+        "missing": "ما زال ينقص: {items}. استخدم /cancel للبدء من جديد.",
+        "missing_app_name": "اسم التطبيق",
+        "missing_ipa": "رابط IPA",
+        "missing_logs": "ملف السجل",
+        "missing_bug": "وصف الخطأ/الانهيار",
+        "review": (
+            "*راجع طلبك من فضلك:*\n\n"
+            "*التطبيق:* {app}\n"
+            "*روابط IPA:* {links}\n"
+            "*السجلات:* {logs}\n"
+            "*الخطأ:* {bug}"
+        ),
+        "btn_submit": "✅ إرسال",
+        "btn_cancel": "❌ إلغاء",
+        "cancelled_inline": "تم الإلغاء. أرسل /start للبدء من جديد.",
+        "submitting": "⏳ جارٍ إرسال طلبك…",
+        "submitted": "✅ *تم إرسال الطلب!* شكراً على التفاصيل.",
+        "build_ok": "\n🧪 النسخة في سجلك: {v} — ✅ مطابقة لأحدث كوميت.",
+        "build_outdated": (
+            "\n⚠️ النسخة {v} في سجلك *قديمة* — أحدث كوميت هو {latest}. "
+            "الرجاء تنزيل أحدث نسخة من {actions} وإعادة الاختبار؛ فقد يكون "
+            "الخطأ مُصلحاً بالفعل. (تم إرسال الطلب على أي حال.)"
+        ),
+        "build_unknown": (
+            "\n🧪 لم أجد رمز النسخة في سجلك، لذا لم أستطع التحقق من أنها "
+            "أحدث نسخة."
+        ),
+        "issue_line_ok": "\n📌 مشكلة (Issue) على GitHub: {url}",
+        "issue_line_no_token": (
+            "\n📌 لم يتم إعداد رمز GitHub — رابط مشكلة مُعبأ مسبقاً:\n{url}"
+        ),
+        "issue_line_failed": (
+            "\n⚠️ تعذر فتح المشكلة على GitHub تلقائياً (تم تحويل الطلب رغم ذلك)."
+        ),
+        "forward_ok": "\n📨 تم التحويل إلى {user}.",
+        "forward_failed": (
+            "\n⚠️ تعذر التحويل إلى {user} (هل تم ضبط FORWARD_CHAT_ID وهل "
+            "راسل {user} البوت من قبل؟)."
+        ),
+        "cancelled": "تم الإلغاء. أرسل /start عندما تكون جاهزاً.",
+        "language_set": "✅ تم تغيير اللغة إلى العربية.",
+        "help": (
+            "أنا أُنشئ *طلبات إصلاح التطبيقات* لـ HyperHLE.\n\n"
+            "/start — طلب جديد (رابط IPA، ملف السجل، وصف الخطأ)\n"
+            "/language — تغيير اللغة (English / Русский / العربية)\n"
+            "/cancel — إلغاء الطلب الحالي\n"
+            "/help — هذه الرسالة\n\n"
+            "تُربط الطلبات بأحدث نسخة من {actions} وتُحوَّل إلى {user}."
         ),
     },
 }

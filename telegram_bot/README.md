@@ -27,7 +27,7 @@ Logs are validated as they come in: attached files must be plain-text
 
 ## Conversation flow
 
-The bot speaks **English and Russian**. The first `/start` begins with a
+The bot speaks **English, Russian and Arabic**. The first `/start` begins with a
 language picker; the choice is saved (and survives bot restarts via a pickle
 file, see `PERSISTENCE_FILE`), so later `/start` runs skip straight to the
 questions. `/language` re-opens the picker at any time, even mid-request.
@@ -35,7 +35,7 @@ questions. `/language` re-opens the picker at any time, even mid-request.
 
 ```
 /start
- → 🇬🇧 English / 🇷🇺 Русский   (first time only — /language to change later)
+ → 🇬🇧 English / 🇷🇺 Русский / 🇸🇦 العربية   (first time only — /language to change later)
  → app name
  → app version            (/skip)
  → IPA link(s) or file(s) (required — http(s) URLs, or attach the .ipa/.zip itself, then /done)
@@ -116,7 +116,7 @@ telegram_bot/
 └── bot/
     ├── config.py          # env-driven configuration + .env loader
     ├── github_client.py   # latest-commit lookup + issue creation
-    ├── i18n.py            # English / Russian strings
+    ├── i18n.py            # English / Russian / Arabic strings
     ├── request.py         # FixRequest model + issue/forward renderers
     ├── conversation.py    # the /start ConversationHandler
     └── main.py            # entry point (run_polling)
