@@ -3,7 +3,9 @@
 A Telegram bot that lets people **request an app be fixed in HyperHLE** without
 touching GitHub. It walks the user through the three things a fix actually needs:
 
-1. the **IPA link(s)** (a direct download for the `.ipa` / zipped `.app`),
+1. the **IPA link(s)** (a direct download for the `.ipa` / zipped `.app`) —
+   or the **IPA file itself**, attached in Telegram (it is forwarded to the
+   maintainer, and the GitHub issue notes the file was attached via Telegram),
 2. a **log file** from the failing run, and
 3. a description of the **bug/crash** (with optional screenshots/video).
 
@@ -36,7 +38,7 @@ questions. `/language` re-opens the picker at any time, even mid-request.
  → 🇬🇧 English / 🇷🇺 Русский   (first time only — /language to change later)
  → app name
  → app version            (/skip)
- → IPA link(s)            (required — one or more http(s) URLs)
+ → IPA link(s) or file(s) (required — http(s) URLs, or attach the .ipa/.zip itself, then /done)
  → bug / crash            (required)
  → log file(s)            (required — attach a file or paste text, then /done)
  → OS / GPU               (/skip)
