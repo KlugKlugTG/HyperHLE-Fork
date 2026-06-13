@@ -650,8 +650,8 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (bool)isTorchModeSupported:(i32)_mode { false }
 - (bool)isWhiteBalanceModeSupported:(i32)_mode { false }
 
-+ (bool)isFocusPointOfInterestSupported { false }
-+ (bool)isExposurePointOfInterestSupported { false }
+- (bool)isFocusPointOfInterestSupported { false }
+- (bool)isExposurePointOfInterestSupported { false }
 
 @end
 
