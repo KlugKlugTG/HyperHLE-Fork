@@ -280,11 +280,11 @@ com.StarByte.NEX: --landscape-left --force-composition
 
 # BioShock (requires a newer device model; the game refuses to start its
 # engine if it detects an unsupported device like the original iPhone)
-com.2k.bioshock: --landscape-right --device-family=iphone5 --prefer-gles2-context
+com.2k.bioshock: --landscape-right --device-family=iphone5 --prefer-gles2-context --force-composition
 
 # Infinity Blade
 # Uses ES 2.0 shaders; ES 1.1 context on native drivers can black-screen even though the render loop is alive.
-com.chairentertainment.birthright: --landscape-left --prefer-gles2-context
+com.chairentertainment.birthright: --landscape-left --prefer-gles2-context --force-composition
 
 # Galaxy on Fire
 # In Game controls A = Weapon Select, X = Boost, B = Fire, Y = Missle, Start = Pause
