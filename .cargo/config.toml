@@ -2,3 +2,14 @@
 # the documentation for the touchHLE crate is intended to include private items
 # alas this isn't scoped to that crate!
 rustdocflags = ["--document-private-items"]
+
+# Windows: the CMake `cmake-rs` build scripts (SDL2, dynarmic, openal-soft)
+# default to whatever the newest Visual Studio `cmake` auto-detects on the
+# host. On current GitHub Actions `windows-latest` runners that is
+# "Visual Studio 18 2026", which the pinned CMake (3.29) does not know about,
+# so configuration fails with "Could not create named generator Visual Studio
+# 18 2026". Pin an explicit, supported generator + architecture so both CI and
+# local Windows builds use VS 2022 (x64) regardless of which newer VS is also
+# installed.
+[target.x86_64-pc-windows-msvc]
+env = { CMAKE_GENERATOR = "Visual Studio 17 2022", CMAKE_GENERATOR_PLATFORM = "x64" }
