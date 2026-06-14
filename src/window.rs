@@ -33,6 +33,7 @@ use std::time::{Duration, Instant};
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum DeviceFamily {
     iPhone,
+    iPhone5,
     iPad,
 }
 impl std::fmt::Display for DeviceFamily {
@@ -41,10 +42,29 @@ impl std::fmt::Display for DeviceFamily {
     }
 }
 impl DeviceFamily {
+    /// Portrait (width, height) in logical points.
+    /// iPhone 5 screen is 1136×640 px retina (2×), so 568×320 pts.
     pub fn portrait_size(&self) -> (u32, u32) {
         match self {
             DeviceFamily::iPhone => (320, 480),
+            DeviceFamily::iPhone5 => (320, 568),
             DeviceFamily::iPad => (768, 1024),
+        }
+    }
+    /// UIScreen.scale — retina multiplier.
+    pub fn scale_factor(&self) -> f32 {
+        match self {
+            DeviceFamily::iPhone => 1.0,
+            DeviceFamily::iPhone5 => 2.0,
+            DeviceFamily::iPad => 1.0,
+        }
+    }
+    /// hw.machine string returned by sysctl / uname.
+    pub fn machine_name(&self) -> &'static str {
+        match self {
+            DeviceFamily::iPhone => "iPhone1,1",
+            DeviceFamily::iPhone5 => "iPhone5,1",
+            DeviceFamily::iPad => "iPad1,1",
         }
     }
 }
@@ -63,6 +83,7 @@ impl TryFrom<&str> for DeviceFamily {
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         match value {
             "iphone" => Ok(DeviceFamily::iPhone),
+            "iphone5" => Ok(DeviceFamily::iPhone5),
             "ipad" => Ok(DeviceFamily::iPad),
             _ => Err(()),
         }
@@ -174,9 +195,13 @@ pub enum GLVersion {
     /// OpenGL ES 1.1
     GLES11,
     /// OpenGL ES 2.0
-    GLES20, // AddEsTwo
+    GLES20,
+    /// OpenGL ES 3.0
+    GLES30,
     /// OpenGL 2.1 compatibility profile
     GL21Compat,
+    /// OpenGL 3.3 Core profile
+    GL33Core,
 }
 
 pub struct GLContext(sdl2::video::GLContext);
@@ -274,11 +299,7 @@ impl Window {
             // It's important to set context version BEFORE window creation
             // ref. https://wiki.libsdl.org/SDL2/SDL_GLattr
             let attr = video_ctx.gl_attr();
-            if options.gles_version == 2 {
-                attr.set_context_version(2, 0); // SetEsTwo
-            } else {
-                attr.set_context_version(1, 1); // SetEsOne
-            }
+            attr.set_context_version(1, 1);
             attr.set_context_profile(sdl2::video::GLProfile::GLES);
 
             // Disable blocking of event loop when app is paused.
@@ -337,11 +358,7 @@ impl Window {
             // Sanity check
             let gl_attr = video_ctx.gl_attr();
             debug_assert_eq!(gl_attr.context_profile(), sdl2::video::GLProfile::GLES);
-            if options.gles_version == 2 {
-                debug_assert_eq!(gl_attr.context_version(), (2, 0)); // CheckEsTwo
-            } else {
-                debug_assert_eq!(gl_attr.context_version(), (1, 1)); // CheckEsOne
-            }
+            debug_assert_eq!(gl_attr.context_version(), (1, 1));
         }
 
         if let Some(icon) = icon {
@@ -432,7 +449,10 @@ impl Window {
     /// Since polling can be quite expensive, this function will skip it if it
     /// was called too recently.
     pub fn poll_for_events(&mut self, options: &Options) {
-        assert!(self.on_main_stack);
+        if !self.on_main_stack {
+            log!("Warning: poll_for_events called off main stack, skipping");
+            return;
+        }
         let now = Instant::now();
         // poll roughly twice per frame to try to avoid missing frames sometimes
         if now.duration_since(self.last_polled) < Duration::from_secs_f64(1.0 / 120.0) {
@@ -455,6 +475,20 @@ impl Window {
             } else {
                 window.viewport()
             };
+            // Clamp into the viewport. On hosts (Android, large desktops) the
+            // SDL drawable is bigger than the iPhone's virtual screen and is
+            // letterboxed inside the viewport. Touches landing in the
+            // letterbox bars used to produce out-of-window iOS coordinates
+            // (e.g. y == -91 or y == 570 for a 320x460 portrait window),
+            // which made -[UIWindow hitTest:withEvent:] return nil for every
+            // such touch. The "SUPER HACK" fallback in ui_touch then forced
+            // the touch directly into the window object, bypassing all
+            // subviews — so taps near the very top/bottom of a landscape
+            // screen never reached overlay UI like CreateNewWorld dialogs
+            // or the in-game chat field. Clamping to the viewport keeps the
+            // touch on the nearest visible edge instead.
+            let in_x = in_x.clamp(vx as f32, (vx + vw) as f32);
+            let in_y = in_y.clamp(vy as f32, (vy + vh) as f32);
             // normalize to unit square centred on origin
             let x = (in_x - vx as f32) / vw as f32 - 0.5;
             let y = (in_y - vy as f32) / vh as f32 - 0.5;
@@ -465,6 +499,16 @@ impl Window {
             let (out_w, out_h) = window.size_unrotated_unscaled();
             let out_x = (x + 0.5) * out_w as f32;
             let out_y = (y + 0.5) * out_h as f32;
+            // Keep the result strictly *inside* the iOS window. CGRect
+            // containment is half-open on the high edge (a point with
+            // y == bounds.size.height is *outside*), so clamping to the
+            // exclusive size of the window — e.g. y == 480 on an iPhone
+            // 480-pt landscape screen — would still cause -[UIWindow
+            // pointInside:] to return false. Subtract a single point.
+            let max_x = (out_w.saturating_sub(1)) as f32;
+            let max_y = (out_h.saturating_sub(1)) as f32;
+            let out_x = out_x.clamp(0.0, max_x);
+            let out_y = out_y.clamp(0.0, max_y);
             // Round to match touch precision of official devices.
             (out_x.round(), out_y.round())
         }
@@ -602,7 +646,14 @@ impl Window {
                         && options.dpad_to_touch.is_some()
                     {
                         let Some((x, y, w, h)) = options.dpad_to_touch else {
-                            unreachable!();
+                            // We already checked dpad_to_touch.is_some() in
+                            // the surrounding if-condition, but be defensive
+                            // against future refactors and bail out instead
+                            // of panicking the host.
+                            log!(
+                                "Warning: dpad_to_touch became None between outer check and inner destructure; ignoring D-pad event."
+                            );
+                            continue;
                         };
 
                         // Update held state
@@ -612,7 +663,17 @@ impl Window {
                             crate::options::Button::DPadRight => self.dpad_state.right = pressed,
                             crate::options::Button::DPadUp => self.dpad_state.up = pressed,
                             crate::options::Button::DPadDown => self.dpad_state.down = pressed,
-                            _ => unreachable!(),
+                            _ => {
+                                // The outer `if` already restricts us to the
+                                // four D-pad buttons; if a new variant slips
+                                // through after a refactor, just ignore it
+                                // instead of crashing.
+                                log!(
+                                    "Warning: unexpected button {:?} reached D-pad arm; ignoring.",
+                                    button
+                                );
+                                continue;
+                            }
                         }
 
                         // Compute center
@@ -678,7 +739,14 @@ impl Window {
                                     coords,
                                 )]))
                             }
-                            _ => unreachable!(),
+                            _ => {
+                                // Outer arm only matches ControllerButton{Up,Down}.
+                                log!(
+                                    "Warning: unexpected event {:?} in button-to-touch arm; ignoring.",
+                                    event
+                                );
+                                continue;
+                            }
                         }
                     }
                 }
@@ -820,7 +888,14 @@ impl Window {
                         E::FingerUp { .. } => Event::TouchesUp(map),
                         E::FingerMotion { .. } => Event::TouchesMove(map),
                         E::FingerDown { .. } => Event::TouchesDown(map),
-                        _ => unreachable!(),
+                        _ => {
+                            // Outer arm matches FingerUp/Motion/Down only.
+                            log!(
+                                "Warning: unexpected event {:?} in multi-touch arm; treating as TouchesMove.",
+                                event
+                            );
+                            Event::TouchesMove(map)
+                        }
                     }
                 }
                 E::KeyDown {
@@ -948,7 +1023,16 @@ impl Window {
             if let Some(ref accelerometer) = self.accelerometer {
                 let data = accelerometer.get_data().unwrap();
                 let sdl2::sensor::SensorData::Accel(data) = data else {
-                    panic!();
+                    // We asked SDL for the accelerometer sensor explicitly
+                    // earlier; if SDL handed us a different sensor variant
+                    // (driver bug, future SDL version, etc.), keep the host
+                    // running by reporting the device flat-on-its-back
+                    // (UIAcceleration neutral position).
+                    log!(
+                        "Warning: accelerometer sensor returned non-Accel data ({:?}); reporting neutral acceleration.",
+                        data
+                    );
+                    return (0.0, 0.0, -1.0);
                 };
                 let [x, y, z] = data;
                 // UIAcceleration reports acceleration towards gravity, but SDL2
@@ -1161,12 +1245,20 @@ impl Window {
                 attr.set_context_profile(sdl2::video::GLProfile::GLES);
             }
             GLVersion::GLES20 => {
-                attr.set_context_version(2, 0); // SetEsTwo
+                attr.set_context_version(2, 0);
+                attr.set_context_profile(sdl2::video::GLProfile::GLES);
+            }
+            GLVersion::GLES30 => {
+                attr.set_context_version(3, 0);
                 attr.set_context_profile(sdl2::video::GLProfile::GLES);
             }
             GLVersion::GL21Compat => {
                 attr.set_context_version(2, 1);
                 attr.set_context_profile(sdl2::video::GLProfile::Compatibility);
+            }
+            GLVersion::GL33Core => {
+                attr.set_context_version(3, 3);
+                attr.set_context_profile(sdl2::video::GLProfile::Core);
             }
         }
 
@@ -1287,7 +1379,10 @@ impl Window {
     /// content appears upright. On a mobile device, this might do something
     /// else, because the user can physically rotate the screen.
     pub fn rotate_device(&mut self, new_orientation: DeviceOrientation) {
-        assert!(self.on_main_stack);
+        if !self.on_main_stack {
+            log!("Warning: rotate_device called off main stack, skipping");
+            return;
+        }
         if new_orientation == self.device_orientation {
             return;
         }
@@ -1423,7 +1518,10 @@ impl Window {
         self.video_ctx.is_screen_saver_enabled()
     }
     pub fn set_screen_saver_enabled(&mut self, enabled: bool) {
-        assert!(self.on_main_stack);
+        if !self.on_main_stack {
+            log!("Warning: set_screen_saver_enabled called off main stack, skipping");
+            return;
+        }
         match enabled {
             true => self.video_ctx.enable_screen_saver(),
             false => self.video_ctx.disable_screen_saver(),
@@ -1431,13 +1529,19 @@ impl Window {
     }
 
     pub fn start_text_input(&self) {
-        assert!(self.on_main_stack);
+        if !self.on_main_stack {
+            log!("Warning: start_text_input called off main stack, skipping");
+            return;
+        }
         unsafe {
             sdl2_sys::SDL_StartTextInput();
         }
     }
     pub fn stop_text_input(&self) {
-        assert!(self.on_main_stack);
+        if !self.on_main_stack {
+            log!("Warning: stop_text_input called off main stack, skipping");
+            return;
+        }
         unsafe {
             sdl2_sys::SDL_StopTextInput();
         }
@@ -1457,7 +1561,10 @@ pub fn open_url(env: &mut Environment, url: &str) -> Result<(), String> {
 /// The window argument allows for passing in the parent window for the
 /// messagebox, which is not required but should be done if possible.
 pub fn show_error_messagebox(window: Option<&Window>, error_message: &str) {
-    assert!(window.is_none_or(|win| win.on_main_stack));
+    if window.is_some_and(|win| !win.on_main_stack) {
+        log!("Warning: show_error_messagebox called off main stack, skipping");
+        return;
+    }
     use sdl2::messagebox;
     let mbox = [
         messagebox::ButtonData {
@@ -1480,7 +1587,9 @@ pub fn show_error_messagebox(window: Option<&Window>, error_message: &str) {
         window.map(|win| &win.window),
         None,
     ) else {
-        panic!("Failed to show message box!");
+        log!("Warning: Failed to show error message box; falling back to stderr only.");
+        eprintln!("touchHLE crashed: {}", error_message);
+        return;
     };
 
     match clicked_button {
@@ -1500,7 +1609,11 @@ pub fn show_error_messagebox(window: Option<&Window>, error_message: &str) {
                 },
                 // Close
                 1 => {}
-                _ => unreachable!(),
+                _ => {
+                    // SDL_ShowMessageBox should never return an unknown id
+                    // for the buttons we configured, but be defensive.
+                    log!("Warning: unexpected message-box button id; ignoring.");
+                }
             }
         }
     }
@@ -1532,6 +1645,15 @@ pub fn get_battery_status() -> (i32, BatteryState) {
 }
 
 pub fn get_preferred_language_codes(env: &mut Environment) -> Vec<String> {
+    // In headless mode there is no window, and the parent-stack machinery
+    // [Environment::on_parent_stack_in_coroutine] relies on requires one. The
+    // closure below doesn't actually use the window, but routing through it
+    // would still unwrap the absent window and panic. There is no meaningful
+    // user locale to report without a session anyway, so report no preference
+    // and let the caller fall back to its default (English).
+    if env.window.is_none() {
+        return Vec::new();
+    }
     env.on_parent_stack_in_coroutine(|_, _| {
         sdl2::locale::get_preferred_locales()
             .map(|loc| loc.lang)
@@ -1540,9 +1662,52 @@ pub fn get_preferred_language_codes(env: &mut Environment) -> Vec<String> {
 }
 
 pub fn get_preferred_country_codes(env: &mut Environment) -> Vec<String> {
+    // See the note in `get_preferred_language_codes` about headless mode.
+    if env.window.is_none() {
+        return Vec::new();
+    }
     env.on_parent_stack_in_coroutine(|_, _| {
         sdl2::locale::get_preferred_locales()
             .filter_map(|loc| loc.country)
             .collect()
+    })
+}
+
+/// Show a UIAlertView-style dialog using SDL2 message box.
+/// Returns the index of the clicked button, or 0 if closed.
+pub fn show_alert_dialog(
+    env: &mut Environment,
+    title: &str,
+    message: &str,
+    buttons: &[&str],
+) -> i32 {
+    let title = title.to_string();
+    let message = message.to_string();
+    let buttons: Vec<String> = buttons.iter().map(|s| s.to_string()).collect();
+
+    env.on_parent_stack_in_coroutine(move |window, _options| {
+        use sdl2::messagebox;
+
+        let button_data: Vec<messagebox::ButtonData> = buttons
+            .iter()
+            .enumerate()
+            .map(|(i, text)| messagebox::ButtonData {
+                flags: messagebox::MessageBoxButtonFlag::NOTHING,
+                button_id: i as i32,
+                text: text.as_str(),
+            })
+            .collect();
+
+        match messagebox::show_message_box(
+            messagebox::MessageBoxFlag::INFORMATION,
+            &button_data,
+            &title,
+            &message,
+            Some(&window.window),
+            None,
+        ) {
+            Ok(messagebox::ClickedButton::CustomButton(btn)) => btn.button_id,
+            _ => 0,
+        }
     })
 }

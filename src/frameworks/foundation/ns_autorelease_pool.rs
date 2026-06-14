@@ -20,6 +20,7 @@ impl State {
     }
 }
 
+#[derive(Default)]
 struct NSAutoreleasePoolHostObject {
     original_thread: ThreadId,
     /// This is allowed to contain duplicates, which get released several times!
@@ -73,12 +74,32 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (id)retain {
-    // TODO: throw proper exception?
-    panic!("NSAutoreleasePool can't be retained!");
+    // Per Cocoa docs, sending retain to an NSAutoreleasePool throws an
+    // exception. We don't have full exception support; log and return self
+    // without bumping the refcount so the guest stays alive.
+    log!(
+        "Warning: -[{:?} (NSAutoreleasePool) retain] is not allowed; returning self.",
+        this
+    );
+    this
 }
 - (id)autorelease {
-    // TODO: throw proper exception?
-    panic!("NSAutoreleasePool can't be autoreleased!");
+    // Same situation as `retain` above — Cocoa would raise here. Log and
+    // return self instead of panicking the host.
+    log!(
+        "Warning: -[{:?} (NSAutoreleasePool) autorelease] is not allowed; returning self.",
+        this
+    );
+    this
+}
+
+- (i32)intValue {
+    // Workaround: Некоторые старые игры имеют баги с висячими указателями
+    // (dangling pointers).
+    // Они обращаются к пулу автоосвобождения, думая, что это NSNumber.
+    // Мы возвращаем 0, чтобы игра корректно продолжила работу без спама в
+    // логах.
+    0
 }
 
 - (())drain {
@@ -99,16 +120,51 @@ pub const CLASSES: ClassExports = objc_classes! {
         current_thread
     );
     let host_obj: &mut NSAutoreleasePoolHostObject = env.objc.borrow_mut(this);
-    // It's unclear what should happen when draining a pool on the wrong thread,
-    // but we prefer to be conservative here
-    assert_eq!(host_obj.original_thread, current_thread);
-    let pool_stack = &mut env
+    if host_obj.original_thread != current_thread {
+        log!(
+            "Warning: draining NSAutoreleasePool {:?} on thread {} but it was \
+             created on thread {}; behaviour is undefined per Cocoa, continuing anyway.",
+            this,
+            current_thread,
+            host_obj.original_thread
+        );
+    }
+    let original_thread = host_obj.original_thread;
+    // We resolve the pool stack for the thread the pool was originally created
+    // on, falling back to the current thread if that one has none.
+    let lookup_thread = if env
         .framework_state
         .foundation
         .ns_autorelease_pool
         .pool_stacks
-        .get_mut(&current_thread)
-        .unwrap();
+        .contains_key(&original_thread)
+    {
+        original_thread
+    } else {
+        current_thread
+    };
+    let Some(pool_stack) = env
+        .framework_state
+        .foundation
+        .ns_autorelease_pool
+        .pool_stacks
+        .get_mut(&lookup_thread)
+    else {
+        log!(
+            "Warning: -[{:?} (NSAutoReleasePool) release] on thread {} found no \
+             pool stack for thread {}; ignoring.",
+            this,
+            env.current_thread,
+            lookup_thread
+        );
+        let host_obj: &mut NSAutoreleasePoolHostObject = env.objc.borrow_mut(this);
+        let objects = std::mem::take(&mut host_obj.objects);
+        env.objc.dealloc_object(this, &mut env.mem);
+        for object in objects {
+            release(env, object);
+        }
+        return;
+    };
     // NSAutoReleasePool seems to keep popping until reaches the appropriate
     // pool object. If there are pools that are "above" it in the stack, it
     // deallocates them as well.
@@ -118,10 +174,19 @@ pub const CLASSES: ClassExports = objc_classes! {
         .rev()
         .find(|(_, pool)| **pool == this)
     else {
-        panic!(
-            "Bad [{:?} (NSAutoReleasePool) release] on thread {}!",
-            this, env.current_thread
-        )
+        log!(
+            "Warning: -[{:?} (NSAutoReleasePool) release] on thread {} but the pool \
+             is not on the active pool stack; dealloc'ing without draining the stack.",
+            this,
+            env.current_thread
+        );
+        let host_obj: &mut NSAutoreleasePoolHostObject = env.objc.borrow_mut(this);
+        let objects = std::mem::take(&mut host_obj.objects);
+        env.objc.dealloc_object(this, &mut env.mem);
+        for object in objects {
+            release(env, object);
+        }
+        return;
     };
     let to_drop: Vec<id> = pool_stack.drain(index..).collect();
     log_dbg!("Dropping pools {:?}", to_drop);
@@ -131,7 +196,15 @@ pub const CLASSES: ClassExports = objc_classes! {
             // pools as we already drained the shared pool stacks.
             // So we manually decrement and dealloc instead.
             // TODO: refactor this
-            assert_eq!(env.objc.get_refcount(pool), NonZeroU32::new(1).unwrap());
+            let rc = env.objc.get_refcount(pool);
+            if rc != NonZeroU32::new(1).unwrap() {
+                log!(
+                    "Warning: stacked NSAutoreleasePool {:?} has refcount {} \
+                     (expected 1) when its parent was drained; force-dealloc'ing anyway.",
+                    pool,
+                    rc
+                );
+            }
             _ = env.objc.decrement_refcount(pool);
         }
         let host_obj: &mut NSAutoreleasePoolHostObject = env.objc.borrow_mut(pool);

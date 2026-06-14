@@ -34,7 +34,7 @@ static def join(String prefix, String separator, String branding) {
 
 android {
     ndkVersion "25.2.9519653"
-    compileSdkVersion 31
+    compileSdkVersion 35
     defaultConfig {
         def branding = getTouchHLEBranding()
         applicationId 'org.touchhle.android'
@@ -48,7 +48,7 @@ android {
         versionName join(getTouchHLEVersionName(), ' ', branding)
 
         minSdkVersion 21 // first version with AArch64
-        targetSdkVersion 31
+        targetSdkVersion 35
         externalNativeBuild {
             ndkBuild {
                 arguments "APP_PLATFORM=android-21"
@@ -138,7 +138,8 @@ cargoNdk {
     }
     // The default feature, "static", makes us use static linking for SDL2 and OpenAL Soft.
     // For Android, we need dynamic linking for SDL2, but static linking for OpenAL Soft.
-    extraCargoBuildArguments = ["--lib", "--no-default-features", "--features", "touchHLE_openal_soft_wrapper/static,sdl2/bundled"]
+    // libxml2 is also statically linked from the vendored source because Android has no system libxml2.
+    extraCargoBuildArguments = ["--lib", "--no-default-features", "--features", "touchHLE_openal_soft_wrapper/static,touchHLE_libxml2_wrapper/static,sdl2/bundled"]
 }
 
 dependencies {

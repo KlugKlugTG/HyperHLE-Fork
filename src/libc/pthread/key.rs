@@ -58,8 +58,32 @@ fn pthread_setspecific(env: &mut Environment, key: pthread_key_t, value: ConstVo
     0 // success
 }
 
+fn pthread_key_delete(env: &mut Environment, key: pthread_key_t) -> i32 {
+    // POSIX `int pthread_key_delete(pthread_key_t key)`: returns 0 on
+    // success, EINVAL if `key` is not a valid key. We don't currently
+    // free the slot in the keys table — Mono only deletes keys at
+    // teardown so the leaked slot is bounded — but we do clear out
+    // any per-thread values stored under it so the next
+    // `pthread_getspecific` after a fresh `pthread_key_create` reuse
+    // doesn't see a stale pointer.
+    let Some(idx) = key.checked_sub(1).and_then(|i| usize::try_from(i).ok()) else {
+        return 22; // EINVAL
+    };
+    let state = get_state(env);
+    if let Some((data, _)) = state.keys.get_mut(idx) {
+        data.clear();
+        log_dbg!("pthread_key_delete({}) cleared per-thread values", key);
+        0
+    } else {
+        log_dbg!("pthread_key_delete({}) on unknown key, returning EINVAL", key);
+        22
+    }
+}
+
+// --- ОБНОВЛЕННЫЙ СПИСОК ЭКСПОРТА ---
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(pthread_key_create(_, _)),
     export_c_func!(pthread_getspecific(_)),
     export_c_func!(pthread_setspecific(_, _)),
+    export_c_func!(pthread_key_delete(_)), // Регистрируем новую функцию
 ];

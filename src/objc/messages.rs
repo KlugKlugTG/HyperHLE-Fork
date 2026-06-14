@@ -1,14 +1,20 @@
 /*
  * This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * License, v. 2.0.
+ * If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
+//!
 //! Handling of Objective-C messaging (`objc_msgSend` and friends).
 //!
 //! Resources:
 //! - Apple's [Objective-C Runtime Programming Guide](https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/ObjCRuntimeGuide/Articles/ocrtHowMessagingWorks.html)
+//!
+//!
 //! - [Apple's documentation of `objc_msgSend`](https://developer.apple.com/documentation/objectivec/1456712-objc_msgsend)
 //! - Mike Ash's [objc_msgSend's New Prototype](https://www.mikeash.com/pyblog/objc_msgsends-new-prototype.html)
+//!
+//!
 //! - Peter Steinberger's [Calling Super at Runtime in Swift](https://steipete.com/posts/calling-super-at-runtime/) explains `objc_msgSendSuper2`
 
 use super::{id, nil, Class, ObjC, IMP, SEL};
@@ -17,9 +23,83 @@ use crate::mem::{ConstPtr, MutVoidPtr, SafeRead};
 use crate::Environment;
 use std::any::TypeId;
 
-// StoreRootViewControllers
-static ROOT_VC_STORE: std::sync::Mutex<Option<std::collections::HashMap<u32, u32>>> =
-    std::sync::Mutex::new(None);
+/// Implements Apple's lazy `+initialize` contract:
+/// > The runtime sends `initialize` to each class in a program just before the
+/// > class, or any class that inherits from it, is sent its first message from
+/// > within the program. Superclasses receive this message before their
+/// > subclasses.
+///
+/// See <https://developer.apple.com/documentation/objectivec/nsobject/1418639-initialize>.
+///
+/// `class_to_init` must be a (regular) class, not a metaclass. The class is
+/// marked as initialized *before* `+initialize` is dispatched, so that any
+/// messages sent to it from within `+initialize` itself do not cause infinite
+/// recursion.
+fn ensure_class_initialized(env: &mut Environment, class_to_init: Class) {
+    if class_to_init == nil {
+        return;
+    }
+    if env.objc.initialized_classes.contains(&class_to_init) {
+        return;
+    }
+
+    // Initialize the superclass first ("Superclasses receive this message
+    // before their subclasses").
+    let superclass = {
+        let Some(host_object) = env.objc.get_host_object(class_to_init) else {
+            // Class has no host object – nothing to initialize. Mark it as
+            // done so we don't waste cycles re-checking on every dispatch.
+            env.objc.initialized_classes.insert(class_to_init);
+            return;
+        };
+        if let Some(co) = host_object
+            .as_any()
+            .downcast_ref::<super::ClassHostObject>()
+        {
+            co.superclass
+        } else {
+            // FakeClass / UnimplementedClass – nothing to initialize.
+            env.objc.initialized_classes.insert(class_to_init);
+            return;
+        }
+    };
+    ensure_class_initialized(env, superclass);
+
+    // Re-check after recursion (the recursive call could not have
+    // initialised this class, but be defensive).
+    if !env.objc.initialized_classes.insert(class_to_init) {
+        return;
+    }
+
+    // Decide whether to actually dispatch `+initialize`. We send it iff
+    // any class in the metaclass chain implements `initialize`. Otherwise
+    // there is nothing to call (the inherited NSObject default is a no-op
+    // anyway) and dispatching would just emit a "does not respond" warning.
+    let metaclass = ObjC::read_isa(class_to_init, &env.mem);
+    let Some(sel_initialize) = env.objc.lookup_selector("initialize") else {
+        return;
+    };
+    if !env.objc.class_has_method(metaclass, sel_initialize) {
+        return;
+    }
+
+    // `+initialize` only takes (self, _cmd); however, the *outer* message
+    // dispatch we're nested inside has its real arguments sitting in r0..r3
+    // (and possibly on the stack). Dispatching `+initialize` will clobber
+    // r0..r3, so snapshot them and restore afterwards. SP/LR are already
+    // preserved by `call_from_host`. Stack arguments and VFP registers used
+    // for FP arguments aren't touched by a 2-argument `+initialize` call.
+    let saved_r0_r3 = [
+        env.cpu.regs()[0],
+        env.cpu.regs()[1],
+        env.cpu.regs()[2],
+        env.cpu.regs()[3],
+    ];
+    log_dbg!("Dispatching +[{:?} initialize]", class_to_init);
+    let _: () = msg_send_no_type_checking(env, (class_to_init, sel_initialize));
+    let regs = env.cpu.regs_mut();
+    regs[0..4].copy_from_slice(&saved_r0_r3);
+}
 
 /// The core implementation of `objc_msgSend`, the main function of Objective-C.
 ///
@@ -27,11 +107,13 @@ static ROOT_VC_STORE: std::sync::Mutex<Option<std::collections::HashMap<u32, u32
 /// defined by the wrappers over this function, a call to an `objc_msgSend`
 /// variant may have additional arguments to be forwarded (or rather, left
 /// untouched) by `objc_msgSend` when it tail-calls the method implementation it
-/// looks up. This is invisible to the Rust type system; we're relying on
+/// looks up.
+/// This is invisible to the Rust type system; we're relying on
 /// [crate::abi::CallFromGuest] here.
 ///
 /// Similarly, the return value of `objc_msgSend` is whatever value is returned
-/// by the method implementation. We are relying on CallFromGuest not
+/// by the method implementation.
+/// We are relying on CallFromGuest not
 /// overwriting it.
 #[allow(non_snake_case)]
 fn objc_msgSend_inner(
@@ -46,11 +128,62 @@ fn objc_msgSend_inner(
         selector.as_str(&env.mem),
         receiver
     );
-    // TraceAudioCalls
-    let sel_name = selector.as_str(&env.mem);
-    if sel_name.contains("udio") || sel_name.contains("ound") || sel_name.contains("olume") {
-        println!("AUDIO_TRACE: [{:?} {}]", receiver, sel_name);
+    // Host-side recursion guard. If an Objective-C method (typically
+    // `hitTest:withEvent:` or `pointInside:withEvent:`) ends up recursing
+    // into itself indirectly, the host call stack balloons because every
+    // round trip goes host -> guest -> host. Without this guard that path
+    // SIGSEGVs the whole emulator once the native stack is exhausted.
+    //
+    // We use a thread-local counter instead of tracking it in
+    // `Environment`, since `objc_msgSend_inner` is the single chokepoint
+    // through which every dispatch (host or guest) must pass.
+    //
+    // 128 is a deliberate compromise: real iOS view hierarchies rarely go
+    // deeper than ~50 nested `nextResponder`/`hitTest:` levels, and a small
+    // limit keeps us well clear of Android's 1 MB default thread stack
+    // (each `objc_msgSend_inner` host frame is several KB once Rust adds
+    // local variables, log!() temporaries, and the dispatch trampoline).
+    const MAX_DEPTH: usize = 128;
+    thread_local! {
+        static DISPATCH_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     }
+    let depth = DISPATCH_DEPTH.with(|d| {
+        let new = d.get() + 1;
+        d.set(new);
+        new
+    });
+    struct DepthGuard;
+    impl Drop for DepthGuard {
+        fn drop(&mut self) {
+            DISPATCH_DEPTH.with(|d| d.set(d.get().saturating_sub(1)));
+        }
+    }
+    let _guard = DepthGuard;
+    if depth > MAX_DEPTH {
+        let sel_name = selector.as_str(&env.mem).to_string();
+        log!(
+            "Warning: objc_msgSend recursion limit ({}) exceeded while dispatching \"{}\" to {:?}; bailing out with a nil return.",
+            MAX_DEPTH,
+            sel_name,
+            receiver,
+        );
+        // Special handling for allocWithZone: — if recursion is hit during
+        // allocation, perform the allocation directly using NSObject's
+        // fallback path rather than returning nil (which causes cascading
+        // failures like "texture cannot be nil!" in games).
+        if sel_name == "allocWithZone:" {
+            let obj = env.objc.alloc_object(
+                receiver,
+                Box::new(super::TrivialHostObject),
+                &mut env.mem,
+            );
+            env.cpu.regs_mut()[0] = obj.to_bits();
+            return;
+        }
+        env.cpu.regs_mut()[0..2].fill(0);
+        return;
+    }
+
     let message_type_info = env.objc.message_type_info.take();
 
     if receiver == nil {
@@ -71,126 +204,83 @@ fn objc_msgSend_inner(
     }
 
     let orig_class = super2.unwrap_or_else(|| ObjC::read_isa(receiver, &env.mem));
+    // Graceful exit if isa is nil — this typically means the object was
+    // already deallocated (use-after-free in guest code) or was never
+    // properly allocated. Per Apple's Objective-C runtime behavior,
+    // messaging a deallocated object is undefined behavior, but we handle
+    // it gracefully by returning nil/0 instead of crashing.
     if orig_class == nil {
-        // BypassNilClassAssert
+        // Rate-limit these warnings to avoid flooding the log when the
+        // guest app has a use-after-free bug that triggers repeatedly.
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static NIL_ISA_COUNT: AtomicUsize = AtomicUsize::new(0);
+        const NIL_ISA_LOG_LIMIT: usize = 8;
+        let count = NIL_ISA_COUNT.fetch_add(1, Ordering::Relaxed);
+        if count < NIL_ISA_LOG_LIMIT {
+            log!(
+                "Warning: receiver {:?} has nil isa! Ignoring message \"{}\". \
+                 (This usually means the object was already freed — use-after-free \
+                 in guest code.) [{}/{}]",
+                receiver,
+                selector.as_str(&env.mem),
+                count + 1,
+                NIL_ISA_LOG_LIMIT,
+            );
+        } else if count == NIL_ISA_LOG_LIMIT {
+            log!(
+                "Warning: suppressing further nil-isa warnings ({} already logged). \
+                 The guest app has use-after-free bugs.",
+                NIL_ISA_LOG_LIMIT,
+            );
+        }
         env.cpu.regs_mut()[0..2].fill(0);
         return;
     }
 
-    // Traverse the chain of superclasses to find the method implementation.
+    // Lazily dispatch `+initialize` to the receiver's class (and its
+    // superclasses) before this message reaches its IMP. Skipped for super
+    // calls — the calling class is already initialized by the time we reach
+    // a `super` call site inside one of its methods.
+    if super2.is_none() {
+        let class_to_init = if let Some(host_object) = env.objc.get_host_object(orig_class) {
+            if let Some(co) = host_object
+                .as_any()
+                .downcast_ref::<super::ClassHostObject>()
+            {
+                if co.is_metaclass {
+                    // Class method: receiver itself is the class.
+                    receiver
+                } else {
+                    // Instance method: orig_class is the class.
+                    orig_class
+                }
+            } else {
+                nil
+            }
+        } else {
+            nil
+        };
+        if class_to_init != nil {
+            ensure_class_initialized(env, class_to_init);
+        }
+    }
 
+    // Traverse the chain of superclasses to find the method implementation.
     let mut class = orig_class;
     loop {
         if class == nil {
             assert!(class != orig_class);
-
-            let class_host_object = match env.objc.get_host_object(orig_class) {
-                Some(obj) => obj,
-                None => {
-                    log!(
-                        "WARNING: objc_msgSend superclass chain lookup failed for {:?}. Bypassing.",
-                        orig_class
-                    );
-                    env.cpu.regs_mut()[0..2].fill(0);
-                    return;
-                }
-            };
+            let class_host_object = env.objc.get_host_object(orig_class).unwrap();
             let &super::ClassHostObject {
                 ref name,
                 is_metaclass,
                 ..
             } = class_host_object.as_any().downcast_ref().unwrap();
 
-            // BypassMethodSelector
-            if selector.as_str(&env.mem) == "methodForSelector:" {
-                env.cpu.regs_mut()[0..2].fill(0);
-                return;
-            }
-            // BypassStopLoading
-            if selector.as_str(&env.mem) == "stopLoading" {
-                env.cpu.regs_mut()[0..2].fill(0);
-                return;
-            }
-            // BypassInterfaceIdiom
-            if selector.as_str(&env.mem) == "userInterfaceIdiom" {
-                env.cpu.regs_mut()[0..2].fill(0);
-                return;
-            }
-            // SafeRootViewControllerHook
-            if selector.as_str(&env.mem) == "setRootViewController:" {
-                let vc: id = crate::mem::Ptr::from_bits(env.cpu.regs()[2]);
-                echo!(
-                    "SafeHook: setRootViewController: Window: {:?}, VC: {:?}",
-                    receiver,
-                    vc
-                );
-
-                if vc != nil {
-                    let mut store_lock = ROOT_VC_STORE.lock().unwrap();
-                    if store_lock.is_none() {
-                        *store_lock = Some(std::collections::HashMap::new());
-                    }
-                    store_lock
-                        .as_mut()
-                        .unwrap()
-                        .insert(receiver.to_bits(), vc.to_bits());
-                    drop(store_lock);
-
-                    // SaveCpuState
-                    let saved_regs = env.cpu.regs().to_vec();
-
-                    let view: id = crate::msg![env; vc view];
-                    if view != nil {
-                        let sel_add = env.objc.lookup_selector("addSubview:").unwrap();
-                        let _: () =
-                            crate::objc::msg_send_no_type_checking(env, (receiver, sel_add, view));
-
-                        let sel_key = env.objc.lookup_selector("makeKeyAndVisible").unwrap();
-                        let _: () =
-                            crate::objc::msg_send_no_type_checking(env, (receiver, sel_key));
-
-                        *crate::libc::stdlib::HACK_MAIN_WINDOW.lock().unwrap() = receiver.to_bits();
-                    }
-
-                    // RestoreCpuState (Crucial for AppPicker stability)
-                    env.cpu.regs_mut().copy_from_slice(&saved_regs);
-                }
-
-                env.cpu.regs_mut()[0..2].fill(0);
-                return;
-            }
-            // FakeRootViewGetter
-            if selector.as_str(&env.mem) == "rootViewController" {
-                let mut vc_bits = 0;
-                if let Some(store) = ROOT_VC_STORE.lock().unwrap().as_ref() {
-                    vc_bits = store.get(&receiver.to_bits()).copied().unwrap_or(0);
-                }
-                echo!(
-                    "WARNING: Hooked rootViewController! Returning {:#x}",
-                    vc_bits
-                );
-                env.cpu.regs_mut()[0] = vc_bits;
-                env.cpu.regs_mut()[1] = 0;
-                return;
-            }
-            // BypassTimeZone
-            if selector.as_str(&env.mem) == "defaultTimeZone" {
-                env.cpu.regs_mut()[0..2].fill(0);
-                return;
-            }
-            // BypassWebViewJS
-            if selector.as_str(&env.mem) == "stringByEvaluatingJavaScriptFromString:" {
-                env.cpu.regs_mut()[0..2].fill(0);
-                return;
-            }
-            // BypassDictCreate
-            if selector.as_str(&env.mem) == "dictionaryWithObjects:forKeys:count:" {
-                env.cpu.regs_mut()[0..2].fill(0);
-                return;
-            }
-
-            panic!(
-                "{} {:?} ({}class \"{}\", {:?}){} does not respond to selector \"{}\"!",
+            // --- ИСПРАВЛЕНИЕ ЗДЕСЬ: заменили panic! на log! (мягкий фейл
+            // форка) ---
+            log!(
+                "Warning: {} {:?} ({}class \"{}\", {:?}){} does not respond to selector \"{}\"! Returning 0.",
                 if is_metaclass { "Class" } else { "Object" },
                 receiver,
                 if is_metaclass { "meta" } else { "" },
@@ -203,18 +293,20 @@ fn objc_msgSend_inner(
                 },
                 selector.as_str(&env.mem),
             );
+
+            // Имитируем возврат nil/0, чтобы приложение продолжило работу
+            env.cpu.regs_mut()[0..2].fill(0);
+            return;
+            // ------------------------------------------------------------
         }
 
-        let host_object = match env.objc.get_host_object(class) {
-            Some(obj) => obj,
-            None => {
-                log!(
-                    "WARNING: objc_msgSend failed to get host object for class {:?}. Bypassing.",
-                    class
-                );
-                env.cpu.regs_mut()[0..2].fill(0);
-                return;
-            }
+        let Some(host_object) = env.objc.get_host_object(class) else {
+            log_dbg!(
+                "Warning: class {:?} in superclass chain of {:?} has no host object — stopping dispatch",
+                class, receiver
+            );
+            env.cpu.regs_mut()[0..2].fill(0);
+            return;
         };
 
         if let Some(&super::ClassHostObject {
@@ -258,7 +350,7 @@ Type mismatch when sending message {} to {:?}!
                                 if tolerate_type_mismatch {
                                     log!("Warning: {}", msg);
                                 } else {
-                                    panic!("{}", msg);
+                                    log_dbg!("{}", msg); // Мягкий фейл, чтобы не падать
                                 }
                             }
                         }
@@ -277,53 +369,15 @@ Type mismatch when sending message {} to {:?}!
             is_metaclass,
         }) = host_object.as_any().downcast_ref()
         {
-            // BypassGKSession
-            if name == "GKSession" {
-                env.cpu.regs_mut()[0..2].fill(0);
-                return;
-            }
-            // FakeAccessoryManager
-            if name == "EAAccessoryManager" {
-                env.cpu.regs_mut()[0..2].fill(0);
-                return;
-            }
-            // BypassMailCompose
-            if name == "MFMailComposeViewController" {
-                env.cpu.regs_mut()[0..2].fill(0);
-                return;
-            }
-            // BypassMessageCompose
-            if name == "MFMessageComposeViewController" {
-                env.cpu.regs_mut()[0..2].fill(0);
-                return;
-            }
-            // FakeAdManager
-            if name == "ASIdentifierManager" {
-                env.cpu.regs_mut()[0..2].fill(0);
-                return;
-            }
-            // BypassTextTokenizer
-            if name == "UITextInputStringTokenizer" {
-                env.cpu.regs_mut()[0..2].fill(0);
-                return;
-            }
-            // BypassBarButtonItem
-            if name == "UIBarButtonItem" {
-                env.cpu.regs_mut()[0..2].fill(0);
-                return;
-            }
-            // BypassGCController
-            if name == "GCController" {
-                env.cpu.regs_mut()[0..2].fill(0);
-                return;
-            }
-            panic!(
+            log!(
                 "Class \"{}\" ({:?}) is unimplemented. Call to {} method \"{}\".",
                 name,
                 class,
                 if is_metaclass { "class" } else { "instance" },
                 selector.as_str(&env.mem),
             );
+            env.cpu.regs_mut()[0..2].fill(0);
+            return;
         } else if let Some(&super::FakeClass {
             ref name,
             is_metaclass,
@@ -339,9 +393,11 @@ Type mismatch when sending message {} to {:?}!
             env.cpu.regs_mut()[0..2].fill(0);
             return;
         } else {
-            panic!(
+            log!(
                 "Item {class:?} in superclass chain of object {receiver:?}'s class {orig_class:?} has an unexpected host object type."
             );
+            env.cpu.regs_mut()[0..2].fill(0);
+            return;
         }
     }
 }
@@ -364,11 +420,14 @@ pub(crate) fn _touchHLE_objc_msgSend_tolerant(env: &mut Environment, receiver: i
 /// Variant of `objc_msgSend` for methods that return a struct via a pointer.
 /// See [objc_msgSend_inner].
 ///
-/// The first parameter here is the pointer for the struct return. This is an
+/// The first parameter here is the pointer for the struct return.
+/// This is an
 /// ABI detail that is usually hidden and handled behind-the-scenes by
 /// [crate::abi], but `objc_msgSend` is a special case because of the
-/// pass-through behaviour. Of course, the pass-through only works if the [IMP]
-/// also has the pointer parameter. The caller therefore has to pick the
+/// pass-through behaviour.
+/// Of course, the pass-through only works if the [IMP]
+/// also has the pointer parameter.
+/// The caller therefore has to pick the
 /// appropriate `objc_msgSend` variant depending on the method it wants to call.
 pub(super) fn objc_msgSend_stret(
     env: &mut Environment,
@@ -411,7 +470,8 @@ unsafe impl SafeRead for objc_super {}
 /// This variant has a weird ABI because it needs to receive an additional piece
 /// of information (a class pointer), but it can't actually take this as an
 /// extra parameter, because that would take one of the argument slots reserved
-/// for arguments passed onto the method implementation. Hence the [objc_super]
+/// for arguments passed onto the method implementation.
+/// Hence the [objc_super]
 /// pointer in place of the normal [id].
 #[allow(non_snake_case)]
 pub(super) fn objc_msgSendSuper2(
@@ -420,10 +480,26 @@ pub(super) fn objc_msgSendSuper2(
     selector: SEL,
 ) {
     let objc_super { receiver, class } = env.mem.read(super_ptr);
-
     // Rewrite first argument to match the normal ABI.
     crate::abi::write_next_arg(&mut 0, env.cpu.regs_mut(), &mut env.mem, receiver);
+    objc_msgSend_inner(
+        env,
+        receiver,
+        selector,
+        /* super2: */ Some(class),
+        /* tolerate_type_mismatch: */ false,
+    )
+}
 
+#[allow(non_snake_case)]
+pub(super) fn objc_msgSendSuper2_stret(
+    env: &mut Environment,
+    super_ptr: ConstPtr<objc_super>,
+    selector: SEL,
+) {
+    let objc_super { receiver, class } = env.mem.read(super_ptr);
+    // Rewrite first argument to match the normal ABI.
+    crate::abi::write_next_arg(&mut 0, env.cpu.regs_mut(), &mut env.mem, receiver);
     objc_msgSend_inner(
         env,
         receiver,
@@ -446,16 +522,59 @@ pub trait MsgSendSignature: 'static {
     fn type_info() -> (TypeId, &'static str) {
         #[cfg(debug_assertions)]
         let type_name = std::any::type_name::<Self>();
-        // Avoid wasting space on type names in release builds. At the time of
-        // writing this saves about 36KB.
+        // Avoid wasting space on type names in release builds.
+        // At the time of writing this saves about 36KB.
         #[cfg(not(debug_assertions))]
         let type_name = "[description unavailable in release builds]";
         (TypeId::of::<Self>(), type_name)
     }
 }
 
+// --- Extended implementations for higher number of arguments (7, 8, 9
+// parameters) ---
+impl<
+        R: 'static,
+        P1: 'static,
+        P2: 'static,
+        P3: 'static,
+        P4: 'static,
+        P5: 'static,
+        P6: 'static,
+        P7: 'static,
+    > MsgSendSignature for (R, (id, SEL, P1, P2, P3, P4, P5, P6, P7))
+{
+}
+impl<
+        R: 'static,
+        P1: 'static,
+        P2: 'static,
+        P3: 'static,
+        P4: 'static,
+        P5: 'static,
+        P6: 'static,
+        P7: 'static,
+        P8: 'static,
+    > MsgSendSignature for (R, (id, SEL, P1, P2, P3, P4, P5, P6, P7, P8))
+{
+}
+impl<
+        R: 'static,
+        P1: 'static,
+        P2: 'static,
+        P3: 'static,
+        P4: 'static,
+        P5: 'static,
+        P6: 'static,
+        P7: 'static,
+        P8: 'static,
+        P9: 'static,
+    > MsgSendSignature for (R, (id, SEL, P1, P2, P3, P4, P5, P6, P7, P8, P9))
+{
+}
+
 /// Wrapper around [objc_msgSend] which, together with [msg], makes it easy to
-/// send messages in host code. Warning: all types are inferred from the
+/// send messages in host code.
+/// Warning: all types are inferred from the
 /// call-site and they may not be checked, so be very sure you get them correct!
 pub fn msg_send<R, P>(env: &mut Environment, args: P) -> R
 where
@@ -494,6 +613,70 @@ pub trait MsgSendSuperSignature: 'static {
     type WithoutSuper: MsgSendSignature;
 }
 
+// --- Extended super-call implementations for higher number of arguments ---
+impl<
+        R: 'static,
+        P1: 'static,
+        P2: 'static,
+        P3: 'static,
+        P4: 'static,
+        P5: 'static,
+        P6: 'static,
+        P7: 'static,
+    > MsgSendSuperSignature for (R, (ConstPtr<objc_super>, SEL, P1, P2, P3, P4, P5, P6, P7))
+{
+    type WithoutSuper = (R, (id, SEL, P1, P2, P3, P4, P5, P6, P7));
+}
+impl<
+        R: 'static,
+        P1: 'static,
+        P2: 'static,
+        P3: 'static,
+        P4: 'static,
+        P5: 'static,
+        P6: 'static,
+        P7: 'static,
+        P8: 'static,
+    > MsgSendSuperSignature
+    for (
+        R,
+        (ConstPtr<objc_super>, SEL, P1, P2, P3, P4, P5, P6, P7, P8),
+    )
+{
+    type WithoutSuper = (R, (id, SEL, P1, P2, P3, P4, P5, P6, P7, P8));
+}
+impl<
+        R: 'static,
+        P1: 'static,
+        P2: 'static,
+        P3: 'static,
+        P4: 'static,
+        P5: 'static,
+        P6: 'static,
+        P7: 'static,
+        P8: 'static,
+        P9: 'static,
+    > MsgSendSuperSignature
+    for (
+        R,
+        (
+            ConstPtr<objc_super>,
+            SEL,
+            P1,
+            P2,
+            P3,
+            P4,
+            P5,
+            P6,
+            P7,
+            P8,
+            P9,
+        ),
+    )
+{
+    type WithoutSuper = (R, (id, SEL, P1, P2, P3, P4, P5, P6, P7, P8, P9));
+}
+
 /// [msg_send] but for super-calls (calls [objc_msgSendSuper2]). You probably
 /// want to use [msg_super] rather than calling this directly.
 pub fn msg_send_super2<R, P>(env: &mut Environment, args: P) -> R
@@ -506,7 +689,15 @@ where
     // Provide type info for dynamic type checking.
     env.objc.message_type_info = Some(<(R, P) as MsgSendSuperSignature>::WithoutSuper::type_info());
     if R::SIZE_IN_MEM.is_some() {
-        todo!() // no stret yet
+        // Struct returns (stret) for super-calls aren't implemented yet.
+        // Log this clearly and fall through to the non-stret path so the
+        // host process keeps running and the caller will simply observe
+        // the default-constructed return value via to_regs/to_mem below.
+        log!(
+            "Warning: msg_send_super2: struct-return (stret) super-call is not implemented; falling back to non-stret dispatch. Result may be unreliable.",
+        );
+        (objc_msgSendSuper2 as fn(&mut Environment, ConstPtr<objc_super>, SEL))
+            .call_from_host(env, args)
     } else {
         (objc_msgSendSuper2 as fn(&mut Environment, ConstPtr<objc_super>, SEL))
             .call_from_host(env, args)
@@ -514,6 +705,7 @@ where
 }
 
 /// Macro for sending a message which imitates the Objective-C messaging syntax.
+///
 /// See [msg_send] for the underlying implementation. Warning: all types are
 /// inferred from the call-site and they may not be checked, so be very sure you
 /// get them correct!
@@ -547,7 +739,8 @@ macro_rules! msg {
         }
     }
 }
-pub use crate::msg; // #[macro_export] is weird...
+pub use crate::msg;
+// #[macro_export] is weird...
 
 /// Variant of [msg] for super-calls.
 ///
@@ -584,7 +777,6 @@ macro_rules! msg_super {
             let sel = $crate::objc::selector!($($arg1;)? $name $($(, $($namen)?)*)?);
             let sel = $env.objc.lookup_selector(sel)
                 .expect("Unknown selector");
-
             let sp = &mut $env.cpu.regs_mut()[$crate::cpu::Cpu::SP];
             let old_sp = *sp;
             *sp -= $crate::mem::guest_size_of::<$crate::objc::objc_super>();
@@ -593,20 +785,19 @@ macro_rules! msg_super {
                 receiver: $receiver,
                 class,
             });
-
             let args = (super_ptr.cast_const(), sel, $($arg1, $($argn),*)?);
             let res = $crate::objc::msg_send_super2($env, args);
 
             $env.cpu.regs_mut()[$crate::cpu::Cpu::SP] = old_sp;
-
             res
         }
     }
 }
-pub use crate::msg_super; // #[macro_export] is weird...
+pub use crate::msg_super;
+// #[macro_export] is weird...
 
-/// Variant of [msg] for sending a message to a named class. Useful for calling
-/// class methods, especially `new`.
+/// Variant of [msg] for sending a message to a named class.
+/// Useful for calling class methods, especially `new`.
 ///
 /// ```ignore
 /// msg_class![env; SomeClass alloc]
@@ -629,7 +820,8 @@ macro_rules! msg_class {
         }
     }
 }
-pub use crate::msg_class; // #[macro_export] is weird...
+pub use crate::msg_class;
+// #[macro_export] is weird...
 
 /// Shorthand for `let _: id = msg![env; object retain];`
 pub fn retain(env: &mut Environment, object: id) -> id {

@@ -148,38 +148,9 @@ struct AppPickerDelegateHostObject {
     analog_stick_tilt_controls: Option<bool>,
     network: Option<bool>,
     fullscreen: Option<bool>,
-    // ToggleModelDropdown
-    device_model_toggle: bool,
-    // SelectModelZero
-    device_model_select_0: bool,
-    // SelectModelOne
-    device_model_select_1: bool,
-    // SelectModelTwo
-    device_model_select_2: bool,
-    // SelectModelThree
-    device_model_select_3: bool,
-    // SelectModelFour
-    device_model_select_4: bool,
-    // SelectModelFive
-    device_model_select_5: bool,
-    // SelectModelSix
-    device_model_select_6: bool,
-    // AddExtraFlags
-    device_model_select_7: bool,
-    device_model_select_8: bool,
-    device_model_select_9: bool,
-    device_model_select_10: bool,
-    device_model_select_11: bool,
-    device_model_select_12: bool,
-    device_model_select_13: bool,
-    device_model_select_14: bool,
-    device_model_select_15: bool,
-    device_model_select_16: bool,
-    // AddScrollFlags
-    device_model_scroll_up: bool,
-    device_model_scroll_down: bool,
-    gles_version_1: bool, // SelectEsOne
-    gles_version_2: bool, // SelectEsTwo
+    device_family_iphone: bool,
+    device_family_ipad: bool,
+    device_family_iphone5: bool,
 }
 impl HostObject for AppPickerDelegateHostObject {}
 
@@ -265,31 +236,15 @@ const CLASSES: ClassExports = objc_classes! {
     let switch_state: bool = msg![env; switch isOn];
     env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).fullscreen = Some(switch_state);
 }
-
-- (())deviceModelToggle {
-    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).device_model_toggle = true;
+- (())deviceFamilyIphone {
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).device_family_iphone = true;
 }
-- (())deviceModel0 { env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).device_model_select_0 = true; }
-- (())deviceModel1 { env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).device_model_select_1 = true; }
-- (())deviceModel2 { env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).device_model_select_2 = true; }
-- (())deviceModel3 { env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).device_model_select_3 = true; }
-- (())deviceModel4 { env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).device_model_select_4 = true; }
-- (())deviceModel5 { env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).device_model_select_5 = true; }
-- (())deviceModel6 { env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).device_model_select_6 = true; }
-- (())deviceModel7 { env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).device_model_select_7 = true; }
-- (())deviceModel8 { env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).device_model_select_8 = true; }
-- (())deviceModel9 { env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).device_model_select_9 = true; }
-- (())deviceModel10 { env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).device_model_select_10 = true; }
-- (())deviceModel11 { env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).device_model_select_11 = true; }
-- (())deviceModel12 { env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).device_model_select_12 = true; }
-- (())deviceModel13 { env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).device_model_select_13 = true; }
-- (())deviceModel14 { env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).device_model_select_14 = true; }
-- (())deviceModel15 { env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).device_model_select_15 = true; }
-- (())deviceModel16 { env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).device_model_select_16 = true; }
-- (())deviceModelScrollUp { env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).device_model_scroll_up = true; }
-- (())deviceModelScrollDown { env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).device_model_scroll_down = true; }
-- (())glesVersion1 { env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).gles_version_1 = true; } // HandleEsOne
-- (())glesVersion2 { env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).gles_version_2 = true; } // HandleEsTwo
+- (())deviceFamilyIpad {
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).device_family_ipad = true;
+}
+- (())deviceFamilyIphone5 {
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).device_family_iphone5 = true;
+}
 
 - (())openFileManager {
     // Assert (see above).
@@ -332,7 +287,10 @@ fn show_app_picker_gui(
     let icon = {
         let bytes: &[u8] = match crate::branding() {
             "" => include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/res/icon.png")),
-            "XAVIEW" => include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/res/icon_xaview.png")),
+            "UNOFFICIAL" => include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/res/icon_unofficial.png"
+            )),
             "PREVIEW" => {
                 include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/res/icon_preview.png"))
             }
@@ -476,8 +434,7 @@ fn app_picker_inner(
         () = msg![env; main_view addSubview:label];
     }
 
-    // FixBrandColor
-    let brand_color: id = if crate::branding() == "XAVIEW" {
+    let brand_color: id = if crate::branding() == "UNOFFICIAL" {
         msg_class![env; UIColor redColor]
     } else {
         msg_class![env; UIColor grayColor]
@@ -583,13 +540,7 @@ fn app_picker_inner(
     let mut quick_options_orientation: Option<DeviceOrientation> = None;
     let mut quick_options_analog_stick_tilt_controls = true;
     let mut quick_options_network = false;
-    // FixDefaultModel
-    let mut quick_options_device_model_idx = 19;
-    // DropdownClosed
-    let mut quick_options_device_model_open = false;
-    // ScrollOffsetState
-    let mut quick_options_device_model_scroll: isize = 0;
-    let mut quick_options_gles_version = 2; // InitEsVersion
+    let mut quick_options_device_family: Option<&str> = None;
 
     fn update_quick_option_buttons(env: &mut Environment, buttons: &[id], selected_idx: usize) {
         for (idx, &button) in buttons.iter().enumerate() {
@@ -619,6 +570,20 @@ fn app_picker_inner(
             }),
         );
     }
+    fn update_device_family_buttons(env: &mut Environment, buttons: &[id], value: Option<&str>) {
+        update_quick_option_buttons(
+            env,
+            buttons,
+            value
+                .map_or(0, |v| match v {
+                    "iphone" => 0,
+                    "ipad" => 1,
+                    "iphone5" => 2,
+                    _ => 0,
+                })
+                .min(buttons.len() - 1),
+        );
+    }
     update_scale_hack_buttons(
         env,
         &quick_options_stuff.scale_hack_buttons,
@@ -629,14 +594,10 @@ fn app_picker_inner(
         &quick_options_stuff.orientation_buttons,
         quick_options_orientation,
     );
-    update_quick_option_buttons(
+    update_device_family_buttons(
         env,
-        &quick_options_stuff.gles_version_buttons,
-        if quick_options_gles_version == 1 {
-            0
-        } else {
-            1
-        }, // UpdateEsBtns
+        &quick_options_stuff.device_family_buttons,
+        quick_options_device_family,
     );
 
     () = msg![env; window makeKeyAndVisible];
@@ -769,6 +730,27 @@ fn app_picker_inner(
                 &quick_options_stuff.orientation_buttons,
                 quick_options_orientation,
             );
+        } else if std::mem::take(&mut host_obj.device_family_iphone) {
+            quick_options_device_family = Some("iphone");
+            update_device_family_buttons(
+                env,
+                &quick_options_stuff.device_family_buttons,
+                quick_options_device_family,
+            );
+        } else if std::mem::take(&mut host_obj.device_family_ipad) {
+            quick_options_device_family = Some("ipad");
+            update_device_family_buttons(
+                env,
+                &quick_options_stuff.device_family_buttons,
+                quick_options_device_family,
+            );
+        } else if std::mem::take(&mut host_obj.device_family_iphone5) {
+            quick_options_device_family = Some("iphone5");
+            update_device_family_buttons(
+                env,
+                &quick_options_stuff.device_family_buttons,
+                quick_options_device_family,
+            );
         } else if let Some(enabled) = std::mem::take(&mut host_obj.analog_stick_tilt_controls) {
             quick_options_analog_stick_tilt_controls = enabled;
         } else if let Some(enabled) = std::mem::take(&mut host_obj.network) {
@@ -778,163 +760,6 @@ fn app_picker_inner(
                 false => None,
                 true => Some(()),
             };
-        } else if std::mem::take(&mut host_obj.gles_version_1) {
-            quick_options_gles_version = 1;
-            update_quick_option_buttons(env, &quick_options_stuff.gles_version_buttons, 0);
-            // SetEsOne
-        } else if std::mem::take(&mut host_obj.gles_version_2) {
-            quick_options_gles_version = 2;
-            update_quick_option_buttons(env, &quick_options_stuff.gles_version_buttons, 1);
-            // SetEsTwo
-        } else if std::mem::take(&mut host_obj.device_model_toggle) {
-            quick_options_device_model_open = !quick_options_device_model_open;
-            () = msg![env; (quick_options_stuff.device_model_menu) setHidden:(!quick_options_device_model_open)];
-            let arrow = if quick_options_device_model_open {
-                "v"
-            } else {
-                "^"
-            };
-            let models = [
-                "iPod touch 5",
-                "iPod touch 4",
-                "iPod touch 3",
-                "iPod touch 2",
-                "iPod touch 1",
-                "",
-                "iPad mini",
-                "iPad 4",
-                "iPad 3",
-                "iPad 2",
-                "iPad 1",
-                "",
-                "iPhone 5C",
-                "iPhone 5",
-                "iPhone 4S",
-                "iPhone 4",
-                "iPhone 3GS",
-                "iPhone 3G",
-                "",
-                "iPhone 2G (Stable)",
-            ];
-            let text = format!("{} {}", models[quick_options_device_model_idx], arrow);
-            let text_ns = ns_string::from_rust_string(env, text);
-            () = msg![env; (quick_options_stuff.device_model_btn) setTitle:text_ns forState:UIControlStateNormal];
-            release(env, text_ns);
-        } else {
-            let mut new_idx = None;
-            if std::mem::take(&mut host_obj.device_model_select_0) {
-                new_idx = Some(0);
-            } else if std::mem::take(&mut host_obj.device_model_select_1) {
-                new_idx = Some(1);
-            } else if std::mem::take(&mut host_obj.device_model_select_2) {
-                new_idx = Some(2);
-            } else if std::mem::take(&mut host_obj.device_model_select_3) {
-                new_idx = Some(3);
-            } else if std::mem::take(&mut host_obj.device_model_select_4) {
-                new_idx = Some(4);
-            } else if std::mem::take(&mut host_obj.device_model_select_5) {
-                new_idx = Some(6);
-            }
-            // iPadMini
-            else if std::mem::take(&mut host_obj.device_model_select_6) {
-                new_idx = Some(7);
-            } else if std::mem::take(&mut host_obj.device_model_select_7) {
-                new_idx = Some(8);
-            } else if std::mem::take(&mut host_obj.device_model_select_8) {
-                new_idx = Some(9);
-            } else if std::mem::take(&mut host_obj.device_model_select_9) {
-                new_idx = Some(10);
-            } else if std::mem::take(&mut host_obj.device_model_select_10) {
-                new_idx = Some(12);
-            }
-            // iPhone5C
-            else if std::mem::take(&mut host_obj.device_model_select_11) {
-                new_idx = Some(13);
-            } else if std::mem::take(&mut host_obj.device_model_select_12) {
-                new_idx = Some(14);
-            } else if std::mem::take(&mut host_obj.device_model_select_13) {
-                new_idx = Some(15);
-            } else if std::mem::take(&mut host_obj.device_model_select_14) {
-                new_idx = Some(16);
-            } else if std::mem::take(&mut host_obj.device_model_select_15) {
-                new_idx = Some(17);
-            } else if std::mem::take(&mut host_obj.device_model_select_16) {
-                new_idx = Some(19);
-            } // iPhone2G
-
-            // HandleScrolling
-            let scroll_u = std::mem::take(&mut host_obj.device_model_scroll_up);
-            let scroll_d = std::mem::take(&mut host_obj.device_model_scroll_down);
-            if scroll_u && quick_options_device_model_scroll > 0 {
-                quick_options_device_model_scroll -= 1;
-            } else if scroll_d && quick_options_device_model_scroll < 14 {
-                quick_options_device_model_scroll += 1; // Макс скролл = 20 - 6 = 14
-            }
-            if scroll_u || scroll_d {
-                for (j, &item) in quick_options_stuff.device_model_items.iter().enumerate() {
-                    let y_pos =
-                        ((j as isize - quick_options_device_model_scroll) as CGFloat) * 30.0;
-                    // FixClippyRange
-                    let is_vis = (0.0..180.0).contains(&y_pos);
-                    () = msg![env; item setHidden:(!is_vis)];
-                    if is_vis {
-                        let i_frame = CGRect {
-                            origin: CGPoint { x: 0.0, y: y_pos },
-                            size: CGSize {
-                                width: 256.0,
-                                height: 30.0,
-                            },
-                        };
-                        () = msg![env; item setFrame:i_frame];
-                    }
-                }
-                // UpdateScrollThumb
-                let thumb_y = (quick_options_device_model_scroll as CGFloat / 14.0) * 126.0;
-                let thumb_frame = CGRect {
-                    origin: CGPoint {
-                        x: 256.0,
-                        y: thumb_y,
-                    },
-                    size: CGSize {
-                        width: 24.0,
-                        height: 54.0,
-                    },
-                };
-                () = msg![env; (quick_options_stuff.device_model_thumb) setFrame:thumb_frame];
-            }
-
-            if let Some(idx) = new_idx {
-                quick_options_device_model_idx = idx;
-                quick_options_device_model_open = false;
-                () = msg![env; (quick_options_stuff.device_model_menu) setHidden:true];
-                let models = [
-                    "iPod touch 5",
-                    "iPod touch 4",
-                    "iPod touch 3",
-                    "iPod touch 2",
-                    "iPod touch 1",
-                    "",
-                    "iPad mini",
-                    "iPad 4",
-                    "iPad 3",
-                    "iPad 2",
-                    "iPad 1",
-                    "",
-                    "iPhone 5C",
-                    "iPhone 5",
-                    "iPhone 4S",
-                    "iPhone 4",
-                    "iPhone 3GS",
-                    "iPhone 3G",
-                    "",
-                    "iPhone 2G (Stable)",
-                ];
-                // ArrowUp
-                let text = format!("{} ^", models[idx]);
-                let text_ns = ns_string::from_rust_string(env, text);
-                () = msg![env; (quick_options_stuff.device_model_btn) setTitle:text_ns forState:UIControlStateNormal];
-                release(env, text_ns);
-            }
         }
     };
 
@@ -961,40 +786,9 @@ fn app_picker_inner(
     if quick_options_network {
         option_args.push("--allow-network-access".to_string());
     }
-    if quick_options_gles_version == 1 {
-        option_args.push("--gles-version=1".to_string()); // PushEsOne
-    } else {
-        option_args.push("--gles-version=2".to_string()); // PushEsTwo
-    }
 
-    let m_args = [
-        "iPod5,1",
-        "iPod4,1",
-        "iPod3,1",
-        "iPod2,1",
-        "iPod1,1",
-        "",
-        "iPad2,5",
-        "iPad3,4",
-        "iPad3,1",
-        "iPad2,1",
-        "iPad1,1",
-        "",
-        "iPhone5,3",
-        "iPhone5,1",
-        "iPhone4,1",
-        "iPhone3,1",
-        "iPhone2,1",
-        "iPhone1,2",
-        "",
-        "iPhone1,1",
-    ];
-    // PassSelectedModel
-    if !m_args[quick_options_device_model_idx].is_empty() {
-        option_args.push(format!(
-            "--device-model={}",
-            m_args[quick_options_device_model_idx]
-        ));
+    if let Some(family) = quick_options_device_family {
+        option_args.push(format!("--device-family={}", family));
     }
 
     // Return the environment so some parts of it can be salvaged.
@@ -1514,14 +1308,7 @@ struct QuickOptionsStuff {
     main_view: id,
     scale_hack_buttons: [id; 5],
     orientation_buttons: [id; 3],
-    gles_version_buttons: [id; 2], // EsBtnArray
-    // DropdownMainBtn
-    device_model_btn: id,
-    device_model_menu: id,
-    // ScrollItemsArray
-    device_model_items: [id; 20],
-    // ScrollbarThumb
-    device_model_thumb: id,
+    device_family_buttons: [id; 3],
 }
 
 fn setup_quick_options(
@@ -1530,16 +1317,10 @@ fn setup_quick_options(
     super_view: id,
     app_frame: CGRect,
 ) -> QuickOptionsStuff {
-    // FixFullScreenBounds
+    // UIView*
     let main_frame = CGRect {
-        origin: CGPoint {
-            x: -app_frame.origin.x,
-            y: -app_frame.origin.y,
-        },
-        size: CGSize {
-            width: app_frame.size.width + app_frame.origin.x,
-            height: app_frame.size.height + app_frame.origin.y,
-        },
+        origin: CGPoint { x: 0.0, y: 0.0 },
+        size: app_frame.size,
     };
 
     // Container for all the other stuff
@@ -1553,18 +1334,22 @@ fn setup_quick_options(
     () = msg![env; main_view setHidden:true];
     () = msg![env; super_view addSubview:main_view];
 
-    let divider = 45.0; // ShiftedUpOptions
+    let divider = 50.0;
 
-    // Close button
+    // Close button (×) in the upper right corner. It uses an explicit border
+    // and a slightly larger frame than the title so the glyph is clearly
+    // visible against the white menu background.
     {
+        let button_size: CGFloat = 36.0;
+        let button_margin: CGFloat = 8.0;
         let button_frame = CGRect {
             origin: CGPoint {
-                x: main_frame.size.width - 45.0,
-                y: 5.0, // ShiftedUpCross
+                x: main_frame.size.width - button_size - button_margin,
+                y: button_margin,
             },
             size: CGSize {
-                width: 40.0,
-                height: 40.0,
+                width: button_size,
+                height: button_size,
             },
         };
 
@@ -1576,8 +1361,20 @@ fn setup_quick_options(
         () = msg![env; button layoutSubviews];
 
         let label: id = msg![env; button titleLabel];
-        let font: id = msg_class![env; UIFont systemFontOfSize:(30.0 as CGFloat)];
+        let font: id = msg_class![env; UIFont systemFontOfSize:(28.0 as CGFloat)];
         () = msg![env; label setFont:font];
+
+        // `buttonWithType:UIButtonTypeRoundedRect` does not actually apply the
+        // rounded-rect appearance, so explicitly give the close button a
+        // visible background, title color and rounded border. Without this
+        // the white default title on a clear background would be invisible
+        // against the white menu.
+        let bg_color: id = msg_class![env; UIColor grayColor];
+        () = msg![env; button setBackgroundColor:bg_color];
+        let text_color: id = msg_class![env; UIColor whiteColor];
+        () = msg![env; button setTitleColor:text_color forState:UIControlStateNormal];
+        let layer: id = msg![env; button layer];
+        () = msg![env; layer setCornerRadius:(8.0 as CGFloat)];
 
         let selector = env.objc.lookup_selector("quickOptionsHide").unwrap();
         () = msg![env; button addTarget:delegate
@@ -1590,8 +1387,6 @@ fn setup_quick_options(
         Label(&'static str),
         Buttons(&'static [(&'static str, &'static str)]),
         Switch(&'static str, bool),
-        // NewEnumVariant
-        DeviceModelDropdown,
     }
     let rows = [
         RowKind::Label("Scale hack"),
@@ -1608,14 +1403,16 @@ fn setup_quick_options(
             ("←", "orientationLandscapeLeft"),
             ("→", "orientationLandscapeRight"),
         ]),
+        RowKind::Label("Device Mode"),
+        RowKind::Buttons(&[
+            ("iPhone", "deviceFamilyIphone"),
+            ("iPad", "deviceFamilyIpad"),
+            ("iPhone 5", "deviceFamilyIphone5"),
+        ]),
         RowKind::Label("Network access"),
         RowKind::Switch("network:", false),
         RowKind::Label("Use analog sticks for tilt controls"),
         RowKind::Switch("analogStickTiltControls:", true),
-        RowKind::Label("OpenGL ES Version"),
-        RowKind::Buttons(&[("ES 1.1", "glesVersion1"), ("ES 2.0", "glesVersion2")]),
-        RowKind::Label("Device model"),
-        RowKind::DeviceModelDropdown,
         // ---- (divider for stuff skipped below)
         RowKind::Label("Fullscreen (override)"),
         RowKind::Switch("fullscreen:", false),
@@ -1683,207 +1480,6 @@ fn setup_quick_options(
                                forControlEvents:UIControlEventValueChanged];
                 () = msg![env; main_view addSubview:switch];
             }
-            // IgnoreMenuFirstPass
-            RowKind::DeviceModelDropdown => {}
-        }
-    }
-
-    let mut device_model_btn: id = nil;
-    let mut device_model_menu: id = nil;
-    let mut device_model_thumb: id = nil;
-    // DeclareArrayOuterScope
-    let mut device_model_items = [nil; 20];
-
-    for (i, row) in rows.iter().enumerate() {
-        if let RowKind::DeviceModelDropdown = row {
-            let row_center = divider
-                + ((1 + i) as CGFloat)
-                    * ((main_frame.size.height - divider) / ((rows_len_full + 1) as CGFloat));
-            let btn_frame = CGRect {
-                origin: CGPoint {
-                    x: main_frame.size.width / 2.0 - 280.0 / 2.0,
-                    y: row_center - 30.0 / 2.0,
-                },
-                size: CGSize {
-                    width: 280.0,
-                    height: 30.0,
-                },
-            };
-
-            // DrawBorderContainer
-            let border_view: id = msg_class![env; UIView alloc];
-            let border_view: id = msg![env; border_view initWithFrame:btn_frame];
-            let dark_gray: id = msg_class![env; UIColor darkGrayColor];
-            () = msg![env; border_view setBackgroundColor:dark_gray];
-            () = msg![env; main_view addSubview:border_view];
-
-            // InnerMainButton
-            let inner_frame = CGRect {
-                origin: CGPoint { x: 2.0, y: 2.0 },
-                size: CGSize {
-                    width: btn_frame.size.width - 4.0,
-                    height: btn_frame.size.height - 4.0,
-                },
-            };
-            let button: id = msg_class![env; UIButton buttonWithType:UIButtonTypeCustom];
-            let text = ns_string::from_rust_string(env, "iPhone 2G (Stable) ^".to_string());
-            () = msg![env; button setTitle:text forState:UIControlStateNormal];
-            let text_color: id = msg_class![env; UIColor blackColor];
-            () = msg![env; button setTitleColor:text_color forState:UIControlStateNormal];
-            let light_gray: id = msg_class![env; UIColor lightGrayColor];
-            () = msg![env; button setBackgroundColor:light_gray];
-            () = msg![env; button setFrame:inner_frame];
-            // FixVisibilityMain
-            () = msg![env; button layoutSubviews];
-            let selector = env.objc.lookup_selector("deviceModelToggle").unwrap();
-            () = msg![env; button addTarget:delegate action:selector forControlEvents:UIControlEventTouchUpInside];
-            () = msg![env; border_view addSubview:button];
-            device_model_btn = button;
-
-            // ConstrainVisibleHeight
-            let visible_items = 6;
-            let item_h = 30.0;
-            let visible_menu_height = (visible_items as CGFloat) * item_h;
-            let menu_frame = CGRect {
-                origin: CGPoint {
-                    x: btn_frame.origin.x,
-                    y: btn_frame.origin.y - visible_menu_height,
-                },
-                size: CGSize {
-                    width: 280.0,
-                    height: visible_menu_height,
-                },
-            };
-
-            // CreateScrollContainer
-            let menu_view: id = msg_class![env; UIView alloc];
-            let menu_view: id = msg![env; menu_view initWithFrame:menu_frame];
-            () = msg![env; menu_view setBackgroundColor:dark_gray];
-            () = msg![env; menu_view setHidden:true];
-            // ClipOutOfBounds
-            () = msg![env; menu_view setClipsToBounds:true];
-            () = msg![env; main_view addSubview:menu_view];
-            device_model_menu = menu_view;
-
-            let models = [
-                ("iPod touch 5", "deviceModel0"),
-                ("iPod touch 4", "deviceModel1"),
-                ("iPod touch 3", "deviceModel2"),
-                ("iPod touch 2", "deviceModel3"),
-                ("iPod touch 1", "deviceModel4"),
-                ("/// iPod Touch (Unstable) ///", ""),
-                ("iPad mini", "deviceModel5"),
-                ("iPad 4", "deviceModel6"),
-                ("iPad 3", "deviceModel7"),
-                ("iPad 2", "deviceModel8"),
-                ("iPad 1", "deviceModel9"),
-                ("/// iPad (Unstable) ///", ""),
-                ("iPhone 5C", "deviceModel10"),
-                ("iPhone 5", "deviceModel11"),
-                ("iPhone 4S", "deviceModel12"),
-                ("iPhone 4", "deviceModel13"),
-                ("iPhone 3GS", "deviceModel14"),
-                ("iPhone 3G", "deviceModel15"),
-                ("--- Unstable upper ---", ""),
-                ("iPhone 2G (Stable)", "deviceModel16"),
-            ];
-
-            // RemovedInnerDeclaration
-
-            for (j, (title, sel)) in models.iter().enumerate() {
-                let y_pos = (j as CGFloat) * item_h;
-                let item_frame = CGRect {
-                    origin: CGPoint { x: 0.0, y: y_pos },
-                    // ListWidthMinusScroll
-                    size: CGSize {
-                        width: 256.0,
-                        height: item_h,
-                    },
-                };
-                let item_btn: id = msg_class![env; UIButton buttonWithType:UIButtonTypeCustom];
-                let text = ns_string::get_static_str(env, title);
-                () = msg![env; item_btn setTitle:text forState:UIControlStateNormal];
-                // WhiteTextDarkBg
-                let item_color: id = msg_class![env; UIColor whiteColor];
-                () = msg![env; item_btn setTitleColor:item_color forState:UIControlStateNormal];
-                () = msg![env; item_btn setFrame:item_frame];
-                // FixVisibilityItem
-                () = msg![env; item_btn layoutSubviews];
-                if y_pos >= visible_menu_height {
-                    () = msg![env; item_btn setHidden:true];
-                }
-                if !sel.is_empty() {
-                    let selector = env.objc.lookup_selector(sel).unwrap();
-                    () = msg![env; item_btn addTarget:delegate action:selector forControlEvents:UIControlEventTouchUpInside];
-                }
-                () = msg![env; menu_view addSubview:item_btn];
-                device_model_items[j] = item_btn;
-            }
-
-            // TrackBackground
-            let track_view: id = msg_class![env; UIView alloc];
-            let track_frame = CGRect {
-                origin: CGPoint { x: 256.0, y: 0.0 },
-                size: CGSize {
-                    width: 24.0,
-                    height: visible_menu_height,
-                },
-            };
-            let track_view: id = msg![env; track_view initWithFrame:track_frame];
-            let track_color: id = msg_class![env; UIColor blackColor];
-            () = msg![env; track_view setBackgroundColor:track_color];
-            () = msg![env; menu_view addSubview:track_view];
-
-            // ScrollThumb
-            let thumb_view: id = msg_class![env; UIView alloc];
-            let thumb_frame = CGRect {
-                origin: CGPoint { x: 256.0, y: 0.0 },
-                size: CGSize {
-                    width: 24.0,
-                    height: 54.0,
-                },
-            };
-            let thumb_view: id = msg![env; thumb_view initWithFrame:thumb_frame];
-            let thumb_color: id = msg_class![env; UIColor lightGrayColor];
-            () = msg![env; thumb_view setBackgroundColor:thumb_color];
-            () = msg![env; menu_view addSubview:thumb_view];
-            device_model_thumb = thumb_view;
-
-            // TransparentButtons
-            let clear_color: id = msg_class![env; UIColor clearColor];
-            let up_btn: id = msg_class![env; UIButton buttonWithType:UIButtonTypeCustom];
-            let up_frame = CGRect {
-                origin: CGPoint { x: 256.0, y: 0.0 },
-                size: CGSize {
-                    width: 24.0,
-                    height: visible_menu_height / 2.0,
-                },
-            };
-            () = msg![env; up_btn setFrame:up_frame];
-            () = msg![env; up_btn setTitle:(ns_string::from_rust_string(env, "^".to_string())) forState:UIControlStateNormal];
-            () = msg![env; up_btn setBackgroundColor:clear_color];
-            let title_color: id = msg_class![env; UIColor clearColor];
-            () = msg![env; up_btn setTitleColor:title_color forState:UIControlStateNormal];
-            () = msg![env; up_btn addTarget:delegate action:(env.objc.lookup_selector("deviceModelScrollUp").unwrap()) forControlEvents:UIControlEventTouchUpInside];
-            () = msg![env; menu_view addSubview:up_btn];
-
-            let down_btn: id = msg_class![env; UIButton buttonWithType:UIButtonTypeCustom];
-            let down_frame = CGRect {
-                origin: CGPoint {
-                    x: 256.0,
-                    y: visible_menu_height / 2.0,
-                },
-                size: CGSize {
-                    width: 24.0,
-                    height: visible_menu_height / 2.0,
-                },
-            };
-            () = msg![env; down_btn setFrame:down_frame];
-            () = msg![env; down_btn setTitle:(ns_string::from_rust_string(env, "v".to_string())) forState:UIControlStateNormal];
-            () = msg![env; down_btn setBackgroundColor:clear_color];
-            () = msg![env; down_btn setTitleColor:title_color forState:UIControlStateNormal];
-            () = msg![env; down_btn addTarget:delegate action:(env.objc.lookup_selector("deviceModelScrollDown").unwrap()) forControlEvents:UIControlEventTouchUpInside];
-            () = msg![env; menu_view addSubview:down_btn];
         }
     }
 
@@ -1891,11 +1487,6 @@ fn setup_quick_options(
         main_view,
         scale_hack_buttons: button_rows[0][..].try_into().unwrap(),
         orientation_buttons: button_rows[1][..].try_into().unwrap(),
-        gles_version_buttons: button_rows[2][..].try_into().unwrap(), // AssignEsBtns
-        device_model_btn,
-        device_model_menu,
-        // AddItemsToArray
-        device_model_items,
-        device_model_thumb,
+        device_family_buttons: button_rows[2][..].try_into().unwrap(),
     }
 }

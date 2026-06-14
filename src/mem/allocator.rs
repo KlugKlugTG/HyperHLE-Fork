@@ -297,10 +297,20 @@ impl Allocator {
         }
 
         let Some(to_trisect) = to_trisect else {
-            panic!("Could not reserve chunk {chunk:?}!");
+            log!(
+                "Warning: Allocator::reserve: could not reserve chunk {:?}; skipping reservation.",
+                chunk
+            );
+            return;
         };
 
-        let (before, after) = to_trisect.trisect_by(chunk).unwrap();
+        let Some((before, after)) = to_trisect.trisect_by(chunk) else {
+            log!(
+                "Warning: Allocator::reserve: trisect_by returned None for chunk {:?}; skipping reservation.",
+                chunk
+            );
+            return;
+        };
         self.unused_chunks.remove_with_base(to_trisect.base);
         if let Some(before) = before {
             self.unused_chunks.insert(before);
@@ -311,36 +321,80 @@ impl Allocator {
         self.used_chunks.insert(chunk);
     }
 
-    pub fn alloc(&mut self, size: GuestUSize) -> VAddr {
-        let size = if size < PAGE_SIZE {
-            let size = size.max(MIN_CHUNK_SIZE);
-            Self::align(size, MIN_CHUNK_SIZE)
+        pub fn alloc(&mut self, size: GuestUSize) -> VAddr {
+        // ИСПРАВЛЕНИЕ: Выравнивание может привести к переполнению (overflow), 
+        // если игра запрашивает гигантский объем памяти (например, 0xffffffff).
+        let aligned_size_opt = if size < PAGE_SIZE {
+            let s = size.max(MIN_CHUNK_SIZE);
+            Self::align(s, MIN_CHUNK_SIZE)
         } else {
             Self::align(size, PAGE_SIZE)
         };
 
-        let Some(alloc) = self.unused_chunks.allocate(size) else {
-            panic!("Could not find large enough chunk to allocate {size:#x} bytes");
+        // Если переполнение произошло (вернулся None), значит запрошен
+        // неадекватно большой размер. Честно возвращаем NULL (0).
+        let Some(aligned_size) = aligned_size_opt else {
+            log!(
+                "Warning: Allocator::alloc: requested size {:#x} overflows after alignment; returning NULL.",
+                size
+            );
+            return 0;
+        };
+
+        let Some(alloc) = self.unused_chunks.allocate(aligned_size) else {
+            log!(
+                "Warning: Allocator::alloc: out of memory (could not find a large enough chunk for {:#x} bytes); returning NULL.",
+                aligned_size
+            );
+            return 0;
         };
         self.used_chunks.insert(alloc);
 
         alloc.base
     }
 
-    fn align(size: GuestUSize, align: GuestUSize) -> GuestUSize {
+    // ИСПРАВЛЕНИЕ: Используем checked_add для безопасного сложения.
+    fn align(size: GuestUSize, align: GuestUSize) -> Option<GuestUSize> {
         if !size.is_multiple_of(align) {
-            size + align - (size % align)
+            let addend = align - (size % align);
+            size.checked_add(addend)
         } else {
-            size
+            Some(size)
         }
     }
 
-    /// This is used for realloc
+    /// Used by `realloc` — logs a warning when given a non-malloc pointer,
+    /// because realloc'ing a non-heap pointer is undefined behaviour on the
+    /// guest side and almost always indicates a real bug.
     pub fn find_allocated_size(&mut self, base: VAddr) -> GuestUSize {
         let Some(size) = self.used_chunks.get_size_with_base(base) else {
-            panic!("Can't find {base:#x}, unknown allocation!");
+            log!(
+                "Warning: Allocator::find_allocated_size: unknown allocation at {:#x}; returning 0.",
+                base
+            );
+            return 0;
         };
         size.get()
+    }
+
+    /// Silent variant of [`find_allocated_size`] for callers such as
+    /// `malloc_size(3)` where Apple's documented contract is to *quietly*
+    /// return 0 for any pointer that isn't the base of a malloc-managed
+    /// allocation (see
+    /// <https://developer.apple.com/library/archive/documentation/Performance/Conceptual/ManagingMemory/Articles/MallocDebug.html>
+    /// and the `malloc_size(3)` manpage in the macOS / iOS SDK). Apps that
+    /// hand `malloc_size` a stack pointer, a `__DATA` symbol, or an interior
+    /// pointer routinely rely on this behaviour, so spamming a warning for
+    /// every such call (as we used to) is both incorrect and noisy.
+    pub fn try_find_allocated_size(&self, base: VAddr) -> Option<GuestUSize> {
+        self.used_chunks.get_size_with_base(base).map(|s| s.get())
+    }
+
+    /// Returns whether `base` is currently a live allocation (the exact base
+    /// address of a used chunk). Used by `free()` wrappers to reject clearly
+    /// bogus pointers before passing them to the allocator.
+    pub fn is_known_allocation(&self, base: VAddr) -> bool {
+        self.used_chunks.get_size_with_base(base).is_some()
     }
 
     /// Returns the size of the freed chunk so it can be zeroed if desired

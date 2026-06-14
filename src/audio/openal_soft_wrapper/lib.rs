@@ -11,6 +11,22 @@
 //! OpenAL Soft more often than necessary, and to improve build-time
 //! parallelism.
 
+// ============================================================
+// ИСПРАВЛЕНИЕ:
+//
+// alGetBufferi — неверная мутабельность параметра value:
+//   СТАРОЕ: pub fn alGetBufferi(buffer: ALuint, param: ALenum, value: *const ALint)
+//   НОВОЕ:  pub fn alGetBufferi(buffer: ALuint, param: ALenum, value: *mut ALint)
+//
+// OpenAL спецификация (al.h): alGetBufferi записывает результат в *value,
+// поэтому указатель обязан быть *mut, а не *const.
+// Компилятор C принимает оба варианта неявно, но в Rust *const и *mut
+// — разные типы; передача изменяемого указателя там, где ожидается *const,
+// либо не компилируется, либо требует небезопасного каста.
+// Все аналогичные "Get"-функции (alGetListenerf, alGetSourcei и т.д.)
+// уже объявлены с *mut — это была единственная расхожденность.
+// ============================================================
+
 // Allow the crate to have a non-snake-case name (touchHLE).
 // This also allows items in the crate to have non-snake-case names.
 #![allow(non_snake_case)]
@@ -77,6 +93,15 @@ extern "C" {
     pub fn alcGetError(device: *mut ALCdevice) -> ALCenum;
 
     pub fn alcGetString(device: *mut ALCdevice, param: ALCenum) -> *const ALCchar;
+
+    pub fn alcGetIntegerv(
+        device: *mut ALCdevice,
+        param: ALCenum,
+        size: ALCsizei,
+        values: *mut ALCint,
+    );
+    pub fn alcIsExtensionPresent(device: *mut ALCdevice, extName: *const ALCchar) -> ALCboolean;
+    pub fn alcGetEnumValue(device: *mut ALCdevice, enumName: *const ALCchar) -> ALCenum;
 }
 
 // === al.h ===
@@ -110,6 +135,8 @@ pub mod al_defines {
     pub const AL_RENDERER: ALenum = 0xb003;
     pub const AL_EXTENSIONS: ALenum = 0xb004;
 
+    pub const AL_BUFFER: ALenum = 0x1009;
+
     pub const AL_MAX_GAIN: ALenum = 0x100E;
 
     pub const AL_SOURCE_STATE: ALenum = 0x1010;
@@ -141,7 +168,9 @@ extern "C" {
 
     pub fn alEnable(capability: ALenum);
 
-    pub fn alGetBufferi(buffer: ALuint, param: ALenum, value: *const ALint);
+    // FIX: value должен быть *mut ALint, так как alGetBufferi ЗАПИСЫВАЕТ
+    // результат по этому указателю. Исходный код ошибочно объявлял *const ALint.
+    pub fn alGetBufferi(buffer: ALuint, param: ALenum, value: *mut ALint);
 
     pub fn alListenerf(param: ALenum, value: ALfloat);
     pub fn alListener3f(param: ALenum, value1: ALfloat, value2: ALfloat, value3: ALfloat);
@@ -207,6 +236,11 @@ extern "C" {
     pub fn alSourceStop(source: ALuint);
     pub fn alSourceRewind(source: ALuint);
 
+    pub fn alSourcePlayv(n: ALsizei, sources: *const ALuint);
+    pub fn alSourcePausev(n: ALsizei, sources: *const ALuint);
+    pub fn alSourceStopv(n: ALsizei, sources: *const ALuint);
+    pub fn alSourceRewindv(n: ALsizei, sources: *const ALuint);
+
     pub fn alSourceQueueBuffers(source: ALuint, nb: ALsizei, buffers: *const ALuint);
     pub fn alSourceUnqueueBuffers(source: ALuint, nb: ALsizei, buffers: *mut ALuint);
 
@@ -225,3 +259,4 @@ extern "C" {
     pub fn alDopplerVelocity(dopplerVelocity: ALfloat);
     pub fn alSpeedOfSound(speed: ALfloat);
 }
+

@@ -41,7 +41,13 @@ fn CFNumberCreate(
     value_ptr: ConstVoidPtr,
 ) -> CFNumberRef {
     // TODO: unique some common numbers to improve performance
-    assert_eq!(allocator, kCFAllocatorDefault); // unimplemented
+    if allocator != kCFAllocatorDefault && !env.mem.read(allocator).is_system_default() {
+        log!(
+            "Warning: CFNumberCreate: custom allocator {:?} is not supported; \
+             falling back to the system default allocator.",
+            allocator
+        );
+    }
     log_dbg!("CFNumberCreate type {}", type_);
     let num = msg_class![env; NSNumber alloc];
     match type_ {
@@ -69,7 +75,13 @@ fn CFNumberCreate(
             let val: i64 = env.mem.read(value_ptr.cast());
             msg![env; num initWithLongLong:val]
         }
-        _ => unimplemented!("type {}", type_),
+        _ => {
+            log!(
+                "Warning: CFNumberCreate: unsupported CFNumberType {}; defaulting to 0.",
+                type_
+            );
+            msg![env; num initWithInt:(0_i32)]
+        }
     }
 }
 
@@ -100,7 +112,25 @@ fn CFNumberGetValue(
             env.mem.write(value_ptr.cast(), val);
             is_conversion_lossless(env, num, type_)
         }
-        _ => unimplemented!("type {}", type_),
+        // ИСПРАВЛЕНИЕ: Добавлена полноценная обработка 64-битных целых чисел (Type 4 и 11)
+        kCFNumberSInt64Type | kCFNumberLongLongType => {
+            let val: i64 = msg![env; num longLongValue];
+            env.mem.write(value_ptr.cast(), val);
+            is_conversion_lossless(env, num, type_)
+        }
+        // ИСПРАВЛЕНИЕ: Добавлена полноценная обработка 64-битных чисел с плавающей точкой (Type 6 и 13)
+        kCFNumberFloat64Type | kCFNumberDoubleType => {
+            let val: f64 = msg![env; num doubleValue];
+            env.mem.write(value_ptr.cast(), val);
+            is_conversion_lossless(env, num, type_)
+        }
+        _ => {
+            log!(
+                "Warning: CFNumberGetValue: unsupported CFNumberType {}; returning false.",
+                type_
+            );
+            false
+        }
     }
 }
 
@@ -110,7 +140,9 @@ fn CFNumberCompare(
     num2: CFNumberRef,
     context: MutVoidPtr,
 ) -> CFComparisonResult {
-    assert!(context.is_null()); // always NULL according to the docs
+    if !context.is_null() {
+        log!("Warning: CFNumberCompare: context must be NULL; ignoring.");
+    }
     msg![env; num1 compare:num2]
 }
 
@@ -119,6 +151,18 @@ fn CFBooleanGetValue(env: &mut Environment, boolean: CFBooleanRef) -> bool {
 }
 
 pub const CONSTANTS: ConstantExports = &[
+    (
+        "_kCFNull",
+        HostConstant::Custom(|env| {
+            // CFNull is a singleton CFType. Apps usually only compare against
+            // it for identity (`x == kCFNull`) or pass it through dictionaries
+            // representing JSON `null` values. NSNull already exists in our
+            // runtime and is a singleton, so we reuse it: any later reference
+            // to `kCFNull` will resolve to the same NSNull pointer-to-pointer.
+            let null: id = msg_class![env; NSNull null];
+            env.mem.alloc_and_write(null).cast_void().cast_const()
+        }),
+    ),
     (
         "_kCFBooleanFalse",
         HostConstant::Custom(|env| {
@@ -136,6 +180,127 @@ pub const CONSTANTS: ConstantExports = &[
             // Apparently, it's a pointer to pointer
             env.mem.alloc_and_write(num).cast_void().cast_const()
         }),
+    ),
+    // Apple Developer Documentation:
+    // > kCFNumberPositiveInfinity   "Positive infinity (kCFNumberFloat64Type)."
+    // > kCFNumberNegativeInfinity   "Negative infinity (kCFNumberFloat64Type)."
+    // > kCFNumberNaN                "Not a number (kCFNumberFloat64Type)."
+    //
+    // These are documented `const CFNumberRef` singletons. The real CF
+    // implementation creates them once at framework load time, marks them
+    // as immortal, and lets `CFNumberGetType()` report
+    // `kCFNumberFloat64Type` for each one. Here we build them with the
+    // existing NSNumber bridge so they participate in toll-free bridging
+    // with `CFNumber*` calls and behave correctly under `intValue` /
+    // `doubleValue` / `compare:` (NaN sorts as `NSOrderedDescending`
+    // against any non-NaN, infinities sort by sign — exactly the
+    // semantics our `NSNumberHostObject::Double` already provides).
+    (
+        "_kCFNumberPositiveInfinity",
+        HostConstant::Custom(|env| {
+            let num = msg_class![env; NSNumber alloc];
+            let num: id = msg![env; num initWithDouble:(f64::INFINITY)];
+            env.mem.alloc_and_write(num).cast_void().cast_const()
+        }),
+    ),
+    (
+        "_kCFNumberNegativeInfinity",
+        HostConstant::Custom(|env| {
+            let num = msg_class![env; NSNumber alloc];
+            let num: id = msg![env; num initWithDouble:(f64::NEG_INFINITY)];
+            env.mem.alloc_and_write(num).cast_void().cast_const()
+        }),
+    ),
+    (
+        "_kCFNumberNaN",
+        HostConstant::Custom(|env| {
+            let num = msg_class![env; NSNumber alloc];
+            let num: id = msg![env; num initWithDouble:(f64::NAN)];
+            env.mem.alloc_and_write(num).cast_void().cast_const()
+        }),
+    ),
+    // -----------------------------------------------------------------
+    // CFNumberFormatter property key constants (CFStringRef).
+    // These are the string keys passed to CFNumberFormatterSetProperty /
+    // CFNumberFormatterCopyProperty. Apple documents their literal values
+    // as their own names (e.g. "kCFNumberFormatterCurrencyCode").
+    // Reference: Apple CF source & ICU backing.
+    // -----------------------------------------------------------------
+    (
+        "_kCFNumberFormatterCurrencyCode",
+        HostConstant::NSString("kCFNumberFormatterCurrencyCode"),
+    ),
+    (
+        "_kCFNumberFormatterCurrencyDecimalSeparator",
+        HostConstant::NSString("kCFNumberFormatterCurrencyDecimalSeparator"),
+    ),
+    (
+        "_kCFNumberFormatterCurrencyGroupingSeparator",
+        HostConstant::NSString("kCFNumberFormatterCurrencyGroupingSeparator"),
+    ),
+    (
+        "_kCFNumberFormatterCurrencySymbol",
+        HostConstant::NSString("kCFNumberFormatterCurrencySymbol"),
+    ),
+    (
+        "_kCFNumberFormatterDecimalSeparator",
+        HostConstant::NSString("kCFNumberFormatterDecimalSeparator"),
+    ),
+    (
+        "_kCFNumberFormatterGroupingSeparator",
+        HostConstant::NSString("kCFNumberFormatterGroupingSeparator"),
+    ),
+    (
+        "_kCFNumberFormatterGroupingSize",
+        HostConstant::NSString("kCFNumberFormatterGroupingSize"),
+    ),
+    (
+        "_kCFNumberFormatterMaxFractionDigits",
+        HostConstant::NSString("kCFNumberFormatterMaxFractionDigits"),
+    ),
+    (
+        "_kCFNumberFormatterMinFractionDigits",
+        HostConstant::NSString("kCFNumberFormatterMinFractionDigits"),
+    ),
+    (
+        "_kCFNumberFormatterMinIntegerDigits",
+        HostConstant::NSString("kCFNumberFormatterMinIntegerDigits"),
+    ),
+    (
+        "_kCFNumberFormatterMinusSign",
+        HostConstant::NSString("kCFNumberFormatterMinusSign"),
+    ),
+    (
+        "_kCFNumberFormatterNegativePrefix",
+        HostConstant::NSString("kCFNumberFormatterNegativePrefix"),
+    ),
+    (
+        "_kCFNumberFormatterNegativeSuffix",
+        HostConstant::NSString("kCFNumberFormatterNegativeSuffix"),
+    ),
+    (
+        "_kCFNumberFormatterPositivePrefix",
+        HostConstant::NSString("kCFNumberFormatterPositivePrefix"),
+    ),
+    (
+        "_kCFNumberFormatterPositiveSuffix",
+        HostConstant::NSString("kCFNumberFormatterPositiveSuffix"),
+    ),
+    (
+        "_kCFNumberFormatterRoundingIncrement",
+        HostConstant::NSString("kCFNumberFormatterRoundingIncrement"),
+    ),
+    (
+        "_kCFNumberFormatterSecondaryGroupingSize",
+        HostConstant::NSString("kCFNumberFormatterSecondaryGroupingSize"),
+    ),
+    (
+        "_kCFNumberFormatterUseGroupingSeparator",
+        HostConstant::NSString("kCFNumberFormatterUseGroupingSeparator"),
+    ),
+    (
+        "_kCFNumberFormatterZeroSymbol",
+        HostConstant::NSString("kCFNumberFormatterZeroSymbol"),
     ),
 ];
 

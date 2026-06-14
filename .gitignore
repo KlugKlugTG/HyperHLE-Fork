@@ -1,6 +1,7 @@
 /target
 /vendor/boost
 /touchHLE_sandbox
+/DCIM
 /touchHLE_apps/*.ipa
 /touchHLE_apps/*.app
 touchHLE_log.txt
@@ -27,6 +28,10 @@ local.properties
 android/app/src/main/jniLibs
 android/app/build
 android/build
+
+# macOS
+
+.DS_Store
 
 # Default developer dump file
 

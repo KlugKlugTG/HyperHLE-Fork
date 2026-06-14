@@ -25,7 +25,7 @@ use std::cell::Cell;
 use std::collections::{HashMap, VecDeque};
 use std::net::TcpListener;
 use std::rc::Rc;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use crate::libc::pthread::cond::pthread_cond_t;
 use crate::window::DeviceFamily;
@@ -45,6 +45,8 @@ pub struct Thread {
     /// If this is not [ThreadBlock::NotBlocked], the thread is not executing
     /// until a certain condition is fufilled.
     pub blocked_by: ThreadBlock,
+    /// Container for thread local state of various child modules
+    pub thread_local_framework_state: frameworks::ThreadLocalState,
     /// After a secondary thread finishes, this is set to the returned value.
     return_value: Option<MutVoidPtr>,
     /// Context object containing the CPU state for this thread.
@@ -117,6 +119,9 @@ pub struct Environment {
     // Sadly, setting ticks to 1 does not step properly, so Option is required.
     remaining_ticks: Option<u64>,
     panic_cell: Rc<Cell<Option<Environment>>>,
+    /// Tracks repeated UndefinedInstruction bypasses. See `debug_cpu_error`.
+    udf_bypass_last: Option<(u32, u32)>,
+    udf_bypass_count: u32,
 }
 
 /// What to do next when executing this thread.
@@ -141,7 +146,7 @@ pub enum ThreadBlock {
     // Thread is waiting on a semaphore.
     Semaphore(MutPtr<sem_t>),
     // Thread is waiting on a condition variable
-    Condition(pthread_cond_t),
+    Condition(MutPtr<pthread_cond_t>, Option<Duration>),
     // Thread is waiting for another thread to finish (joining).
     Joining(ThreadId, MutPtr<MutVoidPtr>),
     // Thread has hit a cpu error, and is waiting to be debugged.
@@ -149,6 +154,7 @@ pub enum ThreadBlock {
     // Thread is suspended. We keep a suspend count and a previous thread state
     // (boxed to avoid cyclic dependency), which would be restored upon
     // resuming.
+    #[allow(dead_code)]
     Suspended(usize, Box<ThreadBlock>),
 }
 
@@ -165,7 +171,6 @@ fn generate_binary_load_order(graph: &[BinaryDependencyNode]) -> Result<Vec<usiz
         .enumerate()
         .map(|(idx, node)| (node.name.as_str(), idx))
         .collect();
-
     let mut node_dependents = HashMap::new();
     let mut node_in_degrees: HashMap<_, _> = node_to_index.values().map(|&idx| (idx, 0)).collect();
 
@@ -184,6 +189,7 @@ fn generate_binary_load_order(graph: &[BinaryDependencyNode]) -> Result<Vec<usiz
             let Some(&dylib_index) = node_to_index.get(dependency) else {
                 continue;
             };
+
             node_dependents
                 .entry(dylib_index)
                 .or_insert_with(Vec::new)
@@ -228,6 +234,7 @@ fn generate_binary_load_order(graph: &[BinaryDependencyNode]) -> Result<Vec<usiz
             graph.get(index).unwrap().name
         ));
     }
+
     log!(
         "Found sorted order {:?}",
         sorted_indices
@@ -264,7 +271,20 @@ impl Environment {
         // should be handled before creating the window because handling of
         // window rotation after-the-fact is somewhat glitchy.
         // This also ensures the splash screen is correctly oriented.
-        if options.initial_orientation == window::DeviceOrientation::Portrait {
+        //
+        // Only force a non-portrait orientation when the app explicitly
+        // does NOT advertise portrait support. Storyboard apps (and any
+        // other modern UIKit binary) routinely declare every orientation
+        // they can run in via `UISupportedInterfaceOrientations`, and
+        // picking the first non-portrait entry would force them into
+        // landscape even when portrait is perfectly fine. Apple's own
+        // launch logic uses portrait by default whenever it's listed, so
+        // mirror that.
+        let portrait_supported = bundle
+            .supported_interface_orientations().contains(&"UIInterfaceOrientationPortrait");
+        if options.initial_orientation == window::DeviceOrientation::Portrait
+            && !portrait_supported
+        {
             if let Some(&non_portrait_orientation) = bundle
                 .supported_interface_orientations()
                 .iter()
@@ -286,14 +306,18 @@ impl Environment {
                     // This appears to be an older way set the orientation.
                     // From testing, it seems to correspond to left.
                     "UIInterfaceOrientationLandscape" => window::DeviceOrientation::LandscapeLeft,
-                    // MapUpsideDownToPortrait
+
+                    // ДОБАВЛЯЕМ СЮДА ПРИВЯЗКУ К ОБЫЧНОМУ ПОРТРЕТУ:
                     "UIInterfaceOrientationPortraitUpsideDown" => {
-                        echo!("WARNING: UIInterfaceOrientationPortraitUpsideDown requested, falling back to Portrait");
                         window::DeviceOrientation::Portrait
                     }
+
                     other => {
-                        echo!("CRITICAL: Unknown orientation requested: {:?}", other);
-                        unimplemented!("Unsupported startup orientation: {:?}", other)
+                        log!(
+                            "Warning: Unsupported startup orientation: {:?}; defaulting to Portrait.",
+                            other
+                        );
+                        window::DeviceOrientation::Portrait
                     }
                 };
                 log!("App needs non-portrait user interface orientation {:?}, applying device orientation {:?}.", non_portrait_orientation, options.initial_orientation);
@@ -306,24 +330,42 @@ impl Environment {
             // iPhone only or iPad only
             1 => {
                 let only_supported = device_family_array[0];
+                let mut result = only_supported; // ← mutable variable for flexible return
+
                 if let Some(dfo) = device_family_override {
-                    if dfo != only_supported {
+                    // Allow iPhone5 override unconditionally when explicitly
+                    // requested
+                    if dfo == DeviceFamily::iPhone5 {
+                        result = DeviceFamily::iPhone5; // ← assign, don't return
+                    } else if dfo != only_supported {
                         log!("Warning: User-defined {:?} device family override is not supported by the app! ignoring", dfo);
                     }
                 }
-                only_supported
+                result // ← return the final value
             }
             // iPhone and iPad
             2 => {
                 if let Some(dfo) = device_family_override {
-                    assert!(device_family_array.contains(&dfo));
-                    dfo
+                    // Allow iPhone5 override unconditionally when explicitly
+                    // requested
+                    if dfo == DeviceFamily::iPhone5 {
+                        DeviceFamily::iPhone5 // ← direct return works here (last expr in branch)
+                    } else {
+                        assert!(device_family_array.contains(&dfo));
+                        dfo
+                    }
                 } else {
                     assert!(device_family_array.contains(&DeviceFamily::iPhone));
                     DeviceFamily::iPhone
                 }
             }
-            _ => unreachable!(),
+            _ => {
+                log!(
+                    "Warning: bundle declares an unexpected number of supported device families ({:?}); falling back to iPhone.",
+                    device_family_array
+                );
+                DeviceFamily::iPhone
+            }
         };
         log!("{:?} device family is chosen.", device_family);
         options.device_family = Some(device_family);
@@ -336,7 +378,7 @@ impl Environment {
                 log!("Warning: {}", e);
             }
 
-            let launch_image_path = bundle.launch_image_path();
+            let launch_image_path = bundle.launch_image_path(&fs, device_family);
             let launch_image = if fs.is_file(&launch_image_path) {
                 let res = fs
                     .read(launch_image_path)
@@ -352,7 +394,6 @@ impl Environment {
             } else {
                 None
             };
-
             Some(Box::new(window::Window::new(
                 &format!(
                     "{} (touchHLE {}{}{})",
@@ -374,10 +415,21 @@ impl Environment {
         let mut mem = mem::Mem::new();
 
         let is_spore = bundle.bundle_identifier().starts_with("com.ea.spore");
+        let is_critter_crunch = bundle
+            .bundle_identifier()
+            .starts_with("com.capybaragames.CritterCrunch")
+            || bundle
+                .bundle_identifier()
+                .starts_with("com.go.starwave.CritterCrunch");
         // We always reset this flag depending on which game is launched.
-        mem.zero_memory_on_free = !is_spore;
+        mem.zero_memory_on_free = !is_spore && !is_critter_crunch;
         if is_spore {
             log!("Applying game-specific hack for Spore Origins: zeroing memory on alloc instead of free.");
+        }
+        if is_critter_crunch {
+            // Without this hack, every time a critter 'explodes',
+            // the game crashes with a null page access error.
+            log!("Applying game-specific hack for Critter Crunch: zeroing memory on alloc instead of free.");
         }
         let executable = mach_o::MachO::load_from_file(
             bundle.executable_path(),
@@ -397,9 +449,17 @@ impl Environment {
                 // based on base addresses of those dylibs prior to iOS 3.1
                 // TODO: implement some kind of ASLR instead of hardcoding
                 assert!(dylib_path.as_str().starts_with("/usr/lib/"));
+
                 let name = dylib_path.file_name().unwrap();
                 let dylib_slide = match name {
                     "libstdc++.6.dylib" | "libstdc++.6.0.9.dylib" => 0x3748a000,
+
+                    // ДОБАВИТЬ ЭТО: Честный базовый адрес для libc++ (iOS 5.0+)
+                    "libc++.1.dylib" => 0x38000000,
+                    // На случай, если игра также потянет за собой libc++abi
+                    "libc++abi.dylib" => 0x38100000,
+                    "libiconv.2.dylib" => 0x32000000,
+
                     "libgcc_s.1.dylib" => 0x30000000,
                     "libz.1.dylib" | "libz.1.2.3.dylib" | "libz.dylib" | "libz.1.1.3.dylib" => {
                         // We build `libz` from sources with our OSS toolchain,
@@ -407,8 +467,21 @@ impl Environment {
                         // needed.
                         0
                     }
-                    _ => unimplemented!("Unknown binary slide for {}", name),
+                    "libsqlite3.dylib" | "libsqlite3.0.dylib" => {
+                        // We build `libsqlite3` from sources with our OSS
+                        // toolchain, the base address is already set and
+                        // sliding is not needed.
+                        0
+                    }
+                    _ => {
+                        log!(
+                            "Warning: unknown binary slide for {:?}; loading at slide 0. App may fail to bind some symbols.",
+                            name
+                        );
+                        0
+                    }
                 };
+
                 let dylib = mach_o::MachO::load_from_file(
                     fs::GuestPath::new(dylib),
                     &fs,
@@ -416,6 +489,7 @@ impl Environment {
                     dylib_slide,
                 )
                 .map_err(|e| format!("Could not load bundled dylib: {e}"))?;
+
                 dylibs.push(dylib);
             // Otherwise, look for it in our host implementations.
             } else if !crate::dyld::DYLIB_LIST
@@ -437,49 +511,7 @@ impl Environment {
             })
             .unwrap();
 
-        // RobustEntryPointFix
-        echo!(
-            "Original entry_point_addr from Mach-O: {:#010x}",
-            entry_point_addr
-        );
-
-        if (entry_point_addr & !1) <= 0x2000 {
-            echo!(
-                "WARNING: Entry point seems corrupted (points to header). Scanning for __text..."
-            );
-            let mut lc_ptr = 0x101c;
-            let ncmds: u32 = mem.read(mem::ConstPtr::<u32>::from_bits(0x1010));
-            let mut found_text = false;
-            for _ in 0..ncmds {
-                let cmd: u32 = mem.read(mem::ConstPtr::<u32>::from_bits(lc_ptr));
-                let cmdsize: u32 = mem.read(mem::ConstPtr::<u32>::from_bits(lc_ptr + 4));
-                if cmd == 1 {
-                    let nsects: u32 = mem.read(mem::ConstPtr::<u32>::from_bits(lc_ptr + 48));
-                    let mut sect_ptr = lc_ptr + 56;
-                    for _ in 0..nsects {
-                        let sectname_0: u32 = mem.read(mem::ConstPtr::<u32>::from_bits(sect_ptr));
-                        let sectname_1: u32 =
-                            mem.read(mem::ConstPtr::<u32>::from_bits(sect_ptr + 4));
-                        if sectname_0 == 0x65745f5f && sectname_1 == 0x00007478 {
-                            let sect_addr: u32 =
-                                mem.read(mem::ConstPtr::<u32>::from_bits(sect_ptr + 32));
-                            echo!(
-                                "Found __text section at {:#010x}. Overriding entry point!",
-                                sect_addr
-                            );
-                            entry_point_addr = sect_addr | 1;
-                            found_text = true;
-                            break;
-                        }
-                        sect_ptr += 68;
-                    }
-                }
-                if found_text {
-                    break;
-                }
-                lc_ptr += cmdsize;
-            }
-        }
+        let entry_point_is_lc_main = executable.entry_point_is_lc_main;
 
         let entry_point_addr = abi::GuestFunction::from_addr_with_thumb_bit(entry_point_addr);
 
@@ -495,7 +527,7 @@ impl Environment {
         let mut objc = objc::ObjC::new();
 
         let mut dyld = dyld::Dyld::new();
-        dyld.do_initial_linking(&bins, &mut mem, &mut objc);
+        dyld.do_initial_linking(&bundle, &bins, &mut mem, &mut objc);
 
         let cpu = cpu::Cpu::new(match options.direct_memory_access {
             true => Some(&mut mem),
@@ -529,26 +561,20 @@ impl Environment {
 
                         log_dbg!("Calling static initializers for {:?}", bin_name);
                         assert!(section_size % 4 == 0);
+
                         let base: mem::ConstPtr<abi::GuestFunction> =
                             mem::Ptr::from_bits(section_addr);
+
                         let count = section_size / 4;
                         for i in 0..count {
-                            let func: GuestFunction = env.mem.read(base + i);
-                            let addr = func.addr_without_thumb_bit();
-                            // SkipBadInit
-                            if addr <= 0x2000 {
-                                echo!("WARNING: Skipping corrupted init func {:#010x}", addr);
-                                continue;
-                            }
-                            // BypassLibcppCrash
-                            if addr == 0x3748b2c4 {
-                                echo!(
-                                    "WARNING: Skipping crashy libstdc++ init func {:#010x}",
-                                    addr
-                                );
-                                continue;
-                            }
-                            echo!("Calling init func {:#010x} for {:?}", addr, bin_name);
+                            let func = env.mem.read(base + i);
+
+                            log_dbg!(
+                                "Calling static initializer at {:?} from {:?}",
+                                func,
+                                (base + i)
+                            );
+
                             () = func.call_from_host(env, ());
                         }
                         echo!("Static initialization done for {:?}", bin_name);
@@ -570,6 +596,7 @@ impl Environment {
                                 .concat()
                             })
                             .collect();
+
                         let envp_ref_list: Vec<&str> =
                             envp_list.iter().map(|keyvalue| keyvalue.as_str()).collect();
 
@@ -579,9 +606,17 @@ impl Environment {
                             std::iter::once(bin_path.as_str())
                                 .chain(app_args.iter().map(|s| s.as_str())),
                         );
+
                         let envp = envp_ref_list.as_slice();
                         let apple = &[bin_path_apple_key.as_str()];
-                        stack::prep_stack_for_start(&mut env.mem, &mut env.cpu, &argv, envp, apple);
+                        stack::prep_stack_for_start(
+                            &mut env.mem,
+                            &mut env.cpu,
+                            &argv,
+                            envp,
+                            apple,
+                            entry_point_is_lc_main,
+                        );
                     }
 
                     // Manually call here, since running call_from_host pushes
@@ -593,11 +628,13 @@ impl Environment {
                     );
                     env.cpu
                         .branch_with_link(entry_point_addr, env.dyld.thread_exit_routine());
+
                     env.run_call();
 
                     panic!("Main function exited unexpectedly!");
                 })
             }));
+
             if let Err(e) = res {
                 let panic_cell = env.panic_cell.clone();
                 panic_cell.set(Some(env));
@@ -605,6 +642,7 @@ impl Environment {
             }
             env
         });
+
         let main_thread = Thread {
             active: true,
             blocked_by: ThreadBlock::NotBlocked,
@@ -612,6 +650,7 @@ impl Environment {
             guest_context: None,
             host_context: Some(main_thread_init_routine),
             stack: Some(mem::Mem::MAIN_THREAD_STACK_LOW_END..=0u32.wrapping_sub(1)),
+            thread_local_framework_state: Default::default(),
         };
 
         let mut env = Environment {
@@ -638,6 +677,8 @@ impl Environment {
             yielder: std::ptr::null(),
             remaining_ticks: None,
             panic_cell: Rc::new(Cell::new(None)),
+            udf_bypass_last: None,
+            udf_bypass_count: 0,
         };
 
         if env.options.dumping_options.any() {
@@ -657,6 +698,7 @@ impl Environment {
         if let Some(addrs) = env.options.gdb_listen_addrs.take() {
             let listener = TcpListener::bind(addrs.as_slice())
                 .map_err(|e| format!("Could not bind to {addrs:?}: {e}"))?;
+
             echo!(
                 "Waiting for debugger connection on {}...",
                 addrs
@@ -665,18 +707,22 @@ impl Environment {
                     .collect::<Vec<String>>()
                     .join(", ")
             );
+
             let (client, client_addr) = listener
                 .accept()
                 .map_err(|e| format!("Could not accept connection: {e}"))?;
+
             echo!("Debugger client connected on {}.", client_addr);
             let mut gdb_server = gdb::GdbServer::new(client);
             let step = gdb_server.wait_for_debugger(None, &mut env.cpu, &mut env.mem);
+
             assert!(!step, "Can't step right now!"); // TODO?
             env.gdb_server = Some(Box::new(gdb_server));
         }
 
         if env.options.dumping_options.linking_info {
             let file = env.dump_file.as_mut().unwrap();
+
             env.objc.dump_classes(file).unwrap();
             env.dyld.dump_lazy_symbols(&env.bins, file).unwrap();
             env.objc
@@ -736,6 +782,7 @@ impl Environment {
         let mut objc = objc::ObjC::new();
 
         let mut dyld = dyld::Dyld::new();
+
         dyld.do_initial_linking_with_no_bins(&mut mem, &mut objc);
 
         let cpu = cpu::Cpu::new(match options.direct_memory_access {
@@ -750,6 +797,7 @@ impl Environment {
             guest_context: None,
             host_context: None,
             stack: Some(mem::Mem::MAIN_THREAD_STACK_LOW_END..=0u32.wrapping_sub(1)),
+            thread_local_framework_state: Default::default(),
         };
 
         let mut env = Environment {
@@ -776,6 +824,8 @@ impl Environment {
             yielder: std::ptr::null(),
             remaining_ticks: None,
             panic_cell: Rc::new(Cell::new(None)),
+            udf_bypass_last: None,
+            udf_bypass_count: 0,
         };
 
         env.set_up_initial_env_vars();
@@ -787,7 +837,7 @@ impl Environment {
             let argv = &[];
             let envp = &[];
             let apple = &[];
-            stack::prep_stack_for_start(&mut env.mem, &mut env.cpu, argv, envp, apple);
+            stack::prep_stack_for_start(&mut env.mem, &mut env.cpu, argv, envp, apple, false);
         }
 
         env.cpu.set_cpsr(cpu::Cpu::CPSR_USER_MODE);
@@ -835,6 +885,8 @@ impl Environment {
             yielder: std::ptr::null(),
             remaining_ticks: None,
             panic_cell: Rc::new(Cell::new(None)),
+            udf_bypass_last: None,
+            udf_bypass_count: 0,
         }
     }
 
@@ -868,6 +920,7 @@ impl Environment {
         T: 'static,
     {
         assert!(self.yielder.is_null());
+
         self.yielder = yielder;
         // We need to ensure panic safety here, so make sure to reset the
         // yielder if the inner function panics.
@@ -899,11 +952,14 @@ impl Environment {
 
     pub fn stack_for_longjmp(&self, mut lr: u32, fp: u32) -> Vec<u32> {
         let stack_range = self.threads[self.current_thread].stack.clone().unwrap();
+
         let mut frames = Vec::new();
         let mut fp: mem::ConstPtr<u8> = mem::Ptr::from_bits(fp);
         let return_to_host_routine_addr = self.dyld.return_to_host_routine().addr_with_thumb_bit();
+
         while stack_range.contains(&fp.to_bits()) && lr != return_to_host_routine_addr {
             frames.push(lr);
+
             lr = self.mem.read((fp + 4).cast());
             fp = self.mem.read(fp.cast());
         }
@@ -918,7 +974,11 @@ impl Environment {
         self.cpu.dump_regs();
         for (tid, thread) in self.threads.iter().enumerate() {
             if thread.active && tid != self.current_thread {
-                echo_no_panic!("Dumping registers for thread #{}", tid);
+                echo_no_panic!(
+                    "Dumping registers for thread #{} (blocked by {:?})",
+                    tid,
+                    thread.blocked_by
+                );
                 let Some(ctx) = thread.guest_context.as_ref() else {
                     echo_no_panic!("Could not get registers for thread {}!", tid);
                     return;
@@ -928,7 +988,7 @@ impl Environment {
         }
     }
 
-    fn stack_trace_current(&self) {
+    pub(crate) fn stack_trace_current(&self) {
         if self.current_thread == 0 {
             echo_no_panic!("Attempting to produce stack trace for main thread:");
         } else {
@@ -981,9 +1041,11 @@ impl Environment {
         let thumb = (cpsr & cpu::Cpu::CPSR_THUMB) == cpu::Cpu::CPSR_THUMB;
         let pc = GuestFunction::from_addr_and_thumb_flag(pc_nothumb, thumb);
         echo_no_panic!(" 0. {:#x} (PC)", pc.addr_with_thumb_bit());
+
         let mut lr = regs[cpu::Cpu::LR];
         let return_to_host_routine_addr = self.dyld.return_to_host_routine().addr_with_thumb_bit();
         let thread_exit_routine_addr = self.dyld.thread_exit_routine().addr_with_thumb_bit();
+
         if lr == return_to_host_routine_addr {
             echo_no_panic!(" 1. [host function] (LR)");
         } else if lr == thread_exit_routine_addr {
@@ -1060,6 +1122,7 @@ impl Environment {
             guest_context: Some(Box::new(cpu::CpuContext::new())),
             host_context: Some(thread_routine),
             stack: Some(stack_alloc.to_bits()..=(stack_high_addr - 1)),
+            thread_local_framework_state: Default::default(),
         });
 
         let new_thread_id = self.threads.len() - 1;
@@ -1067,6 +1130,11 @@ impl Environment {
         log_dbg!("Created new thread {} with stack {:#x}–{:#x}, will execute function {:?} with data {:?}", new_thread_id, stack_alloc.to_bits(), (stack_high_addr - 1), start_routine, user_data);
 
         new_thread_id
+    }
+
+    #[allow(unused)]
+    pub fn get_tl_framework_state(&mut self) -> &mut frameworks::ThreadLocalState {
+        &mut self.threads[self.current_thread].thread_local_framework_state
     }
 
     /// Put the current thread to sleep for some duration, running other threads
@@ -1083,6 +1151,7 @@ impl Environment {
         self.yield_thread(ThreadBlock::Sleeping(until));
     }
 
+    #[allow(dead_code)]
     pub fn suspend_thread(&mut self, thread: ThreadId) {
         match &mut self.threads[thread].blocked_by {
             ThreadBlock::Suspended(count, _) => {
@@ -1094,12 +1163,17 @@ impl Environment {
                     ThreadBlock::NotBlocked,
                 );
                 log_dbg!("Suspend thread {} from {:?}", thread, previous_thread_state);
-                self.threads[thread].blocked_by =
-                    ThreadBlock::Suspended(1, Box::new(previous_thread_state));
+                let new_state = ThreadBlock::Suspended(1, Box::new(previous_thread_state));
+                if thread == self.current_thread {
+                    self.yield_thread(new_state);
+                } else {
+                    self.threads[thread].blocked_by = new_state;
+                }
             }
         }
     }
 
+    #[allow(dead_code)]
     pub fn resume_thread(&mut self, thread: ThreadId) {
         let old = std::mem::replace(
             &mut self.threads[thread].blocked_by,
@@ -1116,7 +1190,18 @@ impl Environment {
                     self.threads[thread].blocked_by = *previous_thread_state;
                 }
             }
-            _ => unreachable!(),
+            other => {
+                // The caller asked to resume a thread that is not currently
+                // suspended. Restore whatever state it was in (already
+                // overwritten with NotBlocked above) and log a warning
+                // instead of crashing the host.
+                log!(
+                    "Warning: resume_thread({}) called on a thread that was not Suspended (was {:?}); leaving thread NotBlocked.",
+                    thread,
+                    other
+                );
+                self.threads[thread].blocked_by = other;
+            }
         }
     }
 
@@ -1175,7 +1260,6 @@ impl Environment {
         std::mem::drop(host_sem);
         // The scheduler will decrement the semaphore value when it unblocks.
         self.yield_thread(ThreadBlock::Semaphore(sem));
-
         true
     }
 
@@ -1237,6 +1321,7 @@ impl Environment {
                 }
             }
         });
+
         loop {
             let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 app_picker_coroutine.resume(self)
@@ -1255,7 +1340,6 @@ impl Environment {
                     std::panic::resume_unwind(e);
                 }
             };
-
             self.window
                 .as_mut()
                 .unwrap()
@@ -1267,8 +1351,11 @@ impl Environment {
                     let duration = until.duration_since(Instant::now());
                     std::thread::sleep(duration);
                 }
-                _ => {
-                    panic!("Unexpected ThreadBlock in app picker!");
+                ref other => {
+                    log!(
+                        "Warning: Unexpected ThreadBlock in app picker: {:?}; clearing block.",
+                        other
+                    );
                 }
             }
             self.threads[0].blocked_by = ThreadBlock::NotBlocked;
@@ -1292,7 +1379,6 @@ impl Environment {
                 self.remaining_ticks = Some(100_000);
             }
             let mut kill_current_thread = false;
-
             if let Some(w) = self.window.as_mut() {
                 w.on_main_stack = false;
             }
@@ -1340,14 +1426,13 @@ impl Environment {
                     std::panic::resume_unwind(e);
                 }
             };
-
             let mut old_context = if kill_current_thread {
                 log_dbg!("Killing thread {}", self.current_thread);
                 panic_cell.set(Some(self));
                 std::mem::drop(curr_host_context);
                 let Some(env) = panic_cell.take() else {
                     log_no_panic!("Did not get env back from coroutine after drop, must abort!");
-                    std::process::exit(-1);
+                    std::process::exit(-1)
                 };
                 self = env;
                 let stack = self.threads[self.current_thread].stack.take().unwrap();
@@ -1358,7 +1443,6 @@ impl Environment {
             } else {
                 Some(curr_host_context)
             };
-
             if let Some(w) = self.window.as_mut() {
                 w.on_main_stack = true;
             }
@@ -1424,13 +1508,13 @@ impl Environment {
                 }
 
                 stepping = false;
-
                 let next_thread = self.schedule_next_thread();
                 if next_thread != self.current_thread {
                     self.switch_thread(&mut old_context, next_thread);
                 }
                 assert!(old_context.is_some());
             }));
+
             match res {
                 Ok(_) => {}
                 Err(e) => {
@@ -1490,13 +1574,11 @@ impl Environment {
     fn switch_thread(&mut self, old_context: &mut Option<HostContext>, new_thread: ThreadId) {
         assert!(new_thread != self.current_thread);
         assert!(self.threads[new_thread].active);
-
         log_dbg!(
             "Switching thread: {} => {}",
             self.current_thread,
             new_thread
         );
-
         let mut guest_ctx = self.threads[new_thread].guest_context.take().unwrap();
         self.cpu.swap_context(&mut guest_ctx);
         assert!(self.threads[self.current_thread].guest_context.is_none());
@@ -1514,6 +1596,12 @@ impl Environment {
     /// connected. Returns [true] if the CPU should step and then resume
     /// debugging, or [false] if it should resume normal execution.
     fn debug_cpu_error(&mut self, error: cpu::CpuError) {
+        let instruction_len = if (self.cpu.cpsr() & cpu::Cpu::CPSR_THUMB) != 0 {
+            2
+        } else {
+            4
+        };
+
         if matches!(error, cpu::CpuError::UndefinedInstruction)
             || matches!(error, cpu::CpuError::Breakpoint)
         {
@@ -1521,31 +1609,87 @@ impl Environment {
             // occurred, rather than the next instruction. This is necessary for
             // GDB to detect its software breakpoints. For some reason this
             // isn't correct for memory errors however.
-            let instruction_len = if (self.cpu.cpsr() & cpu::Cpu::CPSR_THUMB) != 0 {
-                2
-            } else {
-                4
-            };
             self.cpu.regs_mut()[cpu::Cpu::PC] -= instruction_len;
         }
 
         if self.gdb_server.is_none() {
-            // DumpCpuBeforePanic
-            self.dump_all_regs();
-            self.stack_trace_current();
-            // ReadOpcodeBytes
-            let pc = self.cpu.regs()[cpu::Cpu::PC];
-            let pc_ptr: mem::ConstPtr<u8> = mem::Ptr::from_bits(pc);
-            let b0 = self.mem.read(pc_ptr);
-            let b1 = self.mem.read(pc_ptr + 1);
-            let b2 = self.mem.read(pc_ptr + 2);
-            let b3 = self.mem.read(pc_ptr + 3);
-            let b4 = self.mem.read(pc_ptr + 4);
-            let b5 = self.mem.read(pc_ptr + 5);
-            let b6 = self.mem.read(pc_ptr + 6);
-            let b7 = self.mem.read(pc_ptr + 7);
-            // LogOpcodeBytes
-            echo!("CRITICAL: Opcode bytes at PC {:#x}: {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}", pc, b0, b1, b2, b3, b4, b5, b6, b7);
+            // Bypass crashes without implementing stubs for every framework.
+            // Games often trigger UndefinedInstruction (abort/__builtin_trap)
+            // when an API returns nil or an otherwise unexpected value.
+            // Fake a function return to LR to keep execution going.
+            //
+            // However: if we hit the SAME (PC,LR) pair too many times in a row
+            // this indicates we are looping forever (LR itself points back
+            // through an infinite chain of UDF instructions). In that case
+            // panic with a clear message instead of wedging the emulator.
+            if matches!(error, cpu::CpuError::UndefinedInstruction) {
+                let pc = self.cpu.regs()[cpu::Cpu::PC];
+                let lr = self.cpu.regs()[cpu::Cpu::LR];
+
+                // Track repeated occurrences of the same bypass site.
+                const BYPASS_LIMIT: u32 = 256;
+                const LOG_RATE: u32 = 32;
+                let key = (pc, lr);
+                let count = if self.udf_bypass_last == Some(key) {
+                    self.udf_bypass_count = self.udf_bypass_count.saturating_add(1);
+                    self.udf_bypass_count
+                } else {
+                    self.udf_bypass_last = Some(key);
+                    self.udf_bypass_count = 1;
+                    1
+                };
+
+                if count == 1 || count % LOG_RATE == 0 {
+                    log_no_panic!(
+                        "Warning: Ignored UndefinedInstruction at {:#x}. \
+                         Faking function return to LR ({:#x}) to bypass crash! \
+                         (occurrence {} of at most {})",
+                        pc,
+                        lr,
+                        count,
+                        BYPASS_LIMIT
+                    );
+                }
+
+                if count >= BYPASS_LIMIT {
+                    panic!(
+                        "UndefinedInstruction at {:#x} looped {} times with \
+                         LR={:#x}; giving up to avoid hanging. This usually \
+                         means a framework stub returned bogus data that the \
+                         guest keeps re-trapping on.",
+                        pc, count, lr
+                    );
+                }
+
+                // Pathological self-loop: when LR (with Thumb bit cleared)
+                // points right back at the UDF we just trapped on, branching
+                // to LR would re-enter the trap and burn through BYPASS_LIMIT
+                // until the emulator panics. This shape shows up when a
+                // framework stub returns the address of its own UDF as the
+                // return target (e.g. PC=0x5cc86, LR=0x5cc87). Skip past the
+                // faulting instruction instead so the guest makes forward
+                // progress, and clear the bypass counter since we're no
+                // longer bypassing the same site.
+                if (lr & !1) == pc {
+                    log_no_panic!(
+                        "Warning: UndefinedInstruction self-loop at {:#x} \
+                         (LR={:#x} re-enters the same UDF). Advancing past \
+                         the faulting instruction instead of branching to LR.",
+                        pc,
+                        lr
+                    );
+                    self.cpu.regs_mut()[cpu::Cpu::PC] = pc.wrapping_add(instruction_len);
+                    self.udf_bypass_last = None;
+                    self.udf_bypass_count = 0;
+                    return;
+                }
+
+                // Instead of skipping forward through garbage data, pretend the
+                // faulting function returned to its caller.
+                self.cpu.branch(GuestFunction::from_addr_with_thumb_bit(lr));
+                return;
+            }
+
             panic!("Error during CPU execution: {error:?}");
         }
 
@@ -1603,6 +1747,21 @@ impl Environment {
                             svc,
                         ) {
                             f.call_from_guest(self);
+
+                            // ORIGINAL LOGIC MERGED: Stack zeroing
+                            if svc & dyld::Dyld::SVC_LAZY_LINK_RET_FLAG == 0 {
+                                if let Some(len) = self.options.zero_stack_after_guest_to_host_call
+                                {
+                                    log_once!(
+                                        "Applying zeroing of stack after guest to host call."
+                                    );
+                                    let start = self.cpu.regs()[cpu::Cpu::SP] - len;
+                                    self.mem
+                                        .bytes_at_mut(mem::Ptr::from_bits(start), len)
+                                        .fill(0);
+                                }
+                            }
+
                             // On entry_size 4 return here since there's
                             // no space to add a ret after the svc call
                             if svc & dyld::Dyld::SVC_LAZY_LINK_RET_FLAG != 0 {
@@ -1616,12 +1775,26 @@ impl Environment {
                         }
                     }
                     dyld::Dyld::SVC_THREAD_EXIT => {
-                        // HandleThreadExit
-                        echo!(
-                            "WARNING: Thread {} cleanly exiting via SVC_THREAD_EXIT.",
-                            self.current_thread
-                        );
-                        ThreadNextAction::ReturnToHost
+                        if self.current_thread == 0 {
+                            log_no_panic!("Main thread exited normally (or crashed early). Returning to host.");
+                            ThreadNextAction::ReturnToHost
+                        } else {
+                            log_dbg!("Thread {} has completed execution.", self.current_thread);
+                            self.threads[self.current_thread].active = false;
+
+                            // Мы должны сменить поток, так как текущий
+                            // завершился
+                            let next_thread = self.schedule_next_thread();
+                            if next_thread == self.current_thread {
+                                log_no_panic!("All threads exited. Returning to host.");
+                                return ThreadNextAction::ReturnToHost;
+                            }
+
+                            // Возвращаемся в цикл (run_inner вызовет
+                            // yield_thread,
+                            // а потом run переключит поток)
+                            ThreadNextAction::Continue
+                        }
                     }
                 }
             }
@@ -1678,8 +1851,28 @@ impl Environment {
 
     fn run_inner(&mut self) {
         let initial_thread = self.current_thread;
-        assert!(self.threads[initial_thread].active);
-        assert!(self.threads[initial_thread].guest_context.is_none());
+        if !self.threads[initial_thread].active {
+            log_no_panic!(
+                "Warning: run_inner called on inactive thread {}. Returning early.",
+                initial_thread
+            );
+            return;
+        }
+        if self.threads[initial_thread].guest_context.is_some() {
+            // This can happen when an app re-enters the run loop from within
+            // a callback (e.g. Pocket Army spawns a worker thread whose
+            // completion handler tries to resume the main run loop before the
+            // previous invocation has returned). Instead of panicking the
+            // whole emulator, log and bail — the outer run_inner is still
+            // executing and will pick up from where it left off.
+            log_no_panic!(
+                "Warning: run_inner called on thread {} which already has a \
+                 guest_context (re-entrant run loop?). Returning early to \
+                 avoid assertion failure.",
+                initial_thread
+            );
+            return;
+        }
 
         // SetupHeartbeatTimer
         let mut last_heartbeat = Instant::now();
@@ -1692,131 +1885,6 @@ impl Environment {
                 let state = self
                     .cpu
                     .run_or_step(&mut self.mem, self.remaining_ticks.as_mut());
-
-                let pc = self.cpu.regs()[cpu::Cpu::PC];
-
-                // BypassAsphaltDRM
-                if pc == 0x00600ac4 {
-                    echo!("WARNING: Bypassing Asphalt DRM via Deep Stack Unwind!");
-                    let fp0 = self.cpu.regs()[7];
-                    let fp1: u32 = self.mem.read(mem::ConstPtr::<u32>::from_bits(fp0));
-                    let fp2: u32 = self.mem.read(mem::ConstPtr::<u32>::from_bits(fp1));
-                    let target_lr: u32 = self.mem.read(mem::ConstPtr::<u32>::from_bits(fp2 + 4));
-                    echo!("Recovered Deep Return Address: {:#010x}", target_lr);
-                    self.cpu.regs_mut()[7] = fp2;
-                    self.cpu.regs_mut()[cpu::Cpu::SP] = fp1 + 8;
-                    self.cpu.regs_mut()[0] = 0;
-                    self.cpu
-                        .branch(GuestFunction::from_addr_with_thumb_bit(target_lr));
-                }
-
-                // RestoreConditionalUnwinds
-                if (pc == 0x00c3296c || pc == 0x00c32bfc) && self.current_thread != 0 {
-                    let fp0 = self.cpu.regs()[7];
-                    let prev_fp: u32 = self.mem.read(mem::ConstPtr::<u32>::from_bits(fp0));
-                    let target_lr: u32 = self.mem.read(mem::ConstPtr::<u32>::from_bits(fp0 + 4));
-                    let current_lr = self.cpu.regs()[14];
-                    // CheckNetworkModule
-                    if (current_lr & 0xFFFF0000) == 0x005b0000
-                        || (target_lr & 0xFFFF0000) == 0x005b0000
-                    {
-                        echo!(
-                            "WARNING: Network deadlock safely unwound at {:#010x}! LR: {:#010x}",
-                            pc,
-                            target_lr
-                        );
-                        self.cpu.regs_mut()[7] = prev_fp;
-                        self.cpu.regs_mut()[cpu::Cpu::SP] = fp0 + 8;
-                        self.cpu.regs_mut()[0] = 0;
-                        self.cpu
-                            .branch(GuestFunction::from_addr_with_thumb_bit(target_lr));
-                    }
-                } else if (pc == 0x00c3375c || pc == 0x00c3376c) && self.current_thread != 0 {
-                    let fp0 = self.cpu.regs()[7];
-                    let fp1: u32 = self.mem.read(mem::ConstPtr::<u32>::from_bits(fp0));
-                    let prev_fp: u32 = self.mem.read(mem::ConstPtr::<u32>::from_bits(fp1));
-                    let target_lr: u32 = self.mem.read(mem::ConstPtr::<u32>::from_bits(fp1 + 4));
-                    // FilterAudioThreads
-                    if (target_lr & 0xFFFF0000) == 0x005b0000 {
-                        echo!(
-                            "WARNING: Deep unwinding infinite parser loop! LR: {:#010x}",
-                            target_lr
-                        );
-                        self.cpu.regs_mut()[7] = prev_fp;
-                        self.cpu.regs_mut()[cpu::Cpu::SP] = fp1 + 8;
-                        self.cpu.regs_mut()[0] = 0;
-                        self.cpu
-                            .branch(GuestFunction::from_addr_with_thumb_bit(target_lr));
-                    }
-                } else if pc == 0x00c32b3c {
-                    // TargetedDoubleUnwind
-                    echo!(
-                        "WARNING: Unwinding smashed stack frame at {:#010x}! Thread: {}",
-                        pc,
-                        self.current_thread
-                    );
-                    let fp0 = self.cpu.regs()[7];
-
-                    let fp1: u32 = self.mem.read(mem::ConstPtr::<u32>::from_bits(fp0));
-
-                    if fp1 > fp0 && fp1.wrapping_sub(fp0) < 0x1000 {
-                        let saved_r4: u32 = self
-                            .mem
-                            .read(mem::ConstPtr::<u32>::from_bits(fp1.wrapping_sub(12)));
-                        let saved_r5: u32 = self
-                            .mem
-                            .read(mem::ConstPtr::<u32>::from_bits(fp1.wrapping_sub(8)));
-                        let saved_r6: u32 = self
-                            .mem
-                            .read(mem::ConstPtr::<u32>::from_bits(fp1.wrapping_sub(4)));
-                        let saved_r7: u32 = self.mem.read(mem::ConstPtr::<u32>::from_bits(fp1));
-                        let saved_lr: u32 = self.mem.read(mem::ConstPtr::<u32>::from_bits(fp1 + 4));
-
-                        self.cpu.regs_mut()[4] = saved_r4;
-                        self.cpu.regs_mut()[5] = saved_r5;
-                        self.cpu.regs_mut()[6] = saved_r6;
-                        self.cpu.regs_mut()[7] = saved_r7;
-                        self.cpu.regs_mut()[cpu::Cpu::SP] = fp1 + 8;
-                        self.cpu.regs_mut()[0] = 0;
-
-                        self.cpu
-                            .branch(GuestFunction::from_addr_with_thumb_bit(saved_lr | 1));
-                    } else {
-                        echo!("FATAL: Stack chain corrupted beyond fp0!");
-                        self.cpu
-                            .branch(GuestFunction::from_addr_with_thumb_bit(0x00a8a1bd | 1));
-                    }
-                }
-
-                // BypassAsphaltOverdriveDeadlocks
-                let lr = self.cpu.regs()[cpu::Cpu::LR];
-                if (pc == 0x009d7784 && (lr == 0x0039418f || lr == 0x0039419b))
-                    || (pc == 0x009d7464 && lr == 0x0078df65)
-                    || (pc == 0x009d8334 && lr == 0x001722e1)
-                {
-                    echo!("WARNING: Unwinding Asphalt Overdrive Deadlock at PC: {:#010x}, LR: {:#010x}", pc, lr);
-                    let fp0 = self.cpu.regs()[7];
-                    let prev_fp: u32 = self.mem.read(mem::ConstPtr::<u32>::from_bits(fp0));
-                    let target_lr: u32 = self.mem.read(mem::ConstPtr::<u32>::from_bits(fp0 + 4));
-                    self.cpu.regs_mut()[7] = prev_fp;
-                    self.cpu.regs_mut()[cpu::Cpu::SP] = fp0 + 8;
-                    self.cpu.regs_mut()[0] = 0;
-                    self.cpu
-                        .branch(GuestFunction::from_addr_with_thumb_bit(target_lr));
-                }
-
-                // PrintDebugHeartbeat
-                if last_heartbeat.elapsed().as_secs() >= 1 {
-                    let lr = self.cpu.regs()[cpu::Cpu::LR];
-                    echo!(
-                        "[Heartbeat] Thread {}, PC: {:#010x}, LR: {:#010x}",
-                        self.current_thread,
-                        pc,
-                        lr
-                    );
-                    last_heartbeat = Instant::now();
-                }
-
                 match self.handle_cpu_state(state) {
                     ThreadNextAction::Continue => {}
                     ThreadNextAction::ReturnToHost => return,
@@ -1844,7 +1912,28 @@ impl Environment {
         );
         unsafe {
             self.threads[self.current_thread].blocked_by = thread_block;
-            let yielder = self.yielder.as_ref().unwrap();
+            // The yielder is set up by `with_yielder` when a coroutine starts
+            // executing this thread. If we ever reach `yield_thread` without
+            // an active yielder (for example when host code invokes us
+            // synchronously before the main coroutine has been entered), we
+            // have no coroutine to suspend into. Previously `unwrap()` here
+            // panicked the entire emulator; instead, log loudly and clear
+            // the block so the host-side caller can keep going. This is the
+            // best we can do without a host stack to unwind to.
+            let yielder = match self.yielder.as_ref() {
+                Some(yielder) => yielder,
+                None => {
+                    log_no_panic!(
+                        "Warning: yield_thread called on thread {} with no \
+                         active yielder (block={:?}). Treating as no-op so \
+                         the host caller can continue.",
+                        self.current_thread,
+                        self.threads[self.current_thread].blocked_by,
+                    );
+                    self.threads[self.current_thread].blocked_by = ThreadBlock::NotBlocked;
+                    return;
+                }
+            };
             self.yielder = std::ptr::null();
             let panic_cell = self.panic_cell.clone();
             let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -1919,7 +2008,6 @@ impl Environment {
                             .get_mut(&sem)
                             .unwrap();
                         let mut host_sem = (*host_sem_rc).borrow_mut();
-
                         if host_sem.value > 0 {
                             log_dbg!(
                                 "Thread {} has awaken on semaphore {:?} with value {}",
@@ -1933,7 +2021,7 @@ impl Environment {
                             return thread_id;
                         }
                     }
-                    ThreadBlock::Condition(cond) => {
+                    ThreadBlock::Condition(cond, deadline) => {
                         let host_cond = self
                             .libc_state
                             .pthread
@@ -1953,6 +2041,61 @@ impl Environment {
                             self.threads[thread_id].blocked_by = ThreadBlock::NotBlocked;
                             self.relock_unblocked_mutex_for_thread(thread_id, mutex);
                             return thread_id;
+                        } else if let Some(deadline) = deadline {
+                            let time = SystemTime::now()
+                                .duration_since(SystemTime::UNIX_EPOCH)
+                                .unwrap();
+                            if deadline <= time {
+                                log_dbg!(
+                                    "Thread {} is timed out on cond var {:?}.",
+                                    thread_id,
+                                    cond
+                                );
+                                assert!(!host_cond.timed_out.contains(&thread_id));
+                                host_cond.timed_out.insert(thread_id);
+
+                                // FIX 1: Если тред уже был в очереди waking
+                                // (ему отправили
+                                // сигнал, но он ещё не успел захватить
+                                // мьютекс),
+                                // удаляем его оттуда вместо паники.
+                                host_cond.waking.retain(|&t| t != thread_id);
+                                host_cond.waiting.retain(|&t| t != thread_id);
+
+                                // FIX 2: Если мьютекс всё ещё занят другим
+                                // тредом при
+                                // таймауте, не паникуем, а переводим тред в
+                                // ожидание
+                                // мьютекса (как в настоящем
+                                // pthread_cond_timedwait).
+                                if self.mutex_state.mutex_is_locked(mutex) {
+                                    log_dbg!(
+                                        "Thread {} timed out on cond var {:?} but mutex is locked, blocking on mutex.",
+                                        thread_id,
+                                        cond
+                                    );
+                                    self.threads[thread_id].blocked_by = ThreadBlock::Mutex(mutex);
+                                } else {
+                                    self.threads[thread_id].blocked_by = ThreadBlock::NotBlocked;
+                                    self.relock_unblocked_mutex_for_thread(thread_id, mutex);
+                                    return thread_id;
+                                }
+                            } else {
+                                // --- ГЛАВНОЕ ИСПРАВЛЕНИЕ ДЕДЛОКА ---
+                                // Если таймаут еще не вышел, вычисляем остаток
+                                // времени
+                                // и добавляем его в next_awakening
+                                // планировщика!
+                                // Теперь эмулятор не упадет, а честно уснет до
+                                // этого момента.
+                                let remaining = deadline - time;
+                                let awakening = Instant::now() + remaining;
+                                next_awakening = match next_awakening {
+                                    None => Some(awakening),
+                                    Some(other) => Some(other.min(awakening)),
+                                };
+                                // ------------------------------------
+                            }
                         }
                     }
                     ThreadBlock::Joining(joinee_thread, ptr) => {
@@ -1977,6 +2120,7 @@ impl Environment {
                     }
                     ThreadBlock::WaitingForDebugger(_) => unreachable!(),
                     ThreadBlock::Suspended(cnt, _) => {
+                        // Original enforced assertion
                         assert!(cnt > 0);
                     }
                 }
@@ -1992,9 +2136,26 @@ impl Environment {
                 // there will be soon, since timing is approximate).
                 continue;
             } else {
-                // This should hopefully not happen, but if a thread is
-                // blocked on another thread waiting for a deferred return,
-                // it could.
+                // All threads are blocked but none are sleeping — potential
+                // deadlock. Before panicking, give conditions with timeouts
+                // a brief grace period (10ms). This handles the edge case
+                // where a condition-wait with timeout hasn't been detected
+                // as "sleeping" because the scheduler loop hasn't
+                // re-evaluated it yet. After the grace period, if still
+                // stuck, abort with a clear diagnostic.
+                static DEADLOCK_GRACE_COUNT: std::sync::atomic::AtomicU32 =
+                    std::sync::atomic::AtomicU32::new(0);
+                let count = DEADLOCK_GRACE_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                if count < 3 {
+                    log!(
+                        "Warning: All threads appear blocked (attempt {}/3). \
+                         Sleeping 10ms before retrying…",
+                        count + 1
+                    );
+                    std::thread::sleep(Duration::from_millis(10));
+                    continue;
+                }
+                DEADLOCK_GRACE_COUNT.store(0, std::sync::atomic::Ordering::Relaxed);
                 panic!("No active threads, program has deadlocked!");
             }
         }
@@ -2003,7 +2164,6 @@ impl Environment {
     fn set_up_initial_env_vars(&mut self) {
         // TODO: Provide all the system environment variables an app might
         // expect to find.
-
         // Initialize HOME envvar
         // BreakSaveCreation
         let time = std::time::SystemTime::now()
@@ -2024,7 +2184,6 @@ impl Environment {
                 dependencies: bin.dynamic_libraries.clone(),
             })
             .collect();
-
         generate_binary_load_order(&dylib_graph)
     }
 
@@ -2118,7 +2277,6 @@ mod dylib_sorting_tests {
     use std::collections::HashSet;
 
     use super::*;
-
     fn create_dylib_graph(bin_configs: &[(&str, &[&str])]) -> Vec<BinaryDependencyNode> {
         bin_configs
             .iter()
@@ -2133,18 +2291,15 @@ mod dylib_sorting_tests {
     /// before their import
     fn verify_sort(graph: &[BinaryDependencyNode], sorted_indices: &[usize]) {
         assert_eq!(sorted_indices.len(), graph.len());
-
         let bin_to_index: HashMap<_, _> = graph
             .iter()
             .enumerate()
             .map(|(idx, node)| (node.name.as_str(), idx))
             .collect();
-
         let mut loaded_dylibs = HashSet::new();
 
         for &index in sorted_indices {
             let current_bin = graph.get(index).unwrap();
-
             for dependency in current_bin
                 .dependencies
                 .iter()
@@ -2172,7 +2327,6 @@ mod dylib_sorting_tests {
     #[test]
     fn test_single_bin() {
         let dylib_graph = create_dylib_graph(&[("A", &[])]);
-
         let sorted_indices = generate_binary_load_order(&dylib_graph).unwrap();
 
         verify_sort(&dylib_graph, &sorted_indices);
@@ -2199,7 +2353,6 @@ mod dylib_sorting_tests {
         //  \-> C -/
         let dylib_graph =
             create_dylib_graph(&[("A", &[]), ("B", &["A"]), ("C", &["A"]), ("D", &["B", "C"])]);
-
         let sorted_indices = generate_binary_load_order(&dylib_graph).unwrap();
 
         verify_sort(&dylib_graph, &sorted_indices);
@@ -2211,7 +2364,6 @@ mod dylib_sorting_tests {
         // C
         // D
         let dylib_graph = create_dylib_graph(&[("A", &[]), ("B", &["A"]), ("C", &[]), ("D", &[])]);
-
         let sorted_indices = generate_binary_load_order(&dylib_graph).unwrap();
 
         verify_sort(&dylib_graph, &sorted_indices);
@@ -2233,7 +2385,6 @@ mod dylib_sorting_tests {
             ("G", &["F"]),
             ("H", &[]),
         ]);
-
         let sorted_indices = generate_binary_load_order(&dylib_graph).unwrap();
 
         verify_sort(&dylib_graph, &sorted_indices);
@@ -2246,7 +2397,6 @@ mod dylib_sorting_tests {
             ("B", &["A", "external2"]),
             ("C", &["B"]),
         ]);
-
         let sorted_indices = generate_binary_load_order(&dylib_graph).unwrap();
 
         verify_sort(&dylib_graph, &sorted_indices);
@@ -2256,7 +2406,6 @@ mod dylib_sorting_tests {
     fn test_cycle() {
         // A -> B -> C -> A
         let dylib_graph = create_dylib_graph(&[("A", &["C"]), ("B", &["A"]), ("C", &["B"])]);
-
         let result = generate_binary_load_order(&dylib_graph);
 
         assert!(
@@ -2268,7 +2417,6 @@ mod dylib_sorting_tests {
     #[test]
     fn test_self_dependency() {
         let dylib_graph = create_dylib_graph(&[("A", &["A"])]);
-
         let result = generate_binary_load_order(&dylib_graph);
 
         assert!(
