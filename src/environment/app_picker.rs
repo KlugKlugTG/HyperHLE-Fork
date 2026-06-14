@@ -294,6 +294,9 @@ fn show_app_picker_gui(
             "PREVIEW" => {
                 include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/res/icon_preview.png"))
             }
+            "XAVIEW" => {
+                include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/res/icon_xaview.png"))
+            }
             _ => panic!(),
         };
         let mut image = Image::from_bytes(bytes).unwrap();
