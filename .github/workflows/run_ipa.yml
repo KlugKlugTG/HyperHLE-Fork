@@ -192,6 +192,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@main
         with:
-          name: touchHLE_run_log_${{ matrix.name }}
+          name: HyperHLE_run_log_${{ matrix.name }}
           path: run.log
           if-no-files-found: ignore

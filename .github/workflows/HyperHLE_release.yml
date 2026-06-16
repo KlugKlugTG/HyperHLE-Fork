@@ -106,7 +106,7 @@ jobs:
           
       - uses: actions/upload-artifact@main
         with:
-          name: touchHLE_macOS_x86_64
+          name: HyperHLE_macOS_x86_64
           path: touchHLE.dmg
 
   build-linux:
@@ -176,7 +176,7 @@ jobs:
 
       - uses: actions/upload-artifact@main
         with:
-          name: touchHLE_Linux_x86_64
+          name: HyperHLE_Linux_x86_64
           path: touchHLE_linux_bundle/
 
   build-android:
@@ -279,7 +279,7 @@ jobs:
 
     - uses: actions/upload-artifact@main
       with:  
-        name: touchHLE_Android_AArch64  
+        name: HyperHLE_Android_AArch64  
         path: touchHLE.apk
 
   build-win:
@@ -323,7 +323,7 @@ jobs:
       
     - uses: actions/upload-artifact@main
       with:  
-        name: touchHLE_Windows_x86_64  
+        name: HyperHLE_Windows_x86_64  
         path: touchHLE_windows_bundle/
 
   check-hyperhle-release:
@@ -368,22 +368,22 @@ jobs:
       - name: Download macOS artifact
         uses: actions/download-artifact@main
         with:
-          name: touchHLE_macOS_x86_64
+          name: HyperHLE_macOS_x86_64
           path: artifacts/macos
       - name: Download Android artifact
         uses: actions/download-artifact@main
         with:
-          name: touchHLE_Android_AArch64
+          name: HyperHLE_Android_AArch64
           path: artifacts/android
       - name: Download Windows artifact
         uses: actions/download-artifact@main
         with:
-          name: touchHLE_Windows_x86_64
+          name: HyperHLE_Windows_x86_64
           path: artifacts/windows
       - name: Download Linux artifact
         uses: actions/download-artifact@main
         with:
-          name: touchHLE_Linux_x86_64
+          name: HyperHLE_Linux_x86_64
           path: artifacts/linux
       - name: Install packaging tools
         run: sudo apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq pandoc zip
