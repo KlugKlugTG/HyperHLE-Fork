@@ -44,6 +44,10 @@ def main() -> None:
         level=logging.INFO,
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
+
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+
     application = build_application()
     logging.getLogger(__name__).info("HyperHLE fix bot starting (polling)…")
     application.run_polling(allowed_updates=None)

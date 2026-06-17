@@ -10,6 +10,7 @@ from telegram import (
     Update,
 )
 from telegram.constants import ParseMode
+from telegram.helpers import escape_markdown
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -289,10 +290,10 @@ async def _show_confirmation(
     summary = t(
         context,
         "review",
-        app=app_label,
+        app=escape_markdown(app_label, version=1),
         links=len(req.ipa_links) + len(req.ipa_files),
         logs=len(req.logs),
-        bug=req.bug_description[:300],
+        bug=escape_markdown(req.bug_description[:300], version=1),
     )
     keyboard = InlineKeyboardMarkup(
         [
