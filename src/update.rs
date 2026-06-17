@@ -217,85 +217,12 @@ fn sync_changed_files(src: &Path, dest: &Path) -> Result<usize, String> {
             if let Some(parent) = to.parent() {
                 std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
             }
-            replace_file(&from, &to)?;
+            std::fs::copy(&from, &to).map_err(|e| e.to_string())?;
             echo!("Updated {}", to.display());
             replaced += 1;
         }
     }
     Ok(replaced)
-}
-
-/// Suffix used when a destination file can't be overwritten in place (e.g. the
-/// running executable on Windows). These backups are removed on the next launch
-/// by [cleanup_stale_backups].
-#[cfg(not(target_os = "android"))]
-const BACKUP_SUFFIX: &str = ".old-update";
-
-#[cfg(not(target_os = "android"))]
-fn backup_path(path: &Path) -> PathBuf {
-    let mut name = path.file_name().unwrap_or_default().to_os_string();
-    name.push(BACKUP_SUFFIX);
-    path.with_file_name(name)
-}
-
-/// Copy `from` over `to`, even when `to` is locked. A plain copy is tried
-/// first; if it fails — Windows refuses to overwrite a running executable — the
-/// existing file is moved aside to a backup (a running file can still be
-/// *renamed*, just not overwritten) and the replacement is written in its
-/// place. The backup is cleaned up on the next launch.
-#[cfg(not(target_os = "android"))]
-fn replace_file(from: &Path, to: &Path) -> Result<(), String> {
-    if std::fs::copy(from, to).is_ok() {
-        return Ok(());
-    }
-    let backup = backup_path(to);
-    let _ = std::fs::remove_file(&backup);
-    std::fs::rename(to, &backup)
-        .map_err(|e| format!("couldn't move {} aside for replacement: {e}", to.display()))?;
-    std::fs::copy(from, to).map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-/// Remove leftover `*.old-update` backups (see [replace_file]) from the install
-/// directory. The running executable's backup can't be deleted until the
-/// process that locked it has exited, so this runs on the next launch.
-#[cfg(not(target_os = "android"))]
-fn cleanup_stale_backups() {
-    let Ok(entries) = std::fs::read_dir(main_folder()) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .is_some_and(|n| n.ends_with(BACKUP_SUFFIX))
-        {
-            let _ = std::fs::remove_file(&path);
-        }
-    }
-}
-
-/// Relaunch the updated on-disk binary at `exe` with the same arguments, then
-/// exit the current process. Never returns.
-///
-/// `exe` must be the executable path captured *before* the update ran: on Linux
-/// a running binary can't be overwritten (`ETXTBSY`), so [replace_file] renames
-/// it aside, after which `std::env::current_exe()` would resolve to the backup
-/// rather than the freshly written binary at the original path.
-#[cfg(not(target_os = "android"))]
-fn relaunch(exe: Option<PathBuf>) -> ! {
-    match exe {
-        Some(exe) => {
-            let args: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
-            match std::process::Command::new(&exe).args(&args).spawn() {
-                Ok(_) => echo!("Restarting {}...", exe.display()),
-                Err(e) => log!("Couldn't relaunch automatically: {}", e),
-            }
-        }
-        None => log!("Couldn't determine executable path for relaunch."),
-    }
-    std::process::exit(0);
 }
 
 /// Download this platform's build artifact and apply it. On the desktop this
@@ -457,17 +384,6 @@ fn prompt_user(new_commit: &str) -> bool {
 /// it. Best-effort: any failure (no network, rate limiting, etc.) is logged and
 /// otherwise ignored so it never blocks startup.
 pub fn check_for_update() {
-    // Clear any backup left over from a previous Windows update, now that the
-    // process that locked the old executable has exited.
-    #[cfg(not(target_os = "android"))]
-    cleanup_stale_backups();
-
-    // Capture the executable path now, before any file is replaced: an update
-    // may rename the running binary aside, which would change what
-    // `current_exe()` resolves to (see `relaunch`).
-    #[cfg(not(target_os = "android"))]
-    let exe_path = std::env::current_exe().ok();
-
     let Some(local) = local_commit() else {
         log_dbg!(
             "Skipping update check: build version {:?} is not a commit hash.",
@@ -509,15 +425,17 @@ pub fn check_for_update() {
             #[cfg(target_os = "android")]
             let message = "The system installer will now open to finish updating HyperHLE.";
             #[cfg(not(target_os = "android"))]
-            let message = "Update complete!\n\nRestarting HyperHLE to apply the update...";
+            let message =
+                "Update complete!\n\nHyperHLE will now close — please reopen it to use the new \
+                 version.";
             echo!("{}", message);
             notify_result(true, message);
             // The update only takes effect on relaunch: the running process
             // still holds the old binary in memory, while the on-disk files are
-            // now the new version. Relaunch the updated binary and exit. (On
-            // Android the system installer handles the app lifecycle.)
+            // now the new version. Exit so the next launch is cleanly updated.
+            // (On Android the system installer handles the app lifecycle.)
             #[cfg(not(target_os = "android"))]
-            relaunch(exe_path);
+            std::process::exit(0);
         }
         Err(e) => {
             log!("Update failed: {}", e);
