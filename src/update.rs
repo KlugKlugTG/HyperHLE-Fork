@@ -106,8 +106,14 @@ fn latest_trunk_commit() -> Result<Option<String>, String> {
         .map(|s| s.to_ascii_lowercase()))
 }
 
+/// File name the Android update APK is staged under, shared with the Java side
+/// (see `MainActivity.installApk`).
+#[cfg(target_os = "android")]
+const APK_FILE_NAME: &str = "HyperHLE_update.apk";
+
 /// The directory of the running touchHLE installation (the "main folder"),
 /// into which updated files are extracted.
+#[cfg(not(target_os = "android"))]
 fn main_folder() -> PathBuf {
     // SDL2's base path is the directory containing the executable. This is the
     // root of the bundle on the desktop platforms where self-updating makes
@@ -115,6 +121,18 @@ fn main_folder() -> PathBuf {
     sdl2::filesystem::base_path()
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("."))
+}
+
+/// A writable scratch directory for staging a downloaded update before it is
+/// applied.
+fn staging_dir() -> PathBuf {
+    // `std::env::temp_dir()` isn't reliably writable on Android, so stage in the
+    // app's own external files directory there.
+    #[cfg(target_os = "android")]
+    let dir = crate::paths::user_data_base_path().join(".hyperhle_update_tmp");
+    #[cfg(not(target_os = "android"))]
+    let dir = std::env::temp_dir().join(format!("hyperhle_update_{}", std::process::id()));
+    dir
 }
 
 /// Download an artifact `.zip` from nightly.link and extract it into `dir`.
@@ -153,6 +171,7 @@ fn download_and_extract_to(artifact: &str, dir: &Path) -> Result<(), String> {
 /// Whether the file at `new` differs from the one at `installed`. A missing
 /// `installed` file counts as "differs". Compares by length and then byte
 /// content (streamed, so large binaries aren't fully buffered).
+#[cfg(not(target_os = "android"))]
 fn files_differ(new: &Path, installed: &Path) -> Result<bool, String> {
     let Ok(installed_meta) = std::fs::metadata(installed) else {
         return Ok(true); // not installed yet
@@ -184,6 +203,7 @@ fn files_differ(new: &Path, installed: &Path) -> Result<bool, String> {
 /// Recursively copy files from `src` into `dest`, writing only the files whose
 /// contents differ from (or are missing at) the destination. Returns how many
 /// files were created or replaced.
+#[cfg(not(target_os = "android"))]
 fn sync_changed_files(src: &Path, dest: &Path) -> Result<usize, String> {
     let mut replaced = 0;
     for entry in std::fs::read_dir(src).map_err(|e| e.to_string())? {
@@ -205,8 +225,9 @@ fn sync_changed_files(src: &Path, dest: &Path) -> Result<usize, String> {
     Ok(replaced)
 }
 
-/// Download this platform's build artifact, extract it into a temporary folder,
-/// and replace only the installed files that actually changed.
+/// Download this platform's build artifact and apply it. On the desktop this
+/// replaces the changed files in place; on Android it hands the downloaded APK
+/// to the system package installer.
 fn perform_update() -> Result<(), String> {
     let artifact = host_artifact().ok_or_else(|| {
         format!(
@@ -214,11 +235,20 @@ fn perform_update() -> Result<(), String> {
             std::env::consts::OS
         )
     })?;
+    #[cfg(target_os = "android")]
+    let result = perform_update_android(artifact);
+    #[cfg(not(target_os = "android"))]
+    let result = perform_update_desktop(artifact);
+    result
+}
+
+/// Desktop update: extract the artifact into a staging folder, diff it against
+/// the installation and replace only the files that actually changed.
+#[cfg(not(target_os = "android"))]
+fn perform_update_desktop(artifact: &str) -> Result<(), String> {
     let dest = main_folder();
 
-    // Stage the download in a private temp folder so we can diff it against the
-    // installation before touching anything.
-    let temp_dir = std::env::temp_dir().join(format!("hyperhle_update_{}", std::process::id()));
+    let temp_dir = staging_dir();
     let _ = std::fs::remove_dir_all(&temp_dir);
     std::fs::create_dir_all(&temp_dir).map_err(|e| e.to_string())?;
 
@@ -240,6 +270,77 @@ fn perform_update() -> Result<(), String> {
     } else {
         echo!("Replaced {} changed file(s).", replaced);
     }
+    Ok(())
+}
+
+/// Android update: an app can't overwrite its own installed binary, so download
+/// the APK, stage it in the app's external files directory, and ask the system
+/// package installer (via [install_apk_android]) to install it. The user
+/// confirms the installation in the system UI.
+#[cfg(target_os = "android")]
+fn perform_update_android(artifact: &str) -> Result<(), String> {
+    let temp_dir = staging_dir();
+    let _ = std::fs::remove_dir_all(&temp_dir);
+    std::fs::create_dir_all(&temp_dir).map_err(|e| e.to_string())?;
+
+    let outcome = (|| {
+        download_and_extract_to(artifact, &temp_dir)?;
+        let apk = find_apk(&temp_dir)?
+            .ok_or_else(|| "no .apk file found in the Android artifact".to_string())?;
+        // Stage the APK at the fixed path the Java installer reads from.
+        let dest = crate::paths::user_data_base_path().join(APK_FILE_NAME);
+        std::fs::copy(&apk, &dest).map_err(|e| e.to_string())?;
+        echo!("Staged update APK at {}", dest.display());
+        install_apk_android()
+    })();
+
+    let _ = std::fs::remove_dir_all(&temp_dir);
+    outcome
+}
+
+/// Recursively find the first `.apk` file under `dir`.
+#[cfg(target_os = "android")]
+fn find_apk(dir: &Path) -> Result<Option<PathBuf>, String> {
+    for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if path.is_dir() {
+            if let Some(found) = find_apk(&path)? {
+                return Ok(Some(found));
+            }
+        } else if path.extension().and_then(|e| e.to_str()) == Some("apk") {
+            return Ok(Some(path));
+        }
+    }
+    Ok(None)
+}
+
+/// Invoke `MainActivity.installApk()` on the Java side via JNI, which fires an
+/// `ACTION_VIEW` install intent for the staged APK. SDL has already attached
+/// the current (main) thread to the JVM, so its `JNIEnv` is valid here.
+#[cfg(target_os = "android")]
+fn install_apk_android() -> Result<(), String> {
+    use jni::JNIEnv;
+
+    extern "C" {
+        fn SDL_AndroidGetJNIEnv() -> *mut std::ffi::c_void;
+    }
+
+    let env_ptr = unsafe { SDL_AndroidGetJNIEnv() };
+    if env_ptr.is_null() {
+        return Err("couldn't obtain a JNI environment from SDL".to_string());
+    }
+    let mut env =
+        unsafe { JNIEnv::from_raw(env_ptr as *mut jni::sys::JNIEnv) }.map_err(|e| e.to_string())?;
+
+    env.call_static_method(
+        "org/touchhle/android/MainActivity",
+        "installApk",
+        "()V",
+        &[],
+    )
+    .map_err(|e| e.to_string())?;
+    echo!("Requested system installation of the update APK.");
     Ok(())
 }
 
@@ -321,11 +422,12 @@ pub fn check_for_update() {
 
     match perform_update() {
         Ok(()) => {
-            echo!("Update complete. Please restart HyperHLE to use the new version.");
-            notify_result(
-                true,
-                "Update complete!\n\nPlease restart HyperHLE to use the new version.",
-            );
+            #[cfg(target_os = "android")]
+            let message = "The system installer will now open to finish updating HyperHLE.";
+            #[cfg(not(target_os = "android"))]
+            let message = "Update complete!\n\nPlease restart HyperHLE to use the new version.";
+            echo!("{}", message);
+            notify_result(true, message);
         }
         Err(e) => {
             log!("Update failed: {}", e);

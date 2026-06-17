@@ -144,4 +144,7 @@ cargoNdk {
 
 dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
+    // Provides androidx.core.content.FileProvider, used by the in-app updater
+    // to hand the downloaded APK to the system package installer.
+    implementation 'androidx.core:core:1.13.1'
 }

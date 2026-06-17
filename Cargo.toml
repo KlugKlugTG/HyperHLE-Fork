@@ -102,6 +102,12 @@ lazy_static = "1.4.0"
 regex = "1.10.0"
 bzip2 = "0.4"
 
+# Android-only: used by the in-app updater (src/update.rs) to call into the
+# Java MainActivity.installApk() via SDL's JNI environment, since an Android app
+# can't replace its own installed APK by writing files.
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"
+
 [build-dependencies]
 cargo-license = "0.5.1"
 cc = { workspace = true }
