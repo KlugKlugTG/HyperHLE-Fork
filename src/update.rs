@@ -37,14 +37,18 @@ const BRANCH: &str = "trunk";
 /// the GitHub Actions API and for nightly.link artifact URLs.
 const WORKFLOW: &str = "HyperHLE_release";
 
-/// The artifact names uploaded by the build workflow. Each is downloaded (as a
-/// `.zip`) from nightly.link and extracted over the current installation.
-const ARTIFACTS: &[&str] = &[
-    "HyperHLE_Android_AArch64",
-    "HyperHLE_Linux_x86_64",
-    "HyperHLE_Windows_x86_64",
-    "HyperHLE_macOS_x86_64",
-];
+/// The build artifact for the platform we're running on, or [None] on a
+/// platform that has no published build. Only the host platform's artifact is
+/// runnable here, so that's the only one downloaded.
+fn host_artifact() -> Option<&'static str> {
+    match std::env::consts::OS {
+        "android" => Some("HyperHLE_Android_AArch64"),
+        "linux" => Some("HyperHLE_Linux_x86_64"),
+        "windows" => Some("HyperHLE_Windows_x86_64"),
+        "macos" => Some("HyperHLE_macOS_x86_64"),
+        _ => None,
+    }
+}
 
 /// User-Agent sent with HTTP requests. GitHub's API rejects requests without
 /// one.
@@ -157,23 +161,14 @@ fn download_and_extract_artifact(artifact: &str, dest: &Path) -> Result<(), Stri
     Ok(())
 }
 
-/// Download every build artifact from nightly.link and extract them over the
-/// current installation.
+/// Download this platform's build artifact from nightly.link and extract it
+/// over the current installation.
 fn perform_update() -> Result<(), String> {
+    let artifact = host_artifact()
+        .ok_or_else(|| format!("no HyperHLE build is published for {}", std::env::consts::OS))?;
     let dest = main_folder();
     echo!("Updating HyperHLE in {}...", dest.display());
-    let mut errors = Vec::new();
-    for artifact in ARTIFACTS {
-        if let Err(e) = download_and_extract_artifact(artifact, &dest) {
-            log!("Warning: failed to update {}: {}", artifact, e);
-            errors.push(format!("{artifact}: {e}"));
-        }
-    }
-    if errors.is_empty() {
-        Ok(())
-    } else {
-        Err(errors.join("; "))
-    }
+    download_and_extract_artifact(artifact, &dest)
 }
 
 /// Ask the user, via an SDL message box, whether they want to update to
