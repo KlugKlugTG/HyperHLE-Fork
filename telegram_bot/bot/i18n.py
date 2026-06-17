@@ -18,8 +18,8 @@ STRINGS: dict[str, dict[str, str]] = {
             "1️⃣ the *IPA link(s)*\n"
             "2️⃣ a *log file*\n"
             "3️⃣ a description of the *bug/crash*\n\n"
-            "Your request will be filed against the *latest HyperHLE build "
-            "from Actions* and forwarded to a maintainer.\n\n"
+            "Your request will be filed as a GitHub issue against the *latest "
+            "HyperHLE build from Actions*.\n\n"
             "Send /cancel any time to stop.\n\n"
             "First: what's the *app / game name*?"
         ),
@@ -84,11 +84,11 @@ STRINGS: dict[str, dict[str, str]] = {
         ),
         "ask_media": (
             "📷 Optional: send any *screenshots or a short video* that show "
-            "the problem. They'll be forwarded to the maintainer.\nSend /done "
+            "the problem. They'll be added to the GitHub issue.\nSend /done "
             "when you're finished (or to skip)."
         ),
         "media_saved": "✅ Saved attachment {n}. Send more, or /done to review.",
-        "missing": "Still missing: {items}. Use /cancel to start over.",
+        "missing": "Still missing: {items}. Let's add it:",
         "missing_app_name": "app name",
         "missing_ipa": "IPA link(s)",
         "missing_logs": "log file(s)",
@@ -121,12 +121,7 @@ STRINGS: dict[str, dict[str, str]] = {
             "\n📌 No GitHub token configured. Prefilled issue link:\n{url}"
         ),
         "issue_line_failed": (
-            "\n⚠️ Couldn't open the GitHub issue automatically (it was still forwarded)."
-        ),
-        "forward_ok": "\n📨 Forwarded to {user}.",
-        "forward_failed": (
-            "\n⚠️ Couldn't forward to {user} (is FORWARD_CHAT_ID set and has "
-            "{user} started the bot?)."
+            "\n⚠️ Couldn't open the GitHub issue automatically. Please try again later."
         ),
         "cancelled": "Cancelled. Send /start whenever you're ready.",
         "language_set": "✅ Language set to English.",
@@ -136,8 +131,51 @@ STRINGS: dict[str, dict[str, str]] = {
             "/language: change the language (English / Русский / العربية)\n"
             "/cancel: abort the current request\n"
             "/help: this message\n\n"
-            "Requests are pinned to the latest build from {actions} and "
-            "forwarded to {user}."
+            "Requests are filed as GitHub issues, pinned to the latest build "
+            "from {actions}."
+        ),
+        "already_running": (
+            "⏳ You already have a request in progress. Finish it, or send "
+            "/cancel to start over."
+        ),
+        "timed_out": (
+            "⌛ This request timed out after 15 minutes of inactivity. Send "
+            "/start to begin again."
+        ),
+        "expect_app_name": "Please send the *app / game name* as a text message.",
+        "app_name_empty": "The *app / game name* can't be empty — please send it as text.",
+        "app_name_too_many_words": (
+            "That's a bit long for a name. Please keep the *app / game name* "
+            "to 6 words or fewer."
+        ),
+        "app_version_invalid": (
+            "The *version* should be numbers, optionally starting with `v` "
+            "(e.g. `1.0` or `v1.0.2`). Try again, or send /skip."
+        ),
+        "expect_bug": "Please *describe the bug* in a text message.",
+        "expect_ipa": (
+            "Please paste an IPA *download link*, or attach the `.ipa` file, "
+            "then send /done."
+        ),
+        "too_many_ipa_files": (
+            "That's the most IPA files I can take. Send /done to continue."
+        ),
+        "too_many_logs": "That's the most logs I can take. Send /done to continue.",
+        "too_many_media": (
+            "That's the most attachments I can take. Send /done to review."
+        ),
+        "log_binary": (
+            "That file looks like binary data, not a text log. Please attach a "
+            "plain-text `.txt`/`.log`, or paste the log text."
+        ),
+        "log_no_header": (
+            "That doesn't look like a HyperHLE/touchHLE log. A real log starts "
+            "with a line like `touchHLE UNOFFICIAL <hash> — https://touchhle.org/`. "
+            "Please attach or paste the actual log."
+        ),
+        "issue_line_no_token_short": (
+            "\n📌 No GitHub token configured, and the prefilled details were too "
+            "long for a link. Open a blank issue here:\n{url}"
         ),
     },
     "ru": {
@@ -148,8 +186,8 @@ STRINGS: dict[str, dict[str, str]] = {
             "1️⃣ *ссылку (ссылки) на IPA*\n"
             "2️⃣ *файл лога*\n"
             "3️⃣ описание *бага/вылета*\n\n"
-            "Запрос будет привязан к *последней сборке HyperHLE из Actions* "
-            "и переслан мейнтейнеру.\n\n"
+            "Запрос будет создан как issue на GitHub и привязан к *последней "
+            "сборке HyperHLE из Actions*.\n\n"
             "Отправьте /cancel в любой момент, чтобы прервать.\n\n"
             "Для начала: как называется *приложение / игра*?"
         ),
@@ -217,11 +255,11 @@ STRINGS: dict[str, dict[str, str]] = {
         ),
         "ask_media": (
             "📷 Необязательно: пришлите *скриншоты или короткое видео* с "
-            "проблемой. Они будут пересланы мейнтейнеру.\nОтправьте /done, "
-            "когда закончите (или чтобы пропустить)."
+            "проблемой. Они будут добавлены в issue на GitHub.\nОтправьте "
+            "/done, когда закончите (или чтобы пропустить)."
         ),
         "media_saved": "✅ Вложение {n} сохранено. Пришлите ещё или /done для проверки.",
-        "missing": "Ещё не хватает: {items}. Используйте /cancel, чтобы начать заново.",
+        "missing": "Ещё не хватает: {items}. Давайте добавим:",
         "missing_app_name": "название приложения",
         "missing_ipa": "ссылка на IPA",
         "missing_logs": "файл лога",
@@ -253,13 +291,8 @@ STRINGS: dict[str, dict[str, str]] = {
             "\n📌 GitHub-токен не настроен. Ссылка с предзаполненным issue:\n{url}"
         ),
         "issue_line_failed": (
-            "\n⚠️ Не удалось автоматически создать issue на GitHub "
-            "(запрос всё равно переслан)."
-        ),
-        "forward_ok": "\n📨 Переслано {user}.",
-        "forward_failed": (
-            "\n⚠️ Не удалось переслать {user} (задан ли FORWARD_CHAT_ID и "
-            "писал(а) ли {user} боту хоть раз?)."
+            "\n⚠️ Не удалось автоматически создать issue на GitHub. "
+            "Попробуйте позже."
         ),
         "cancelled": "Отменено. Отправьте /start, когда будете готовы.",
         "language_set": "✅ Язык переключён на русский.",
@@ -269,8 +302,56 @@ STRINGS: dict[str, dict[str, str]] = {
             "/language: сменить язык (English / Русский / العربية)\n"
             "/cancel: прервать текущий запрос\n"
             "/help: это сообщение\n\n"
-            "Запросы привязываются к последней сборке из {actions} и "
-            "пересылаются {user}."
+            "Запросы создаются как issue на GitHub и привязываются к "
+            "последней сборке из {actions}."
+        ),
+        "already_running": (
+            "⏳ У вас уже есть запрос в процессе. Завершите его или отправьте "
+            "/cancel, чтобы начать заново."
+        ),
+        "timed_out": (
+            "⌛ Время на этот запрос истекло (15 минут без действий). "
+            "Отправьте /start, чтобы начать заново."
+        ),
+        "expect_app_name": "Пришлите *название приложения / игры* текстом.",
+        "app_name_empty": "*Название приложения / игры* не может быть пустым — пришлите его текстом.",
+        "app_name_too_many_words": (
+            "Слишком длинное название. Уложитесь, пожалуйста, в 6 слов или "
+            "меньше для *названия приложения / игры*."
+        ),
+        "app_version_invalid": (
+            "*Версия* должна состоять из цифр, можно с `v` в начале (например, "
+            "`1.0` или `v1.0.2`). Попробуйте ещё раз или отправьте /skip."
+        ),
+        "expect_bug": "Пожалуйста, *опишите баг* текстовым сообщением.",
+        "expect_ipa": (
+            "Пришлите *ссылку для скачивания* IPA или прикрепите файл `.ipa`, "
+            "затем отправьте /done."
+        ),
+        "too_many_ipa_files": (
+            "Это максимум файлов IPA, который я могу принять. Отправьте /done, "
+            "чтобы продолжить."
+        ),
+        "too_many_logs": (
+            "Это максимум логов, который я могу принять. Отправьте /done, "
+            "чтобы продолжить."
+        ),
+        "too_many_media": (
+            "Это максимум вложений, который я могу принять. Отправьте /done "
+            "для проверки."
+        ),
+        "log_binary": (
+            "Этот файл похож на двоичные данные, а не на текстовый лог. "
+            "Прикрепите текстовый `.txt`/`.log` или вставьте текст лога."
+        ),
+        "log_no_header": (
+            "Это не похоже на лог HyperHLE/touchHLE. Настоящий лог начинается "
+            "со строки вида `touchHLE UNOFFICIAL <hash> — https://touchhle.org/`. "
+            "Прикрепите или вставьте настоящий лог."
+        ),
+        "issue_line_no_token_short": (
+            "\n📌 GitHub-токен не настроен, а предзаполненная ссылка получилась "
+            "слишком длинной. Откройте пустой issue здесь:\n{url}"
         ),
     },
     "ar": {
@@ -281,8 +362,8 @@ STRINGS: dict[str, dict[str, str]] = {
             "1️⃣ *رابط (روابط) ملف IPA*\n"
             "2️⃣ *ملف السجل*\n"
             "3️⃣ وصف *الخطأ/الانهيار*\n\n"
-            "سيُربط طلبك بأحدث نسخة من HyperHLE من Actions ويُحوَّل إلى "
-            "المشرف.\n\n"
+            "سيُسجَّل طلبك كمشكلة (issue) على GitHub ويُربط بأحدث نسخة من "
+            "HyperHLE من Actions.\n\n"
             "أرسل /cancel في أي وقت للإلغاء.\n\n"
             "أولاً: ما اسم *التطبيق / اللعبة*؟"
         ),
@@ -348,10 +429,10 @@ STRINGS: dict[str, dict[str, str]] = {
         ),
         "ask_media": (
             "📷 اختياري: أرسل *لقطات شاشة أو فيديو قصيراً* يوضح المشكلة. "
-            "سيتم تحويلها إلى المشرف.\nأرسل /done عند الانتهاء (أو للتخطي)."
+            "ستُضاف إلى مشكلة GitHub.\nأرسل /done عند الانتهاء (أو للتخطي)."
         ),
         "media_saved": "✅ تم حفظ المرفق {n}. أرسل المزيد، أو /done للمراجعة.",
-        "missing": "ما زال ينقص: {items}. استخدم /cancel للبدء من جديد.",
+        "missing": "ما زال ينقص: {items}. لنُضِفه:",
         "missing_app_name": "اسم التطبيق",
         "missing_ipa": "رابط IPA",
         "missing_logs": "ملف السجل",
@@ -383,12 +464,7 @@ STRINGS: dict[str, dict[str, str]] = {
             "\n📌 لم يتم إعداد رمز GitHub. رابط مشكلة مُعبأ مسبقاً:\n{url}"
         ),
         "issue_line_failed": (
-            "\n⚠️ تعذر فتح المشكلة على GitHub تلقائياً (تم تحويل الطلب رغم ذلك)."
-        ),
-        "forward_ok": "\n📨 تم التحويل إلى {user}.",
-        "forward_failed": (
-            "\n⚠️ تعذر التحويل إلى {user} (هل تم ضبط FORWARD_CHAT_ID وهل "
-            "راسل {user} البوت من قبل؟)."
+            "\n⚠️ تعذر فتح المشكلة على GitHub تلقائياً. حاول مرة أخرى لاحقاً."
         ),
         "cancelled": "تم الإلغاء. أرسل /start عندما تكون جاهزاً.",
         "language_set": "✅ تم تغيير اللغة إلى العربية.",
@@ -398,7 +474,46 @@ STRINGS: dict[str, dict[str, str]] = {
             "/language: تغيير اللغة (English / Русский / العربية)\n"
             "/cancel: إلغاء الطلب الحالي\n"
             "/help: هذه الرسالة\n\n"
-            "تُربط الطلبات بأحدث نسخة من {actions} وتُحوَّل إلى {user}."
+            "تُسجَّل الطلبات كمشكلات على GitHub وتُربط بأحدث نسخة من {actions}."
+        ),
+        "already_running": (
+            "⏳ لديك طلب قيد التنفيذ بالفعل. أكمله، أو أرسل /cancel للبدء من جديد."
+        ),
+        "timed_out": (
+            "⌛ انتهت مهلة هذا الطلب بعد 15 دقيقة من الخمول. أرسل /start "
+            "للبدء من جديد."
+        ),
+        "expect_app_name": "أرسل *اسم التطبيق / اللعبة* كرسالة نصية.",
+        "app_name_empty": "*اسم التطبيق / اللعبة* لا يمكن أن يكون فارغاً — أرسله كنص.",
+        "app_name_too_many_words": (
+            "هذا الاسم طويل بعض الشيء. الرجاء إبقاء *اسم التطبيق / اللعبة* في "
+            "6 كلمات أو أقل."
+        ),
+        "app_version_invalid": (
+            "يجب أن يكون *الإصدار* أرقاماً، مع `v` اختيارية في البداية (مثل "
+            "`1.0` أو `v1.0.2`). حاول مرة أخرى أو أرسل /skip."
+        ),
+        "expect_bug": "الرجاء *وصف الخطأ* في رسالة نصية.",
+        "expect_ipa": (
+            "الرجاء لصق *رابط تنزيل* IPA أو إرفاق ملف `.ipa`، ثم أرسل /done."
+        ),
+        "too_many_ipa_files": (
+            "هذا أقصى عدد ملفات IPA يمكنني قبوله. أرسل /done للمتابعة."
+        ),
+        "too_many_logs": "هذا أقصى عدد سجلات يمكنني قبوله. أرسل /done للمتابعة.",
+        "too_many_media": "هذا أقصى عدد مرفقات يمكنني قبوله. أرسل /done للمراجعة.",
+        "log_binary": (
+            "يبدو هذا الملف بيانات ثنائية وليس سجلاً نصياً. الرجاء إرفاق ملف "
+            "نصي `.txt`/`.log` أو لصق نص السجل."
+        ),
+        "log_no_header": (
+            "هذا لا يبدو سجل HyperHLE/touchHLE. يبدأ السجل الحقيقي بسطر مثل "
+            "`touchHLE UNOFFICIAL <hash> — https://touchhle.org/`. الرجاء إرفاق "
+            "أو لصق السجل الفعلي."
+        ),
+        "issue_line_no_token_short": (
+            "\n📌 لم يتم إعداد رمز GitHub، والرابط المُعبأ مسبقاً كان طويلاً جداً. "
+            "افتح مشكلة فارغة هنا:\n{url}"
         ),
     },
 }

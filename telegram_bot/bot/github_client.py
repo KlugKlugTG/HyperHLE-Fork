@@ -14,6 +14,7 @@ verify" and issue filing falls back to a prefilled "new issue" link).
 """
 from __future__ import annotations
 
+import base64
 import urllib.parse
 from dataclasses import dataclass
 
@@ -91,13 +92,70 @@ class GitHubClient:
         except (httpx.HTTPError, ValueError, KeyError):
             return None
 
-    def new_issue_link(self, title: str, body: str) -> str:
-        """A prefilled GitHub "new issue" URL (fallback when no token)."""
-        query = urllib.parse.urlencode(
-            {
-                "template": "app_fix_request.yml",
-                "title": title,
-                "body": body,
-            }
-        )
+    def new_issue_link(self, title: str, body: str = "") -> str:
+        """A prefilled GitHub "new issue" URL (fallback when no token).
+
+        With ``body=""`` this is a short link that just opens the template with
+        the title prefilled — used when the full body would push the message
+        past Telegram's size limit.
+        """
+        params = {"template": "app_fix_request.yml", "title": title}
+        if body:
+            params["body"] = body
+        query = urllib.parse.urlencode(params)
         return f"https://github.com/{self._owner}/{self._repo}/issues/new?{query}"
+
+    async def ensure_branch(self, branch: str, base_branch: str = "trunk") -> bool:
+        """Make sure `branch` exists, creating it from `base_branch` if not.
+
+        Returns True if the branch exists (or was created), False otherwise.
+        Used to keep uploaded attachments off the main branch.
+        """
+        if not self._token:
+            return False
+        owner, repo = self._owner, self._repo
+        ref = f"/repos/{owner}/{repo}/git/ref/heads/{urllib.parse.quote(branch)}"
+        base_ref = f"/repos/{owner}/{repo}/git/ref/heads/{urllib.parse.quote(base_branch)}"
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                existing = await client.get(API_ROOT + ref, headers=self._headers())
+                if existing.status_code == 200:
+                    return True
+                base = await client.get(API_ROOT + base_ref, headers=self._headers())
+                if base.status_code != 200:
+                    return False
+                sha = base.json()["object"]["sha"]
+                created = await client.post(
+                    API_ROOT + f"/repos/{owner}/{repo}/git/refs",
+                    headers=self._headers(),
+                    json={"ref": f"refs/heads/{branch}", "sha": sha},
+                )
+            return created.status_code in (200, 201)
+        except (httpx.HTTPError, ValueError, KeyError):
+            return False
+
+    async def upload_attachment(
+        self, path: str, data: bytes, *, branch: str, commit_message: str
+    ) -> str | None:
+        """Upload a binary asset via the Contents API; return its raw download
+        URL, or None on failure / when there is no token."""
+        if not self._token:
+            return None
+        # Encode each path segment but keep the slashes between folders.
+        safe_path = "/".join(urllib.parse.quote(seg) for seg in path.split("/"))
+        api = f"/repos/{self._owner}/{self._repo}/contents/{safe_path}"
+        payload: dict[str, object] = {
+            "message": commit_message,
+            "content": base64.b64encode(data).decode("ascii"),
+            "branch": branch,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                resp = await client.put(
+                    API_ROOT + api, headers=self._headers(), json=payload
+                )
+            if resp.status_code not in (200, 201):
+                return None
+            return resp.json().get("content", {}).get("download_url")
+        except (httpx.HTTPError, ValueError, KeyError):
+            return None

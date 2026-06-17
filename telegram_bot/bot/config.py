@@ -39,6 +39,12 @@ class Config:
     github_repo: str
     issue_labels: list[str]
     persistence_file: Path
+    # Screenshots/video and log files are uploaded to the GitHub issue. To keep
+    # them off the main branch they are committed to this dedicated branch
+    # (created from default_branch on first use).
+    upload_attachments: bool = True
+    attachments_branch: str = "telegram-bot-attachments"
+    default_branch: str = "trunk"
 
     @property
     def repo_slug(self) -> str:
@@ -79,6 +85,9 @@ def load_config() -> Config:
         else Path(__file__).resolve().parent.parent / "bot_state.pickle"
     )
 
+    upload_raw = os.environ.get("UPLOAD_ATTACHMENTS", "true").strip().lower()
+    upload_attachments = upload_raw not in ("0", "false", "no", "off")
+
     return Config(
         telegram_token=token,
         forward_chat_id=forward_chat_id,
@@ -88,4 +97,11 @@ def load_config() -> Config:
         github_repo=os.environ.get("GITHUB_REPO", "HyperHLE").strip(),
         issue_labels=labels,
         persistence_file=persistence_file,
+        upload_attachments=upload_attachments,
+        attachments_branch=os.environ.get(
+            "GITHUB_ATTACHMENTS_BRANCH", "telegram-bot-attachments"
+        ).strip()
+        or "telegram-bot-attachments",
+        default_branch=os.environ.get("GITHUB_DEFAULT_BRANCH", "trunk").strip()
+        or "trunk",
     )

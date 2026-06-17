@@ -18,12 +18,29 @@ When the request is complete the bot:
   [Actions](https://github.com/HyperHLE/HyperHLE/actions),
 - opens a GitHub issue using the same fields as the
   [`Request an app fix (IPA + logs)`](../.github/ISSUE_TEMPLATE/app_fix_request.yml)
-  issue template, and
-- **forwards** the whole request (and any screenshots/video) to the maintainer
-  **[@Tog991](https://t.me/Tog991)** on Telegram.
+  issue template, **uploading the log file(s) and any screenshots/video** to
+  the issue (committed to a dedicated `telegram-bot-attachments` branch and
+  embedded inline), and
+- **forwards** the request and the attached IPA file(s) to the maintainer on
+  Telegram in the background (the user is not told about this).
 
-Logs are validated as they come in: attached files must be plain-text
-`.txt`/`.log` files, and empty logs (attached or pasted) are rejected.
+Input is validated and sanitized as it comes in:
+
+- every free-text field is stripped of control/zero-width characters,
+  whitespace-collapsed and length-capped, and **all user text is escaped or
+  fenced** before being embedded in any Markdown (Telegram messages *and* the
+  GitHub issue body), so a stray `_` or a crafted `](http://evil)` can neither
+  break a message nor inject a link;
+- app/game names are capped at **6 words**; versions must be numbers with an
+  optional leading `v` (e.g. `v1.0`);
+- logs must be plain-text `.txt`/`.log`, non-empty, not binary, and must begin
+  with a genuine HyperHLE/touchHLE header line; per-log, per-message and total
+  sizes are all capped;
+- the number of IPA files, logs and screenshots/videos is capped, as is the
+  total stored size (so the saved-state pickle can't be bloated by multi-MB
+  logs).
+
+A request **times out after 15 minutes** of inactivity.
 
 ## Conversation flow
 
@@ -42,11 +59,13 @@ questions. `/language` re-opens the picker at any time, even mid-request.
  → bug / crash            (required)
  → log file(s)            (required — attach a file or paste text, then /done)
  → OS / GPU               (/skip)
- → screenshots / video    (optional, then /done)
+ → screenshots / video    (optional — uploaded to the issue, then /done)
  → review → ✅ Submit
 ```
 
-`/cancel` aborts at any point. `/help` explains the commands.
+`/cancel` aborts at any point. `/help` explains the commands. Sending `/start`
+while a request is already in progress tells you to finish (or `/cancel`) it
+first, and a request left idle for **15 minutes** times out automatically.
 
 ## Setup
 
@@ -68,9 +87,12 @@ python -m bot.main
 | `TELEGRAM_BOT_TOKEN` | yes | Bot token from [@BotFather](https://t.me/BotFather). |
 | `FORWARD_CHAT_ID` | for forwarding | Numeric chat id to forward requests to (Tog991). |
 | `FORWARD_USERNAME` | no | Display handle, defaults to `@Tog991`. |
-| `GITHUB_TOKEN` | for auto-filing | Token with `repo` / `issues:write` scope. |
+| `GITHUB_TOKEN` | for auto-filing | Token with `repo` / `issues:write` + `contents:write` scope (the last is needed to upload log/media attachments). |
 | `GITHUB_OWNER` / `GITHUB_REPO` | no | Defaults to `HyperHLE` / `HyperHLE`. |
 | `GITHUB_ISSUE_LABELS` | no | Comma-separated labels, default `app fix request`. |
+| `UPLOAD_ATTACHMENTS` | no | Upload logs + screenshots/video to the issue. Default `true`; set `false` to disable. |
+| `GITHUB_ATTACHMENTS_BRANCH` | no | Branch attachments are committed to, default `telegram-bot-attachments` (created on first use). |
+| `GITHUB_DEFAULT_BRANCH` | no | Branch the attachments branch is created from, default `trunk`. |
 | `PERSISTENCE_FILE` | no | Pickle file for saved user languages, default `bot_state.pickle` next to the project. |
 
 #### Forwarding to @Tog991
