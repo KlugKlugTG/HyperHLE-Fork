@@ -425,9 +425,17 @@ pub fn check_for_update() {
             #[cfg(target_os = "android")]
             let message = "The system installer will now open to finish updating HyperHLE.";
             #[cfg(not(target_os = "android"))]
-            let message = "Update complete!\n\nPlease restart HyperHLE to use the new version.";
+            let message =
+                "Update complete!\n\nHyperHLE will now close — please reopen it to use the new \
+                 version.";
             echo!("{}", message);
             notify_result(true, message);
+            // The update only takes effect on relaunch: the running process
+            // still holds the old binary in memory, while the on-disk files are
+            // now the new version. Exit so the next launch is cleanly updated.
+            // (On Android the system installer handles the app lifecycle.)
+            #[cfg(not(target_os = "android"))]
+            std::process::exit(0);
         }
         Err(e) => {
             log!("Update failed: {}", e);
