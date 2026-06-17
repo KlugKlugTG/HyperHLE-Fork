@@ -111,6 +111,12 @@ fn latest_trunk_commit() -> Result<Option<String>, String> {
 #[cfg(target_os = "android")]
 const APK_FILE_NAME: &str = "HyperHLE_update.apk";
 
+/// Suffix appended to a file that is moved aside because it couldn't be
+/// overwritten in place (see [replace_file]). Leftover files with this suffix
+/// are deleted at the start of the next update by [remove_stale_backups].
+#[cfg(not(target_os = "android"))]
+const BACKUP_SUFFIX: &str = ".hyperhle-old";
+
 /// The directory of the running touchHLE installation (the "main folder"),
 /// into which updated files are extracted.
 #[cfg(not(target_os = "android"))]
@@ -200,6 +206,45 @@ fn files_differ(new: &Path, installed: &Path) -> Result<bool, String> {
     }
 }
 
+/// Copy `from` over `to`, replacing whatever is already there.
+///
+/// A plain [std::fs::copy] is enough on Unix, but on Windows a file that is
+/// currently executing (the running `.exe`) or mapped into the process (a
+/// loaded `.dll`) is locked and can't be opened for writing — the copy fails
+/// with `os error 32` ("being used by another process"). Such a file *can*
+/// still be renamed, though: the running process keeps using the open handle
+/// regardless of the file's name. So when the in-place copy fails, move the
+/// locked file aside (to a [BACKUP_SUFFIX] name) and retry into the now-free
+/// path. The leftover backup is removed by [remove_stale_backups] next time.
+#[cfg(not(target_os = "android"))]
+fn replace_file(from: &Path, to: &Path) -> Result<(), String> {
+    match std::fs::copy(from, to) {
+        Ok(_) => Ok(()),
+        // No existing file is in the way; the error is something else (e.g. a
+        // missing parent directory), so don't bother with the rename dance.
+        Err(_) if !to.exists() => std::fs::copy(from, to).map(|_| ()).map_err(|e| e.to_string()),
+        Err(copy_err) => {
+            let mut backup = to.as_os_str().to_os_string();
+            backup.push(BACKUP_SUFFIX);
+            let backup = PathBuf::from(backup);
+            // A backup from a previous failed/interrupted update may still be
+            // there; the rename below would fail on Windows if it is.
+            let _ = std::fs::remove_file(&backup);
+            std::fs::rename(to, &backup).map_err(|rename_err| {
+                format!("{copy_err} (and couldn't move the existing file aside: {rename_err})")
+            })?;
+            match std::fs::copy(from, to) {
+                Ok(_) => Ok(()),
+                Err(retry_err) => {
+                    // Put the original back so the installation isn't left broken.
+                    let _ = std::fs::rename(&backup, to);
+                    Err(retry_err.to_string())
+                }
+            }
+        }
+    }
+}
+
 /// Recursively copy files from `src` into `dest`, writing only the files whose
 /// contents differ from (or are missing at) the destination. Returns how many
 /// files were created or replaced.
@@ -217,12 +262,36 @@ fn sync_changed_files(src: &Path, dest: &Path) -> Result<usize, String> {
             if let Some(parent) = to.parent() {
                 std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
             }
-            std::fs::copy(&from, &to).map_err(|e| e.to_string())?;
+            replace_file(&from, &to)?;
             echo!("Updated {}", to.display());
             replaced += 1;
         }
     }
     Ok(replaced)
+}
+
+/// Recursively delete leftover [BACKUP_SUFFIX] files under `dir`. These are the
+/// locked originals (e.g. the previous `.exe`) that [replace_file] moved aside
+/// during an earlier update; they can only be removed once that older process
+/// is no longer running, i.e. on a subsequent launch. Best-effort: anything
+/// still locked or otherwise un-removable is just skipped.
+#[cfg(not(target_os = "android"))]
+fn remove_stale_backups(dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            remove_stale_backups(&path);
+        } else if path
+            .as_os_str()
+            .to_str()
+            .is_some_and(|s| s.ends_with(BACKUP_SUFFIX))
+        {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
 }
 
 /// Download this platform's build artifact and apply it. On the desktop this
@@ -384,6 +453,12 @@ fn prompt_user(new_commit: &str) -> bool {
 /// it. Best-effort: any failure (no network, rate limiting, etc.) is logged and
 /// otherwise ignored so it never blocks startup.
 pub fn check_for_update() {
+    // Clean up any file the previous update moved aside because it was locked
+    // (e.g. the old `.exe`). It couldn't be deleted while that process was
+    // running, but it can be now.
+    #[cfg(not(target_os = "android"))]
+    remove_stale_backups(&main_folder());
+
     let Some(local) = local_commit() else {
         log_dbg!(
             "Skipping update check: build version {:?} is not a commit hash.",
