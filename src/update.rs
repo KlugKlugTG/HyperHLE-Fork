@@ -19,16 +19,13 @@
 //! downloaded from nightly.link and extracted over the top of the current
 //! installation.
 
-use crate::{GITHUB_REPOSITORY, VERSION};
+use crate::VERSION;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-/// Repository to check for updates, in `owner/repo` form. Derived from the
-/// `GITHUB_REPOSITORY` baked in at build time, falling back to the upstream
-/// HyperHLE repository.
-fn repo() -> &'static str {
-    GITHUB_REPOSITORY.unwrap_or("HyperHLE/HyperHLE")
-}
+/// Repository to check for updates, in `owner/repo` form. Locked to the
+/// upstream HyperHLE repository regardless of where this build was produced.
+const REPO: &str = "HyperHLE/HyperHLE";
 
 /// The branch official builds are produced from.
 const BRANCH: &str = "trunk";
@@ -100,9 +97,7 @@ fn latest_trunk_commit() -> Result<Option<String>, String> {
     let url = format!(
         "https://api.github.com/repos/{}/actions/workflows/{}.yml/runs\
          ?branch={}&event=push&status=success&per_page=1",
-        repo(),
-        WORKFLOW,
-        BRANCH,
+        REPO, WORKFLOW, BRANCH,
     );
     let body = http_get_bytes(&url)?;
     let json: serde_json::Value = serde_json::from_slice(&body).map_err(|e| e.to_string())?;
@@ -128,10 +123,7 @@ fn download_and_extract_artifact(artifact: &str, dest: &Path) -> Result<(), Stri
     // Format: https://nightly.link/<owner>/<repo>/workflows/<workflow>/<branch>/<artifact>.zip
     let url = format!(
         "https://nightly.link/{}/workflows/{}/{}/{}.zip",
-        repo(),
-        WORKFLOW,
-        BRANCH,
-        artifact,
+        REPO, WORKFLOW, BRANCH, artifact,
     );
     echo!("Downloading {}...", url);
     let bytes = http_get_bytes(&url)?;
@@ -164,8 +156,12 @@ fn download_and_extract_artifact(artifact: &str, dest: &Path) -> Result<(), Stri
 /// Download this platform's build artifact from nightly.link and extract it
 /// over the current installation.
 fn perform_update() -> Result<(), String> {
-    let artifact = host_artifact()
-        .ok_or_else(|| format!("no HyperHLE build is published for {}", std::env::consts::OS))?;
+    let artifact = host_artifact().ok_or_else(|| {
+        format!(
+            "no HyperHLE build is published for {}",
+            std::env::consts::OS
+        )
+    })?;
     let dest = main_folder();
     echo!("Updating HyperHLE in {}...", dest.display());
     download_and_extract_artifact(artifact, &dest)
