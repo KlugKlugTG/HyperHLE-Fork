@@ -117,9 +117,8 @@ fn main_folder() -> PathBuf {
         .unwrap_or_else(|_| PathBuf::from("."))
 }
 
-/// Download and extract a single nightly.link artifact `.zip` into `dest`,
-/// overwriting any existing files.
-fn download_and_extract_artifact(artifact: &str, dest: &Path) -> Result<(), String> {
+/// Download an artifact `.zip` from nightly.link and extract it into `dir`.
+fn download_and_extract_to(artifact: &str, dir: &Path) -> Result<(), String> {
     // Format: https://nightly.link/<owner>/<repo>/workflows/<workflow>/<branch>/<artifact>.zip
     let url = format!(
         "https://nightly.link/{}/workflows/{}/{}/{}.zip",
@@ -132,12 +131,12 @@ fn download_and_extract_artifact(artifact: &str, dest: &Path) -> Result<(), Stri
     let mut archive = zip::ZipArchive::new(reader).map_err(|e| e.to_string())?;
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i).map_err(|e| e.to_string())?;
-        // Use the sanitised path to avoid zip-slip writes outside `dest`.
+        // Use the sanitised path to avoid zip-slip writes outside `dir`.
         let Some(relative) = entry.enclosed_name() else {
             log!("Warning: skipping unsafe path in {} artifact", artifact);
             continue;
         };
-        let out_path = dest.join(relative);
+        let out_path = dir.join(relative);
         if entry.is_dir() {
             std::fs::create_dir_all(&out_path).map_err(|e| e.to_string())?;
             continue;
@@ -145,16 +144,69 @@ fn download_and_extract_artifact(artifact: &str, dest: &Path) -> Result<(), Stri
         if let Some(parent) = out_path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
-        // File::create truncates, so existing files are overwritten.
         let mut out = std::fs::File::create(&out_path).map_err(|e| e.to_string())?;
         std::io::copy(&mut entry, &mut out).map_err(|e| e.to_string())?;
     }
-    echo!("Extracted {} into {}", artifact, dest.display());
     Ok(())
 }
 
-/// Download this platform's build artifact from nightly.link and extract it
-/// over the current installation.
+/// Whether the file at `new` differs from the one at `installed`. A missing
+/// `installed` file counts as "differs". Compares by length and then byte
+/// content (streamed, so large binaries aren't fully buffered).
+fn files_differ(new: &Path, installed: &Path) -> Result<bool, String> {
+    let Ok(installed_meta) = std::fs::metadata(installed) else {
+        return Ok(true); // not installed yet
+    };
+    let new_meta = std::fs::metadata(new).map_err(|e| e.to_string())?;
+    if new_meta.len() != installed_meta.len() {
+        return Ok(true);
+    }
+    let mut new_file = std::fs::File::open(new).map_err(|e| e.to_string())?;
+    let mut installed_file = std::fs::File::open(installed).map_err(|e| e.to_string())?;
+    let mut new_buf = [0u8; 8192];
+    let mut installed_buf = [0u8; 8192];
+    loop {
+        let n = new_file.read(&mut new_buf).map_err(|e| e.to_string())?;
+        if n == 0 {
+            return Ok(false); // reached EOF with no difference (equal lengths)
+        }
+        // The files are the same length and read in lock-step, so the installed
+        // file always has at least `n` more bytes available here.
+        installed_file
+            .read_exact(&mut installed_buf[..n])
+            .map_err(|e| e.to_string())?;
+        if new_buf[..n] != installed_buf[..n] {
+            return Ok(true);
+        }
+    }
+}
+
+/// Recursively copy files from `src` into `dest`, writing only the files whose
+/// contents differ from (or are missing at) the destination. Returns how many
+/// files were created or replaced.
+fn sync_changed_files(src: &Path, dest: &Path) -> Result<usize, String> {
+    let mut replaced = 0;
+    for entry in std::fs::read_dir(src).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let from = entry.path();
+        let to = dest.join(entry.file_name());
+        if entry.file_type().map_err(|e| e.to_string())?.is_dir() {
+            std::fs::create_dir_all(&to).map_err(|e| e.to_string())?;
+            replaced += sync_changed_files(&from, &to)?;
+        } else if files_differ(&from, &to)? {
+            if let Some(parent) = to.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            }
+            std::fs::copy(&from, &to).map_err(|e| e.to_string())?;
+            echo!("Updated {}", to.display());
+            replaced += 1;
+        }
+    }
+    Ok(replaced)
+}
+
+/// Download this platform's build artifact, extract it into a temporary folder,
+/// and replace only the installed files that actually changed.
 fn perform_update() -> Result<(), String> {
     let artifact = host_artifact().ok_or_else(|| {
         format!(
@@ -163,8 +215,32 @@ fn perform_update() -> Result<(), String> {
         )
     })?;
     let dest = main_folder();
-    echo!("Updating HyperHLE in {}...", dest.display());
-    download_and_extract_artifact(artifact, &dest)
+
+    // Stage the download in a private temp folder so we can diff it against the
+    // installation before touching anything.
+    let temp_dir = std::env::temp_dir().join(format!("hyperhle_update_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&temp_dir);
+    std::fs::create_dir_all(&temp_dir).map_err(|e| e.to_string())?;
+
+    let outcome = (|| {
+        download_and_extract_to(artifact, &temp_dir)?;
+        echo!(
+            "Comparing the new build against the installation in {}...",
+            dest.display()
+        );
+        sync_changed_files(&temp_dir, &dest)
+    })();
+
+    // Always clean up the staging folder, regardless of success.
+    let _ = std::fs::remove_dir_all(&temp_dir);
+
+    let replaced = outcome?;
+    if replaced == 0 {
+        echo!("Already up to date — no files needed replacing.");
+    } else {
+        echo!("Replaced {} changed file(s).", replaced);
+    }
+    Ok(())
 }
 
 /// Ask the user, via an SDL message box, whether they want to update to
