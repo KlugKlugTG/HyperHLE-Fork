@@ -426,7 +426,7 @@ pub fn check_for_update() {
             let message = "The system installer will now open to finish updating HyperHLE.";
             #[cfg(not(target_os = "android"))]
             let message =
-                "Update complete!\n\nHyperHLE will now close — please reopen it to use the new \
+                "Update complete\n\nHyperHLE will now close, please reopen it to use the new \
                  version.";
             echo!("{}", message);
             notify_result(true, message);
