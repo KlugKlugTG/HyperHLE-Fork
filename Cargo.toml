@@ -61,6 +61,12 @@ symphonia = { version = "0.6.0", default-features = false, features = [
     "aac", "adpcm", "alac", "mp3", "pcm"
 ] }
 quick-xml = "0.38.4"
+# Used by the in-app updater (src/update.rs) to query the GitHub API and
+# download build artifacts from nightly.link. rustls is used (the default) so
+# that no system OpenSSL is required, which keeps the cross-platform/Android
+# builds self-contained. serde_json parses the GitHub Actions API response.
+ureq = "2.12"
+serde_json = "1.0"
 digest = "0.10.7"
 md-5 = "0.10.6"
 sha1 = "0.10.6"

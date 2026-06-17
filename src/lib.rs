@@ -48,6 +48,7 @@ mod objc;
 mod options;
 mod paths;
 mod stack;
+mod update;
 mod window;
 
 // Environment is used very frequently used and used to be in this module, so
@@ -174,6 +175,12 @@ pub fn main<T: Iterator<Item = String>>(mut args: T) -> Result<(), String> {
         let mut file = std::fs::File::create(&options.dumping_file).map_err(|e| e.to_string())?;
         dyld::Dyld::dump_host_symbols(&mut file).unwrap();
         return Ok(());
+    }
+
+    // Check GitHub for a newer build and offer to self-update. Best-effort and
+    // interactive, so skip it for headless runs and `--info`.
+    if !options.headless && !just_info {
+        update::check_for_update();
     }
 
     let bundle_path = if let Some(bundle_path) = bundle_path {
