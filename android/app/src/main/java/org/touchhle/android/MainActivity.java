@@ -10,7 +10,9 @@ package org.touchhle.android;
 
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ActivityInfo;
 import android.net.Uri;
+import android.os.Bundle;
 import android.util.Log;
 
 import androidx.core.content.FileProvider;
@@ -22,7 +24,6 @@ import java.io.File;
 /**
  * A wrapper class over SDLActivity
  */
-
 public class MainActivity extends SDLActivity {
     /**
      * File name the native in-app updater stages the downloaded APK under, in
@@ -30,6 +31,12 @@ public class MainActivity extends SDLActivity {
      * src/update.rs.
      */
     private static final String UPDATE_APK_NAME = "HyperHLE_update.apk";
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR);
+        super.onCreate(savedInstanceState);
+    }
 
     @Override
     protected String[] getLibraries() {
