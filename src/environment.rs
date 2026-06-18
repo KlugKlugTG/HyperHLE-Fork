@@ -307,9 +307,11 @@ impl Environment {
                     // From testing, it seems to correspond to left.
                     "UIInterfaceOrientationLandscape" => window::DeviceOrientation::LandscapeLeft,
 
-                    // ДОБАВЛЯЕМ СЮДА ПРИВЯЗКУ К ОБЫЧНОМУ ПОРТРЕТУ:
+                    // An app that only advertises upside-down portrait must
+                    // actually launch upside-down; mapping it to normal
+                    // portrait renders the content rotated 180 degrees.
                     "UIInterfaceOrientationPortraitUpsideDown" => {
-                        window::DeviceOrientation::Portrait
+                        window::DeviceOrientation::PortraitUpsideDown
                     }
 
                     other => {
