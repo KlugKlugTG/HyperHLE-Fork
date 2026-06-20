@@ -45,6 +45,10 @@ Compatibility:
   - Support for NIBArchive NIB file format decoding. (@ciciplusplus)
 - Switch to coroutine based threading system. This solved [some compatibility issues](https://github.com/touchHLE/touchHLE/issues/119) and improved performance in some games. (@abnormalmaps)
 
+Quality and performance:
+
+- On Linux and Android, touchHLE now asks the OS to keep its main emulation thread on the host's fastest CPU cores and to schedule it at a higher priority. On big.LITTLE devices (e.g. phones with a MediaTek Helio G99, which pairs two fast Cortex-A76 cores with six slower Cortex-A55 cores), the scheduler would otherwise frequently park the single-threaded emulation work on a slow efficiency core, capping the frame rate. This is best-effort and silently does nothing where the platform doesn't allow it.
+
 ## v0.2.3 (2026-01-02)
 
 Compatibility:

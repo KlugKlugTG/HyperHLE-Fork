@@ -1378,6 +1378,12 @@ impl Environment {
     /// Run the emulator. This is the main loop and won't return until app exit.
     /// Only `main.rs` should call this.
     pub fn run(mut self) {
+        // This is the thread that drives the guest CPU (dynarmic) and all of
+        // the cooperative host work. Ask the OS to keep it on the host's
+        // fastest cores so big.LITTLE devices don't throttle emulation by
+        // parking it on an efficiency core. Best-effort; failures are ignored.
+        crate::host_cpu::pin_emulation_thread_to_performance_cores();
+
         let mut curr_host_context = self.threads[0].host_context.take().unwrap();
         let panic_cell = self.panic_cell.clone();
         let mut stepping = false;
