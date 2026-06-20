@@ -11,13 +11,13 @@
 //! same thread. So the throughput of the whole emulator is gated by how fast
 //! that one thread runs.
 //!
-//! On a big.LITTLE host — which is every Android phone touchHLE targets, e.g. a
-//! MediaTek Helio G99 with 2× Cortex-A76 "big" cores and 6× Cortex-A55
-//! "little" cores — the OS scheduler is free to, and frequently does, migrate
-//! this hot thread onto a slow efficiency core. That caps the frame rate well
-//! below what the device is capable of. To get full performance we ask the OS
-//! to keep the emulation thread on the fastest available cores and to schedule
-//! it at an elevated priority.
+//! On a big.LITTLE host — which is every Android phone touchHLE targets,
+//! e.g. a MediaTek Helio G99 with 2× Cortex-A76 "big" cores and 6×
+//! Cortex-A55 "little" cores — the OS scheduler is free to, and frequently
+//! does, migrate this hot thread onto a slow efficiency core. That caps the
+//! frame rate well below what the device is capable of. To get full
+//! performance we ask the OS to keep the emulation thread on the fastest
+//! available cores and to schedule it at an elevated priority.
 //!
 //! This is entirely best-effort: every operation here is allowed to fail
 //! silently (logging at debug level only), because none of it is required for
