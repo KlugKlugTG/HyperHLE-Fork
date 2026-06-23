@@ -45,10 +45,12 @@ fn main() {
     // string checking. Newer compilers (e.g. AppleClang 21 / Xcode 26) reject
     // this because the constructor's pointer arithmetic isn't a constant
     // expression under their stricter `consteval` evaluation, breaking the
-    // build. Defining FMT_USE_CONSTEVAL=0 makes fmt fall back to runtime
-    // format-string checking, which sidesteps the issue without changing
-    // behaviour. This is harmless on older compilers too.
-    build.cxxflag("-DFMT_USE_CONSTEVAL=0");
+    // build. Predefining FMT_CONSTEVAL to empty makes fmt's `#ifndef
+    // FMT_CONSTEVAL` block a no-op, so the constructor is no longer
+    // `consteval` and FMT_HAS_CONSTEVAL stays undefined (it gates the
+    // compile-time `parse_format_string` call). fmt then falls back to runtime
+    // format-string checking. This is harmless on older compilers too.
+    build.cxxflag("-DFMT_CONSTEVAL=");
 
     // This is Windows- and Android-specific because on macOS or Linux, you can
     // easily get Boost with a package manager.
