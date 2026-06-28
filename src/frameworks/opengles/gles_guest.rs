@@ -1253,7 +1253,17 @@ fn glGetBufferPointervOES(
 /// temporarily disable any whose pointer falls outside guest memory, restoring
 /// them after the draw. The draw then renders with default attribute values
 /// instead of taking the whole emulator down.
+///
+/// This guard relies on vertex-attrib query entry points that are not valid on
+/// native ES 1.1 backends. On real ES 1.1 drivers (e.g. Qualcomm Adreno) those
+/// queries return GL_INVALID_OPERATION and poison the error queue, so we only
+/// apply this on the GLES1-on-GL2 emulation backend where the queries are
+/// supported.
 unsafe fn guard_client_vertex_arrays(gles: &mut dyn GLES, mem: &Mem) -> Vec<GLuint> {
+    if gles.is_native_es1() {
+        return Vec::new();
+    }
+
     const VERTEX_ATTRIB_ARRAY_ENABLED: GLenum = 0x8622;
     const VERTEX_ATTRIB_ARRAY_BUFFER_BINDING: GLenum = 0x889F;
     const VERTEX_ATTRIB_ARRAY_POINTER: GLenum = 0x8645;
