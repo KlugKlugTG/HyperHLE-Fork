@@ -200,6 +200,22 @@ pub fn try_decode_pvrtc(
         _ => return false,
     };
 
+    // The `COMPRESSED_RGB_PVRTC_*` formats have a base internal format of RGB
+    // per the IMG_texture_compression_pvrtc spec, so their sampled alpha must
+    // be 1.0. The `COMPRESSED_RGBA_PVRTC_*` formats carry real alpha. Decode
+    // accordingly and upload with a matching uncompressed base format so the
+    // host driver enforces the same alpha semantics PowerVR / Apple hardware
+    // would.
+    let is_opaque = matches!(
+        internalformat,
+        gles11::COMPRESSED_RGB_PVRTC_4BPPV1_IMG | gles11::COMPRESSED_RGB_PVRTC_2BPPV1_IMG
+    );
+    let upload_format = if is_opaque {
+        gles11::RGB
+    } else {
+        gles11::RGBA
+    };
+
     if border != 0 {
         log!(
             "Warning: try_decode_pvrtc: invalid non-zero border ({border}) for PVRTC \
@@ -246,12 +262,15 @@ pub fn try_decode_pvrtc(
         return true;
     }
 
-    let pixels = crate::image::decode_pvrtc(pvrtc_data, is_2bit, width_u, height_u);
+    let pixels =
+        crate::image::decode_pvrtc_with_alpha(pvrtc_data, is_2bit, width_u, height_u, is_opaque);
     unsafe {
         gles.TexImage2D(
             target,
             level,
-            gles11::RGBA as _,
+            // internalformat selects the base format (RGB drops alpha → 1.0,
+            // RGBA keeps it). The pixel data is always tightly-packed RGBA8.
+            upload_format as _,
             width,
             height,
             border,
