@@ -229,15 +229,8 @@ fn stat(env: &mut Environment, path: ConstPtr<u8>, buf: MutPtr<stat>) -> i32 {
         let relative = path_str.strip_prefix("Data/").unwrap_or(&path_str);
         let relative = relative.strip_prefix("Data/").unwrap_or(relative);
         let candidate = format!("{bundle_root}/Data/{relative}");
-        let unity_player_data = if relative == "data.unity3d" {
-            Some(format!("{bundle_root}/Data/globalgamemanagers"))
-        } else {
-            None
-        };
         if env.fs.exists(GuestPath::new(&candidate)) {
             candidate
-        } else if let Some(path) = unity_player_data.filter(|path| env.fs.exists(GuestPath::new(path))) {
-            path
         } else {
             path_str.clone()
         }
