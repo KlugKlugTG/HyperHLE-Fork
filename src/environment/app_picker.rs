@@ -777,8 +777,8 @@ fn app_picker_inner(
             let hidden: bool = msg![env; (quick_options_stuff.ios_version_menu) isHidden];
             () = msg![env; (quick_options_stuff.ios_version_menu) setHidden:(!hidden)];
             if hidden {
-                () = msg![env; (quick_options_stuff.main_view) bringSubviewToFront:quick_options_stuff.ios_version_menu];
-                () = msg![env; (quick_options_stuff.main_view) bringSubviewToFront:quick_options_stuff.ios_version_btn];
+                () = msg![env; (quick_options_stuff.main_view) bringSubviewToFront:(quick_options_stuff.ios_version_menu)];
+                () = msg![env; (quick_options_stuff.main_view) bringSubviewToFront:(quick_options_stuff.ios_version_btn)];
             }
         } else if std::mem::take(&mut host_obj.ios_version_latest) {
             quick_options_ios_version = None;
