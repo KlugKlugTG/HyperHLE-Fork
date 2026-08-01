@@ -1526,7 +1526,7 @@ unsafe fn present_renderbuffer(env: &mut Environment) {
     if gles.is_es2() {
         present_renderbuffer_es2(gles, viewport, rotation_matrix, virtual_cursor_visible_at);
         std::mem::drop(gles_boxed);
-        env.window.as_ref().unwrap().swap_window();
+        env.window.as_mut().unwrap().swap_window();
         return;
     }
 
