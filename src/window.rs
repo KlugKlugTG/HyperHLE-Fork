@@ -1313,7 +1313,7 @@ impl Window {
                     ..
                 } => {
                     let new = !self.show_fps_counter.get();
-                    self.show_fps_counter.set(new);
+                    self.set_show_fps_counter(new);
                     echo!("FPS counter {}", if new { "enabled" } else { "disabled" });
                     continue;
                 }
