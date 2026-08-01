@@ -12,6 +12,9 @@ homepage = { workspace = true }
 [lib]
 path = "lib.rs"
 
+[features]
+experimental-aarch64 = []
+
 [build-dependencies]
 cc = { workspace = true }
 cmake = { workspace = true }
