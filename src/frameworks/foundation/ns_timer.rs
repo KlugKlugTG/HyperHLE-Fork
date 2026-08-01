@@ -54,7 +54,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     // Sanitize the interval before handing it to `Duration::from_secs_f64`,
     // which panics on NaN, infinity, negative, or huge values. iPhone OS
     // historically clamps such values silently (Crazy Frog Racer
-    // — HyperHLE log #4 — sends a non-finite value here on first
+    // — RadekHLE log #4 — sends a non-finite value here on first
     // NSTimer fire), so do the same instead of aborting the emulator.
     let ns_interval = if ns_interval.is_finite() && ns_interval > 0.0001 {
         ns_interval
@@ -409,7 +409,7 @@ pub(super) fn handle_timer(env: &mut Environment, timer: id) -> Option<Instant> 
 
     if repeats {
         // Guard every step of the rescheduling math against junk floats. A
-        // pathological ns_interval (e.g. NaN — see HyperHLE log #4) used
+        // pathological ns_interval (e.g. NaN — see RadekHLE log #4) used
         // to propagate through `.ceil() as u32` (yielding 0 for NaN) and
         // then through `checked_mul`/`checked_add` until something
         // eventually unwrapped to a panic. Here we keep the computation
@@ -468,3 +468,4 @@ pub(super) fn handle_timer(env: &mut Environment, timer: id) -> Option<Instant> 
 
     final_due_by
 }
+

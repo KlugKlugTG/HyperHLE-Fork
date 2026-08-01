@@ -12,7 +12,7 @@
 //! guest-side `[NSString isEqualToString:ACAccountTypeIdentifierFacebook]`
 //! dereferences NULL.
 //!
-//! touchHLE has no real ACAccountStore implementation — the OAuth flow
+//! RadekHLE has no real ACAccountStore implementation — the OAuth flow
 //! it would drive doesn't exist on Android — but resolving the
 //! constants is enough to keep apps that defensively link Accounts (via
 //! Facebook SDK / Flurry / Talking Carl's sharing hooks) past the dyld
@@ -113,3 +113,4 @@ pub const DYLIB: HostDylib = HostDylib {
     constant_exports: &[CONSTANTS],
     function_exports: &[FUNCTIONS],
 };
+

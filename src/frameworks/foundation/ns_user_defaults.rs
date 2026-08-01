@@ -85,7 +85,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     // initWithSuiteName:]`), see
     // <https://developer.apple.com/documentation/foundation/userdefaults/init(suitename:)>.
     // It returns a defaults object whose search list also includes the named
-    // suite (a shared container, typically used by app extensions). touchHLE
+    // suite (a shared container, typically used by app extensions). RadekHLE
     // does not implement separate suite domains, so we initialize the receiver
     // exactly like `-init` and ignore the suite name; reads/writes go to the
     // app's standard domain. This is sufficient for apps that merely expect a
@@ -485,3 +485,4 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
+

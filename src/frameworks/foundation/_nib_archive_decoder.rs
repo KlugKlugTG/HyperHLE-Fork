@@ -28,7 +28,7 @@ struct NIBArchiveDecoderHostObject {
     /// `None` only for the phantom-default returned via `Default::default()`
     /// when the objc runtime needs a placeholder for a missing/wrong-typed
     /// host object. Real archives are always loaded via
-    /// `_touchHLE_initForReadingWithData:`.
+    /// `_RadekHLE_initForReadingWithData:`.
     archive: Option<NIBArchive>,
     current_object_idx: Option<u32>,
     /// linear map of idx => id
@@ -96,7 +96,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 (env, this, _cmd);
 
-@implementation _touchHLE_NIBArchiveDecoder: NSCoder
+@implementation _RadekHLE_NIBArchiveDecoder: NSCoder
 
 + (id)allocWithZone:(NSZonePtr)_zone { // struct _NSZone*
     let unarchiver = Box::new(NIBArchiveDecoderHostObject {
@@ -110,7 +110,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     env.objc.alloc_object(this, unarchiver, &mut env.mem)
 }
 
-- (id)_touchHLE_initForReadingWithData:(id)data {
+- (id)_RadekHLE_initForReadingWithData:(id)data {
     if data == nil {
         return nil;
     }
@@ -387,7 +387,7 @@ fn get_value_to_decode_for_key(env: &mut Environment, unarchiver: id, key: id) -
     let key = to_rust_string(env, key);
     // TODO: avoid copying string
     let host_obj = borrow_host_obj(env, unarchiver);
-    // `current_object_idx` is set by `_touchHLE_initForReadingWithData:` and
+    // `current_object_idx` is set by `_RadekHLE_initForReadingWithData:` and
     // always restored by `unarchive_obj` after a nested decode, so it should
     // be `Some` whenever a guest calls a decode method. Be defensive against
     // a malformed archive that somehow leaves it cleared.
@@ -724,3 +724,4 @@ pub fn decode_current_number(env: &mut Environment, unarchiver: id) -> id {
         }
     }
 }
+

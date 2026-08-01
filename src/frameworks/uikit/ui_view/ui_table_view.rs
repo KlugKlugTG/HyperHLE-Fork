@@ -69,7 +69,7 @@ pub struct UITableViewHostObject {
     table_header_view: id,
     table_footer_view: id,
     /// Whether we have performed the implicit first `reloadData`. UIKit
-    /// reloads a table the first time it lays out with a data source; touchHLE
+    /// reloads a table the first time it lays out with a data source; RadekHLE
     /// has no automatic layout pass, so we trigger that reload ourselves the
     /// first time the table has both a data source and a non-zero size.
     auto_reloaded: bool,
@@ -145,7 +145,7 @@ fn make_rect(x: f32, y: f32, w: f32, h: f32) -> CGRect {
 /// Position a `UITableViewCell`'s built-in content view, image view and text
 /// labels, mirroring UIKit's default cell layout closely enough to be
 /// recognisable: the optional image sits on the left and the text label fills
-/// the remaining width. touchHLE has no automatic layout pass, so this is
+/// the remaining width. RadekHLE has no automatic layout pass, so this is
 /// invoked whenever the cell's frame changes or a default subview is created.
 fn layout_cell_contents(env: &mut crate::Environment, this: id) {
     let bounds: CGRect = msg![env; this bounds];
@@ -708,3 +708,4 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
+

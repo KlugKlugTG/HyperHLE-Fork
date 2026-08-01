@@ -1015,7 +1015,7 @@ fn difftime(_env: &mut Environment, time1: time_t, time0: time_t) -> f64 {
 ///
 /// Per Apple's `strftime_l(3)` man page (iPhoneOS man pages), this behaves
 /// exactly like `strftime()` except it formats using the supplied extended
-/// locale instead of the global locale. touchHLE only models the "C"
+/// locale instead of the global locale. RadekHLE only models the "C"
 /// locale, so the locale argument is ignored and we forward to `strftime`.
 /// This symbol is imported by libstdc++/libc++ iostreams (`std::time_put`),
 /// which guest C++ code hits when formatting dates.
@@ -1048,3 +1048,4 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(asctime(_)),
     export_c_func!(ctime(_)),
 ];
+

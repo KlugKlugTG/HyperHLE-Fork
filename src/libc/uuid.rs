@@ -114,7 +114,7 @@ fn uuid_generate_random(env: &mut Environment, out: MutPtr<u8>) {
 }
 
 /// `void uuid_generate_time(uuid_t out)` — RFC 4122 version-1 UUID
-/// (timestamp + MAC). touchHLE has no MAC address, so we fall back to
+/// (timestamp + MAC). RadekHLE has no MAC address, so we fall back to
 /// the random implementation. The output is still a syntactically
 /// valid UUID with the version-4 bits set.
 fn uuid_generate_time(env: &mut Environment, out: MutPtr<u8>) {
@@ -209,3 +209,4 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(uuid_unparse_lower(_, _)),
     export_c_func!(uuid_unparse_upper(_, _)),
 ];
+

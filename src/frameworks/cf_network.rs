@@ -14,7 +14,7 @@
 //! Note: CFHost* functions are implemented in
 //! [crate::frameworks::core_foundation::cf_host] and are registered with
 //! CoreFoundation's HostDylib. On a real device they live in CFNetwork, but
-//! touchHLE's dyld searches all frameworks so the binding resolves regardless
+//! RadekHLE's dyld searches all frameworks so the binding resolves regardless
 //! of which framework the app links against. Keeping them only in one place
 //! avoids `no_duplicate_functions` test failures.
 
@@ -107,7 +107,7 @@ fn CFReadStreamCopyError(_env: &mut Environment, _stream: u32) -> u32 {
 /// `CFDictionaryRef CFNetworkCopySystemProxySettings(void)`
 ///
 /// Apple documentation: returns a dictionary describing the current system
-/// proxy configuration (see the `kCFNetworkProxies*` keys). touchHLE has no
+/// proxy configuration (see the `kCFNetworkProxies*` keys). RadekHLE has no
 /// host-side proxy configuration, which is exactly the situation a real device
 /// is in when the user has not configured a proxy in Settings. We faithfully
 /// reproduce that state by returning a dictionary whose `*Enable` keys are all
@@ -143,7 +143,7 @@ fn CFNetworkCopySystemProxySettings(env: &mut Environment) -> CFDictionaryRef {
 /// proxy that should be tried (in order) for the supplied URL. When no proxy
 /// applies, the documented return value is an array containing a single
 /// dictionary whose `kCFProxyTypeKey` is `kCFProxyTypeNone`, meaning "connect
-/// directly". touchHLE never routes traffic through a proxy, so that is
+/// directly". RadekHLE never routes traffic through a proxy, so that is
 /// precisely what we return regardless of the URL or settings passed in.
 ///
 /// This is an ownership-transferring ("Copy") function: the caller is
@@ -493,3 +493,4 @@ pub const CONSTANTS: ConstantExports = &[
         HostConstant::NSString("ProxyAutoConfigURLString"),
     ),
 ];
+

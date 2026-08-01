@@ -4,8 +4,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
-#ifndef TOUCHHLE_SYSTEM_HEADERS_H
-#define TOUCHHLE_SYSTEM_HEADERS_H
+#ifndef RadekHLE_SYSTEM_HEADERS_H
+#define RadekHLE_SYSTEM_HEADERS_H
 
 // This file contains definitions of types etc we don't have in our SDK, which
 // is built from open-source headers.
@@ -207,7 +207,7 @@ SEL NSSelectorFromString(NSString *);
 
 // (See CGAffineTransform.c for where this define comes from.)
 #ifdef DEFINE_ME_WHEN_BUILDING_ON_MACOS
-typedef double CGFloat; // 64-bit definition (not supported by touchHLE)
+typedef double CGFloat; // 64-bit definition (not supported by RadekHLE)
 #else
 typedef float CGFloat;
 #endif
@@ -510,4 +510,5 @@ NSString *NSStringFromCGRect(CGRect);
 
 void NSLog(NSString *, ...);
 
-#endif // TOUCHHLE_SYSTEM_HEADERS_H
+#endif // RadekHLE_SYSTEM_HEADERS_H
+

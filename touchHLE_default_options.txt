@@ -4,18 +4,18 @@
 #
 # ---
 #
-# This file contains touchHLE's recommended default options for various apps.
+# This file contains RadekHLE's recommended default options for various apps.
 #
-# *** Don't edit this file yourself! Use touchHLE_options.txt instead. ***
+# *** Don't edit this file yourself! Use RadekHLE_options.txt instead. ***
 #
 # ---
 #
 # Each line in this file specifies options for an app; there should only be one
 # line per app. A line should consist of the identifier for an app, followed by
 # a colon (:), followed by the options to apply. To find out an app's
-# identifier, you can run it in touchHLE and look at the “App bundle info”
+# identifier, you can run it in RadekHLE and look at the “App bundle info”
 # output. To get a list of possible options, see OPTIONS_HELP.txt or run
-# touchHLE with the --help flag.
+# RadekHLE with the --help flag.
 #
 # Text on a line following a hash sign (#) is treated as a comment and ignored.
 # Empty lines are also ignored.
@@ -244,7 +244,7 @@ com.chillingo.redball3hd: --landscape-left
 # override it later if it ever wants to.
 #
 # The earlier black-screen symptom on Adreno (before the texture-filter
-# fix) was caused by HyperHLE's internal present path trying to clear a
+# fix) was caused by RadekHLE's internal present path trying to clear a
 # non-zero GL_CURRENT_PROGRAM via glUseProgram(0), which was a no-op
 # stub on GLES1Native. That dance has been removed from the ES 1.1
 # present path, so this app no longer needs --prefer-gles2-context.
@@ -261,7 +261,7 @@ com.lego.NinjagoSpinjitzuScavengerHunt: --landscape-left --fix-texture-min-filte
 com.lego.riseofthesnakes: --landscape-left --fix-texture-min-filter --trace-gl-errors
 
 # Resident Evil Degeneration (jp.co.capcom.residentevil.en)
-# Ported from touchHLE upstream commit 1bd22431 ("Default options for
+# Ported from RadekHLE upstream commit 1bd22431 ("Default options for
 # Resident Evil Degeneration"). The game runs in landscape but its
 # UIWindow does not request landscape orientation, so without
 # --landscape-left the window stays portrait and the game's rendering
@@ -271,7 +271,7 @@ com.lego.riseofthesnakes: --landscape-left --fix-texture-min-filter --trace-gl-e
 jp.co.capcom.residentevil.en: --landscape-left --stabilize-virtual-cursor=0.1,10 --button-to-touch=A,430,280 --button-to-touch=B,440,200 --button-to-touch=Y,440,100 --button-to-touch=Start,30,30 --dpad-to-touch=25,200,95,100 --stick-to-touch=25,200,95,100
 
 # Call of Duty: Zombies (com.activision.callofduty)
-# Ported from touchHLE upstream's default options for Call of Duty:
+# Ported from RadekHLE upstream's default options for Call of Duty:
 # Zombies. The game is landscape and uses an accelerometer-based aim
 # offset; --x-tilt-offset and the controller mapping below make it
 # playable with a game controller (matches upstream).
@@ -334,3 +334,4 @@ com.wb.GreenLantern: --landscape-left --prefer-gles2-context
 
 # Where's My Water?: iPhone portrait OpenGL ES 1 profile.
 com.disney.SwampyGame: --device-family=iphone-3gs
+

@@ -124,7 +124,7 @@ pub fn CFArrayCreateMutable(
     let _ = capacity;
 
     if callbacks.is_null() {
-        msg_class![env; _touchHLE_NSMutableArray_non_retaining new]
+        msg_class![env; _RadekHLE_NSMutableArray_non_retaining new]
     } else {
         // Non-null callbacks → use a retaining mutable array.
         msg_class![env; NSMutableArray new]
@@ -698,3 +698,4 @@ pub const FUNCTIONS: FunctionExports = &[
     // Type info and utilities — CFArrayGetTypeID is exported from cf_type.
     export_c_func!(CFMakeCollectable(_)),
 ];
+

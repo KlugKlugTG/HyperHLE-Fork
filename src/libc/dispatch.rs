@@ -5,7 +5,7 @@
  */
 //! Grand Central Dispatch (GCD) — `dispatch/dispatch.h`
 //!
-//! touchHLE is single-threaded from the guest's perspective, so most
+//! RadekHLE is single-threaded from the guest's perspective, so most
 //! concurrency primitives can be dramatically simplified:
 //!   - `dispatch_once` just calls the block once and marks the token.
 //!   - `dispatch_async` / `dispatch_sync` call the block immediately.
@@ -79,7 +79,7 @@ pub const DISPATCH_APPLY_AUTO: &str = "DISPATCH_APPLY_AUTO";
 /// emit a non-lazy binding to `_dispatch_main_q` directly instead of going
 /// through `dispatch_get_main_queue()`.
 ///
-/// On touchHLE the main queue is represented by the sentinel value
+/// On RadekHLE the main queue is represented by the sentinel value
 /// [MAIN_QUEUE_PTR] (`0x1`). Resolving the constant to that sentinel makes
 /// `dispatch_async(_dispatch_main_q, …)` and similar binary-direct uses go
 /// through the same code path as `dispatch_get_main_queue()`.
@@ -232,12 +232,12 @@ fn dispatch_queue_attr_make_with_qos_class(
     // Apple docs (<dispatch/queue.h>):
     //   "Returns an attribute value which may be provided to
     //   dispatch_queue_create to hint the system to use the given QoS
-    //   class. Since touchHLE doesn't model thread QoS — it runs
+    //   class. Since RadekHLE doesn't model thread QoS — it runs
     //   everything on the main thread queue — the documented behaviour
     //   we can faithfully implement is to return the input attr
     //   unchanged: any subsequent dispatch_queue_create(label,
     //   returned_attr) then behaves identically to using the original
-    //   attr (which is the only behaviour touchHLE supports today).
+    //   attr (which is the only behaviour RadekHLE supports today).
     //   Edge case per Apple: if qos_class == QOS_CLASS_UNSPECIFIED (0)
     //   AND attr == NULL, returns NULL; same null-pass-through
     //   behaviour falls out naturally from returning attr."
@@ -603,7 +603,7 @@ fn dispatch_get_context(_env: &mut Environment, _object: MutVoidPtr) -> MutVoidP
 /// Associates `context` with `queue` under the unique pointer `key`. Passing
 /// a NULL `context` clears any existing association (Apple documents NULL as
 /// "remove the value"). The `destructor` is the cleanup callback GCD would run
-/// when the value is replaced or the queue is destroyed; touchHLE does not own
+/// when the value is replaced or the queue is destroyed; RadekHLE does not own
 /// the guest's context allocation, so it is intentionally not invoked.
 /// <https://developer.apple.com/documentation/dispatch/1452828-dispatch_queue_set_specific>
 fn dispatch_queue_set_specific(
@@ -783,3 +783,4 @@ pub const FUNCTIONS: FunctionExports = &[
     // debug
     export_c_func!(dispatch_debug(_, _)),
 ];
+

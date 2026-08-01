@@ -1402,7 +1402,7 @@ fn try_nsarray_indexed_subscript_interpose(
 // ============================================================================
 //
 // Some games bundle Google's GDataXML classes. Those classes directly
-// dereference libxml2's xmlNode/xmlAttr structs, but touchHLE's libxml2 shim
+// dereference libxml2's xmlNode/xmlAttr structs, but RadekHLE's libxml2 shim
 // intentionally gives the guest opaque handle IDs instead of guest-visible
 // structs. Trying to fake libxml2 structs in libxml2.rs can make the guest walk
 // bad/cyclic XML graphs. Intercepting the tiny GDataXML surface the game uses
@@ -2048,7 +2048,7 @@ pub(super) fn objc_msgSend(env: &mut Environment, receiver: id, selector: SEL) {
 }
 
 #[allow(non_snake_case)]
-pub(crate) fn _touchHLE_objc_msgSend_tolerant(env: &mut Environment, receiver: id, selector: SEL) {
+pub(crate) fn _RadekHLE_objc_msgSend_tolerant(env: &mut Environment, receiver: id, selector: SEL) {
     objc_msgSend_inner(
         env, receiver, selector, /* super2: */ None, /* tolerate_type_mismatch: */ true,
         /* skip_initialize: */ false,
@@ -2057,7 +2057,7 @@ pub(crate) fn _touchHLE_objc_msgSend_tolerant(env: &mut Environment, receiver: i
 
 /// Variant of `objc_msgSend` that does not trigger `+initialize`.
 #[allow(non_snake_case)]
-pub(crate) fn _touchHLE_objc_msgSend_no_initialize(
+pub(crate) fn _RadekHLE_objc_msgSend_no_initialize(
     env: &mut Environment,
     receiver: id,
     selector: SEL,
@@ -2093,7 +2093,7 @@ pub(super) fn objc_msgSend_stret(
 }
 
 #[allow(non_snake_case)]
-pub(crate) fn _touchHLE_objc_msgSend_stret_tolerant(
+pub(crate) fn _RadekHLE_objc_msgSend_stret_tolerant(
     env: &mut Environment,
     _stret: MutVoidPtr,
     receiver: id,
@@ -2255,10 +2255,10 @@ where
     R: GuestRet,
 {
     if R::SIZE_IN_MEM.is_some() {
-        (_touchHLE_objc_msgSend_stret_tolerant as fn(&mut Environment, MutVoidPtr, id, SEL))
+        (_RadekHLE_objc_msgSend_stret_tolerant as fn(&mut Environment, MutVoidPtr, id, SEL))
             .call_from_host(env, args)
     } else {
-        (_touchHLE_objc_msgSend_tolerant as fn(&mut Environment, id, SEL)).call_from_host(env, args)
+        (_RadekHLE_objc_msgSend_tolerant as fn(&mut Environment, id, SEL)).call_from_host(env, args)
     }
 }
 
@@ -2279,7 +2279,7 @@ where
     );
     // Provide type info for dynamic type checking.
     env.objc.message_type_info = Some(<(R, P) as MsgSendSignature>::type_info());
-    (_touchHLE_objc_msgSend_no_initialize as fn(&mut Environment, id, SEL))
+    (_RadekHLE_objc_msgSend_no_initialize as fn(&mut Environment, id, SEL))
         .call_from_host(env, args)
 }
 
@@ -2525,3 +2525,4 @@ pub fn autorelease(env: &mut Environment, object: id) -> id {
     }
     msg![env; object autorelease]
 }
+

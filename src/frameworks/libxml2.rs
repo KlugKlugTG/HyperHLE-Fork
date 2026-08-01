@@ -6,7 +6,7 @@
 //! Host shim for `libxml2.2.dylib`.
 //!
 //! Every entry point dispatches to the real, vendored libxml2 (built in
-//! `vendor/libxml2`) via the [`touchHLE_libxml2_wrapper`] crate.  The guest
+//! `vendor/libxml2`) via the [`RadekHLE_libxml2_wrapper`] crate.  The guest
 //! never sees a host pointer directly: every libxml2 object (`xmlDoc *`,
 //! `xmlNode *`, `xmlAttr *`, `xmlTextReader *`, `xmlXPathObject *`, …) is
 //! recorded in a global handle table and exchanged with the guest as an
@@ -30,7 +30,7 @@ use std::ffi::CString;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
 use std::sync::Mutex;
-use touchHLE_libxml2_wrapper as xml;
+use RadekHLE_libxml2_wrapper as xml;
 
 pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
     path: "/usr/lib/libxml2.2.dylib",
@@ -2981,3 +2981,4 @@ const FUNCTIONS: FunctionExports = &[
     // ---- memory ----
     export_c_func!(xmlFree(_)),
 ];
+

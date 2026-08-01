@@ -169,7 +169,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // familyNames / fontNamesForFamilyName: — these enumerate every font family
 // the emulator can serve. The three families below cover Apple's documented
 // iPhone OS 2.x default set (Helvetica, Times New Roman, Courier New) which
-// is what touchHLE actually has fallback glyph tables for.
+// is what RadekHLE actually has fallback glyph tables for.
 + (id)familyNames {
     let names = ["Courier New", "Helvetica", "Times New Roman"];
     let arr: id = msg_class![env; NSMutableArray new];
@@ -831,3 +831,4 @@ fn font_kind_to_family(kind: FontKind) -> &'static str {
         | FontKind::SerifItalic => "Times New Roman",
     }
 }
+

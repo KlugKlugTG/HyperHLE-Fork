@@ -116,7 +116,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // -------------------------------------------------------------------------
 
 - (bool)isAdvertisingTrackingEnabled {
-    // Return false — tracking is always disabled in touchHLE.
+    // Return false — tracking is always disabled in RadekHLE.
     // Apps should respect this and not send advertising data.
     log_dbg!("ASIdentifierManager isAdvertisingTrackingEnabled — returning NO");
     false
@@ -193,7 +193,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     // status)
     // We call it by sending it the __FuncPtr invoke message with the status.
     let status: ATTrackingManagerAuthorizationStatus = ATTrackingManagerAuthorizationStatusDenied;
-    // Invoke the block — blocks respond to `invoke` in touchHLE's block model.
+    // Invoke the block — blocks respond to `invoke` in RadekHLE's block model.
     let sel = env.objc.lookup_selector("invokeWithUnsignedInt:").unwrap();
     let responds: bool = msg![env; completion_handler respondsToSelector:sel];
     if responds {
@@ -215,7 +215,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // -------------------------------------------------------------------------
 
 + (id)description {
-    let s = "ATTrackingManager (touchHLE stub — always Denied)";
+    let s = "ATTrackingManager (RadekHLE stub — always Denied)";
     let cstr = env.mem.alloc_and_write_cstr(s.as_bytes());
     msg_class![env; NSString stringWithUTF8String:cstr]
 }
@@ -223,3 +223,4 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
+

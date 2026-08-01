@@ -5,7 +5,7 @@
  */
 //! `UIActivity`, `UIActivityItemProvider`, `UIActivityViewController`.
 //!
-//! These classes drive iOS 6+'s system share sheet. touchHLE targets pre-iOS
+//! These classes drive iOS 6+'s system share sheet. RadekHLE targets pre-iOS
 //! 5 apps but a number of vendored SDKs (Flurry, Chartboost, social SDKs)
 //! still reach for these classes via `NSClassFromString` to decide whether
 //! the modern share sheet path is available.
@@ -203,3 +203,4 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
+

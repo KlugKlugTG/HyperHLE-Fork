@@ -37,7 +37,7 @@ pub static DYNAMIC_KVC_STORAGE: Mutex<Vec<(u32, String, u32)>> = Mutex::new(Vec:
 
 // Side-channel storage for `performSelectorOnMainThread:withObject:waitUntilDone:YES` requests
 // scheduled from background threads. Each entry maps a pending NSTimer's id to the host semaphore
-// the background thread is blocked on, so that `_touchHLE_timerFireMethod:` can post the
+// the background thread is blocked on, so that `_RadekHLE_timerFireMethod:` can post the
 // semaphore once the selector has finished running on the main thread. Without this, the
 // `waitUntilDone:YES` argument is effectively ignored and background threads race ahead of the
 // scheduled selector — this manifests, for example, as Call of Duty: Zombies' Marmalade-based
@@ -229,7 +229,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     let sel_str = selector.as_str(&env.mem);
     let explicit_args = sel_str.chars().filter(|&c| c == ':').count() as NSUInteger;
     let total_args = explicit_args + 2;
-    () = msg![env; sig _touchHLE_setNumberOfArguments:total_args];
+    () = msg![env; sig _RadekHLE_setNumberOfArguments:total_args];
     sig
 }
 
@@ -539,7 +539,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     let sel_str = selector.as_str(&env.mem);
     let explicit_args = sel_str.chars().filter(|&c| c == ':').count() as NSUInteger;
     let total_args = explicit_args + 2;
-    () = msg![env; sig _touchHLE_setNumberOfArguments:total_args];
+    () = msg![env; sig _RadekHLE_setNumberOfArguments:total_args];
     sig
 }
 
@@ -569,7 +569,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     let arg_key: id = get_static_str(env, "arg");
     let dict = dict_from_keys_and_objects(env, &[(sel_key, sel_str), (arg_key, arg)]);
 
-    let selector = env.objc.lookup_selector("_touchHLE_timerFireMethod:").unwrap();
+    let selector = env.objc.lookup_selector("_RadekHLE_timerFireMethod:").unwrap();
     let timer:id = msg_class![env;
         NSTimer timerWithTimeInterval:delay
                                target:this
@@ -637,7 +637,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     if wait {
         // `waitUntilDone:YES` from a background thread: schedule the selector to run on the main
         // thread and block the calling thread on a host semaphore that
-        // `_touchHLE_timerFireMethod:` will post once the selector has finished executing.
+        // `_RadekHLE_timerFireMethod:` will post once the selector has finished executing.
         //
         // Games such as Call of Duty: Zombies (Marmalade SDK) rely on this synchronisation to
         // safely hand work off to the main thread via an `s3eAppDelegate.m_Func` slot: the
@@ -657,7 +657,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         let arg_key: id = get_static_str(env, "arg");
         let dict = dict_from_keys_and_objects(env, &[(sel_key, sel_str), (arg_key, arg)]);
 
-        let fire_selector = env.objc.lookup_selector("_touchHLE_timerFireMethod:").unwrap();
+        let fire_selector = env.objc.lookup_selector("_RadekHLE_timerFireMethod:").unwrap();
         let timer: id = msg_class![env;
             NSTimer timerWithTimeInterval:(0.0 as NSTimeInterval)
                                    target:this
@@ -688,7 +688,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     msg![env; this performSelector:sel withObject:arg afterDelay:0.0]
 }
 
-- (())_touchHLE_timerFireMethod:(id)which {
+- (())_RadekHLE_timerFireMethod:(id)which {
     // Pull out any semaphore associated with this timer up-front so we can
     // always post it before returning, regardless of how this method exits.
     // (If we returned early without posting, a thread blocked in
@@ -713,7 +713,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     // nothing to fire, so just release any waiter and bail.
     if sel_str.is_empty() {
         log!(
-            "Warning: _touchHLE_timerFireMethod: timer {:?} has no stored selector; skipping.",
+            "Warning: _RadekHLE_timerFireMethod: timer {:?} has no stored selector; skipping.",
             which
         );
         if let Some(sem_bits) = sem_to_post {
@@ -1175,3 +1175,4 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
+

@@ -46,7 +46,7 @@ pub(super) struct CALayerHostObject {
     pub(super) z_position: CGFloat, // <-- ДОБАВЛЕНО СВОЙСТВО Z-POSITION
     pub(super) anchor_point: CGPoint,
     pub(super) affine_transform: CGAffineTransform,
-    /// Full 3D transform set via `-[CALayer setTransform:]`. touchHLE's
+    /// Full 3D transform set via `-[CALayer setTransform:]`. RadekHLE's
     /// renderer is 2D-only, so we extract the 2x3 affine submatrix from
     /// the assigned `CATransform3D` and store it in `affine_transform`
     /// (used by the existing `frame`/`bounds` machinery). The full 4x4
@@ -55,7 +55,7 @@ pub(super) struct CALayerHostObject {
     pub(super) transform_3d: CATransform3D,
     /// `CALayer.sublayerTransform` — a transform applied to the layer's
     /// sublayers when they are rendered. Defaults to the identity matrix.
-    /// Stored verbatim so reads round-trip; touchHLE's 2D renderer doesn't
+    /// Stored verbatim so reads round-trip; RadekHLE's 2D renderer doesn't
     /// currently apply this when compositing sublayers, but apps that set
     /// and read it back observe the right values.
     pub(super) sublayer_transform: CATransform3D,
@@ -413,10 +413,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 
     // On real iOS a layer being deallocated cannot have a superlayer,
     // because the superlayer's `sublayers` array holds a strong reference
-    // and would keep the retain count above zero. In touchHLE the
+    // and would keep the retain count above zero. In RadekHLE the
     // retain/release accounting is occasionally off for games that mix
     // direct -release with cached `id` references (e.g. Chuzzle's alert-
-    // view init path which produced HyperHLE log #3 — the dealloc fires
+    // view init path which produced RadekHLE log #3 — the dealloc fires
     // while the layer is still installed in the alert view hierarchy).
     // Panicking the whole emulator over a reference-counting glitch in
     // the guest is worse than the alternative, so we instead detach
@@ -455,7 +455,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // https://developer.apple.com/documentation/quartzcore/calayer/1410744-presentationlayer
 // Apple returns a copy of the layer holding the values that are currently
 // "in flight" (i.e. the state as displayed on screen mid-animation), or nil if
-// the layer has not yet been committed for rendering. touchHLE has no separate
+// the layer has not yet been committed for rendering. RadekHLE has no separate
 // presentation-layer tree — the model layer doubles as the render/presentation
 // layer (see core_animation::composition) — so the correct approximation is to
 // return the layer itself rather than nil. Games query this (e.g. to read
@@ -612,10 +612,10 @@ pub const CLASSES: ClassExports = objc_classes! {
     host_obj.transform_3d = affine_transform_to_catransform3d(affine_transform);
 }
 
-// `-[CALayer transform]` is a CATransform3D (4x4 matrix). touchHLE's
+// `-[CALayer transform]` is a CATransform3D (4x4 matrix). RadekHLE's
 // renderer is 2D, so a CATransform3D assigned here is collapsed to its 2x3
 // affine submatrix for the existing frame/bounds pipeline; the full 4x4
-// is kept for roundtrip reads. iMilk (HyperHLE appdb report #70) was the
+// is kept for roundtrip reads. iMilk (RadekHLE appdb report #70) was the
 // motivating case — without these the app crashed with "CALayer does not
 // respond to setTransform:".
 - (CATransform3D)transform { env.objc.borrow::<CALayerHostObject>(this).transform_3d }
@@ -687,7 +687,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // capturing a snapshot of a layer hierarchy on the CPU (used e.g. by
 // screenshotting code in many apps and middleware).
 //
-// touchHLE's full layer compositor lives in
+// RadekHLE's full layer compositor lives in
 // `crate::frameworks::core_animation::composition` and runs on the GPU
 // via OpenGL ES; it cannot target an arbitrary CGContextRef. For
 // `renderInContext:` we instead walk the layer tree on the CPU and emit
@@ -706,7 +706,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // only render through the GPU compositor. The result of this method is
 // still consistent with what Apple's docs guarantee for "no animation"
 // rendering for solid colors and image contents, which is what the apps in
-// touchHLE's log corpus actually need.
+// RadekHLE's log corpus actually need.
 - (())renderInContext:(CGContextRef)ctx {
     if ctx.is_null() {
         log!("Warning: -[CALayer renderInContext:] called with NULL context");
@@ -742,7 +742,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (CGColorRef)backgroundColor {
     if let Some(bg_color) = env.objc.borrow::<CALayerHostObject>(this).background_color {
-        let class = env.objc.get_known_class("_touchHLE_CGColor", &mut env.mem);
+        let class = env.objc.get_known_class("_RadekHLE_CGColor", &mut env.mem);
         let obj = env.objc.alloc_object(class, Box::new(bg_color), &mut env.mem);
         autorelease(env, obj)
     } else { nil }
@@ -774,7 +774,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (CGColorRef)borderColor {
     if let Some(border_color) = env.objc.borrow::<CALayerHostObject>(this).border_color {
-        let class = env.objc.get_known_class("_touchHLE_CGColor", &mut env.mem);
+        let class = env.objc.get_known_class("_RadekHLE_CGColor", &mut env.mem);
         let obj = env.objc.alloc_object(class, Box::new(border_color), &mut env.mem);
         autorelease(env, obj)
     } else { nil }
@@ -1095,7 +1095,7 @@ fn affine_transform_to_catransform3d(t: CGAffineTransform) -> CATransform3D {
 
 /// Collapse a `CATransform3D` to its 2x3 affine submatrix, the way the
 /// system's `CATransform3DGetAffineTransform` does. The 3D-only entries
-/// (m13/m14/m23/m24/m31..m34/m43/m44) are dropped — touchHLE's renderer
+/// (m13/m14/m23/m24/m31..m34/m43/m44) are dropped — RadekHLE's renderer
 /// is 2D so layers with non-trivial 3D content just get their projected
 /// 2D shadow.
 fn catransform3d_to_affine(t: CATransform3D) -> CGAffineTransform {
@@ -1314,3 +1314,4 @@ pub fn set_use_implicit_animations(env: &mut Environment, layer: id, enable: boo
         .borrow_mut::<CALayerHostObject>(layer)
         .use_implicit_animations = enable;
 }
+

@@ -12,7 +12,7 @@
 mod eagl;
 mod gles_guest;
 
-use touchHLE_gl_bindings::gles11::types::GLenum;
+use RadekHLE_gl_bindings::gles11::types::GLenum;
 
 use crate::mem::ConstPtr;
 
@@ -55,7 +55,7 @@ impl State {
 ///
 /// Previously this used `.unwrap()` on the thread-local context, which
 /// turned a perfectly recoverable guest-side state error into an emulator
-/// panic. HyperHLE log #5 reproduced this when a worker thread issued GL
+/// panic. RadekHLE log #5 reproduced this when a worker thread issued GL
 /// calls between `[EAGLContext setCurrentContext:nil]` and a later
 /// `setCurrentContext:` on the main thread.
 fn sync_context<'objc, 'win: 'objc>(
@@ -88,3 +88,4 @@ fn get_thread_context<'objc>(
         host_obj.gles_ctx.as_deref_mut()?;
     Some(gles_ctx as &mut dyn crate::gles::GLESContext)
 }
+

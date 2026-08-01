@@ -1,4 +1,4 @@
-"""Parser for HyperHLE / touchHLE log output.
+"""Parser for RadekHLE / RadekHLE log output.
 
 Given a raw log file uploaded by a user, extract the fields that match the
 columns on the submit form (app name, version, bundle id, minimum iOS, GPU,
@@ -23,12 +23,12 @@ class ParsedLog:
     remarks: str | None = None  # auto-extracted error/panic line if present
 
 
-# Header line is the first line of every HyperHLE / touchHLE log.
-#   touchHLE UNOFFICIAL 9424a29c — https://touchhle.org/
-#   touchHLE v0.2.3 — https://touchhle.org/
-#   HyperHLE v0.1.0 — ...
+# Header line is the first line of every RadekHLE / RadekHLE log.
+#   RadekHLE UNOFFICIAL 9424a29c — https://RadekHLE.org/
+#   RadekHLE v0.2.3 — https://RadekHLE.org/
+#   RadekHLE v0.1.0 — ...
 _HEADER_RE = re.compile(
-    r"^(?:touchHLE|HyperHLE)\s+(?P<ver>[^\n—–-]+?)\s+[—–-]",
+    r"^(?:RadekHLE|RadekHLE)\s+(?P<ver>[^\n—–-]+?)\s+[—–-]",
     re.MULTILINE | re.IGNORECASE,
 )
 
@@ -39,9 +39,9 @@ _IDENT_RE = re.compile(r"^-\s*Identifier:\s*(?P<v>.+?)\s*$", re.MULTILINE)
 _MIN_OS_RE = re.compile(r"^-\s*Minimum OS version:\s*(?P<v>.+?)\s*$", re.MULTILINE)
 
 # "Driver info:" line, e.g.
-#   touchHLE::window: Driver info: OpenGL ES-CM 1.1 v1.r32p1-... / ARM / Mali-G57 MC2
+#   RadekHLE::window: Driver info: OpenGL ES-CM 1.1 v1.r32p1-... / ARM / Mali-G57 MC2
 _DRIVER_INFO_RE = re.compile(
-    r"(?:touchHLE|HyperHLE)::window:\s*Driver info:\s*(?P<v>.+?)\s*$",
+    r"(?:RadekHLE|RadekHLE)::window:\s*Driver info:\s*(?P<v>.+?)\s*$",
     re.MULTILINE | re.IGNORECASE,
 )
 
@@ -68,7 +68,7 @@ def _gpu_from_driver_info(driver: str) -> str | None:
     """
     parts = [p.strip() for p in driver.split("/") if p.strip()]
     if len(parts) >= 2:
-        # Last 2 parts are vendor and renderer in standard touchHLE format.
+        # Last 2 parts are vendor and renderer in standard RadekHLE format.
         return " ".join(parts[-2:])
     return driver.strip() or None
 
@@ -114,3 +114,4 @@ def parse_log(text: str) -> ParsedLog:
 
 
 __all__ = ["ParsedLog", "parse_log"]
+

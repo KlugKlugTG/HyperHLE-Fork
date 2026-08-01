@@ -33,7 +33,7 @@ const NSCalculationDivideByZero: NSCalculationError = 4;
 // MARK: - Host object
 
 /// We store the value as an `f64` for simplicity.  Full BCD decimal storage
-/// is not needed for the game use-cases touchHLE targets.
+/// is not needed for the game use-cases RadekHLE targets.
 #[derive(Default)]
 struct NSDecimalNumberHostObject {
     value: f64,
@@ -453,3 +453,4 @@ fn decimal_from_f64(env: &mut crate::Environment, value: f64) -> crate::objc::id
         &mut env.mem,
     )
 }
+

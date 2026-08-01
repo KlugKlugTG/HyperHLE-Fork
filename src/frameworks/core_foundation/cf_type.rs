@@ -72,7 +72,7 @@ pub fn CFHash(env: &mut Environment, object: CFTypeRef) -> CFHashCode {
     msg![env; object hash]
 }
 
-/// Returns the type ID for a CF object. touchHLE uses the class pointer as a
+/// Returns the type ID for a CF object. RadekHLE uses the class pointer as a
 /// stable unique-per-class value so that CFGetTypeID(x) == CFStringGetTypeID()
 /// works correctly when x is an NSString/CFString.
 pub fn CFGetTypeID(env: &mut Environment, cf: CFTypeRef) -> CFTypeID {
@@ -135,7 +135,7 @@ pub fn CFURLGetTypeID(env: &mut Environment) -> CFTypeID {
 /// > the **Create Rule** — the caller owns the returned string and must
 /// > release it.
 ///
-/// On the touchHLE side every CF type is toll-free-bridged to an
+/// On the RadekHLE side every CF type is toll-free-bridged to an
 /// Objective-C object, so the canonical implementation just forwards to
 /// the object's `-description` selector (which Foundation overrides for
 /// every concrete subclass) and retains the result so the caller has the
@@ -171,3 +171,4 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CFURLGetTypeID()),
     export_c_func!(CFCopyDescription(_)),
 ];
+

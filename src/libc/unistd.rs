@@ -69,7 +69,7 @@ fn sleep(env: &mut Environment, seconds: u32) -> u32 {
     env.sleep(Duration::from_secs(seconds.into()));
     // sleep() returns the amount of time remaining that should have been slept,
     // but wasn't, if the thread was woken up early by a signal.
-    // touchHLE never does that currently, so 0 is always correct here.
+    // RadekHLE never does that currently, so 0 is always correct here.
     0
 }
 
@@ -82,7 +82,7 @@ fn usleep(env: &mut Environment, useconds: useconds_t) -> i32 {
 }
 
 fn alarm(_env: &mut Environment, seconds: u32) -> u32 {
-    // touchHLE does not currently deliver Unix signals. These games use alarm
+    // RadekHLE does not currently deliver Unix signals. These games use alarm
     // only around best-effort network/service checks, so accepting/cancelling
     // it without a pending signal matches the non-blocking path they need.
     log_dbg!("TODO: alarm({seconds}) -> 0 (signals are not emulated)");
@@ -95,7 +95,7 @@ pub type pid_t = i32;
 type gid_t = u32;
 
 pub fn getpid(_env: &mut Environment) -> pid_t {
-    // Not a real value, since touchHLE only simulates a single process.
+    // Not a real value, since RadekHLE only simulates a single process.
     // PID 0 would be init, which is a bit unrealistic, so let's go with 1.
     1
 }
@@ -111,7 +111,7 @@ fn getegid(_env: &mut Environment) -> gid_t {
     0
 }
 fn getuid(_env: &mut Environment) -> gid_t {
-    // touchHLE simulates a single, unprivileged user. The exact value is
+    // RadekHLE simulates a single, unprivileged user. The exact value is
     // mostly irrelevant — apps usually only check `getuid() == 0` (root)
     // or feed it into a hash for analytics.
     501
@@ -265,7 +265,7 @@ fn access(env: &mut Environment, path: ConstPtr<u8>, mode: i32) -> i32 {
 }
 
 fn fork(env: &mut Environment) -> i32 {
-    // fork() is not supported in touchHLE — iOS does not support forking
+    // fork() is not supported in RadekHLE — iOS does not support forking
     // Return -1 and set errno to ENOSYS
     log!("Warning: fork() called but is not supported on iOS, returning -1");
     set_errno(env, ENOSYS);
@@ -373,7 +373,7 @@ fn rmdir(env: &mut Environment, path: ConstPtr<u8>) -> i32 {
 /// refers to the same file as `path1`. Both names share the same inode
 /// and changes through one are visible through the other.
 ///
-/// HyperHLE's guest filesystem is an in-memory tree with no concept of
+/// RadekHLE's guest filesystem is an in-memory tree with no concept of
 /// inodes or hard links, so we emulate the documented externally-visible
 /// behaviour for the common single-writer case by copying the file
 /// contents. This is the same fallback Apple's man page describes for
@@ -443,7 +443,7 @@ fn link(env: &mut Environment, path1: ConstPtr<u8>, path2: ConstPtr<u8>) -> i32 
 /// (<https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/symlink.2.html>)
 /// documents `ENOTSUP` ("The file system does not support the creation of
 /// symbolic links") as the canonical errno when the underlying filesystem
-/// has no symlink primitive. HyperHLE's guest filesystem has no symlink
+/// has no symlink primitive. RadekHLE's guest filesystem has no symlink
 /// type — `readlink(2)` here already returns `EINVAL` for every path —
 /// so we honestly fail with `ENOTSUP`, mirroring what real Darwin does
 /// on a FAT/MS-DOS volume.
@@ -462,7 +462,7 @@ fn symlink(env: &mut Environment, path1: ConstPtr<u8>, path2: ConstPtr<u8>) -> i
 
 fn gethostname(env: &mut Environment, name: MutPtr<u8>, namelen: GuestUSize) -> i32 {
     // TODO: define unique hostname once networking is supported
-    let hostname = "touchHLE";
+    let hostname = "RadekHLE";
     let len: GuestUSize = hostname.len().try_into().unwrap();
     if namelen <= len {
         // POSIX: name buffer too small -> ENAMETOOLONG. Don't crash the host.
@@ -496,7 +496,7 @@ fn readlink(
     // returns the number of bytes placed in `buf` on success, -1 on
     // error (with errno set). On a path that exists but is not a
     // symbolic link, the documented errno is EINVAL — and that's the
-    // common case for the guest filesystem touchHLE exposes (no symlinks
+    // common case for the guest filesystem RadekHLE exposes (no symlinks
     // anywhere). Mono probes readlink on every dynamic-assembly load
     // (mscorlib.dll, System.dll, etc.) to figure out the canonical
     // path; demoting to debug keeps Unity-engine games from drowning
@@ -556,7 +556,7 @@ fn pipe(env: &mut Environment, _fds: MutPtr<FileDescriptor>) -> i32 {
 
 fn sbrk(env: &mut Environment, increment: GuestISize) -> GuestISize {
     // sbrk() is used by legacy malloc implementations to grow the heap.
-    // touchHLE manages guest memory separately — return -1 to signal failure,
+    // RadekHLE manages guest memory separately — return -1 to signal failure,
     // causing the C runtime to fall back to mmap-based allocation.
     log_dbg!("sbrk({}) -> -1 (not supported)", increment);
     set_errno(env, ENOSYS);
@@ -564,7 +564,7 @@ fn sbrk(env: &mut Environment, increment: GuestISize) -> GuestISize {
 }
 
 fn chmod(env: &mut Environment, path: ConstPtr<u8>, _mode: u32) -> i32 {
-    // touchHLE guest filesystem is read-only for bundle files.
+    // RadekHLE guest filesystem is read-only for bundle files.
     // chmod is a no-op — return success to keep apps happy.
     log_dbg!(
         "chmod('{}', ...) -> 0 (stubbed)",
@@ -584,7 +584,7 @@ fn fchmod(_env: &mut Environment, _fd: i32, _mode: u32) -> i32 {
 }
 
 // Darwin/XNU `<sys/syscall.h>` selector numbers used by the few syscalls
-// touchHLE knows how to implement directly. The full list is enormous; we
+// RadekHLE knows how to implement directly. The full list is enormous; we
 // only enumerate the ones we resolve here.
 const SYS_THREAD_SELFID: i32 = 372;
 const SYS_GETPID: i32 = 20;
@@ -605,7 +605,7 @@ const SYS_GETEGID: i32 = 43;
 /// > file `<sys/syscall.h>`. On error, `syscall()` returns -1 and sets
 /// > `errno` to indicate the error.
 ///
-/// In touchHLE there is no host kernel sitting beneath the guest — every
+/// In RadekHLE there is no host kernel sitting beneath the guest — every
 /// syscall would have to be intercepted at the libsystem layer. We
 /// honour the very small subset that iOS apps occasionally reach via
 /// `syscall(SYS_thread_selfid)` etc, and return `-1` with `errno = ENOSYS`
@@ -621,7 +621,7 @@ fn syscall(env: &mut Environment, number: i32, _args: DotDotDot) -> i32 {
         SYS_GETGID => self::getgid(env) as i32,
         SYS_GETEGID => self::getegid(env) as i32,
         SYS_THREAD_SELFID => {
-            // Stable per-thread integer ID. touchHLE numbers threads
+            // Stable per-thread integer ID. RadekHLE numbers threads
             // from 0 upward; the kernel's thread-id space is opaque to
             // userspace, so the only contract is non-zero unique IDs.
             (env.current_thread as i32) + 1
@@ -636,7 +636,7 @@ fn syscall(env: &mut Environment, number: i32, _args: DotDotDot) -> i32 {
 
 /// `sync()` — Darwin man 2: "The `sync()` function causes all
 /// information in memory that updates file systems to be scheduled for
-/// writing out to all file systems." touchHLE delegates every file
+/// writing out to all file systems." RadekHLE delegates every file
 /// write to the host kernel through ordinary `write(2)`-family calls,
 /// so the guest never has buffered data on our side that still needs to
 /// hit disk. The correct emulator-side behaviour is therefore a no-op
@@ -682,3 +682,4 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(sync()),
     export_c_func!(setpriority(_, _, _)),
 ];
+

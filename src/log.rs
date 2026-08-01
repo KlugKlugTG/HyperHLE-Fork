@@ -15,7 +15,7 @@ use std::sync::LazyLock;
 /// who don't have access to ADB, so we also write to a log file.
 pub fn get_log_file() -> &'static File {
     static LOG_FILE: LazyLock<File> = LazyLock::new(|| {
-        File::create(crate::paths::user_data_base_path().join("touchHLE_log.txt")).unwrap()
+        File::create(crate::paths::user_data_base_path().join("RadekHLE_log.txt")).unwrap()
     });
 
     &LOG_FILE
@@ -63,7 +63,7 @@ macro_rules! log_once {
 }
 
 /// Print a message (with implicit newline). This should be used for all
-/// touchHLE output that isn't coming from the app itself.
+/// RadekHLE output that isn't coming from the app itself.
 ///
 /// Prefer use [log] or [log_dbg] for errors and warnings during emulation.
 macro_rules! echo {
@@ -111,15 +111,16 @@ macro_rules! echo_no_panic {
     }
 }
 
-/// Put modules to enable [log_dbg] for here, e.g. "touchHLE::mem" to see when
+/// Put modules to enable [log_dbg] for here, e.g. "RadekHLE::mem" to see when
 /// memory is allocated and freed.
 pub const ENABLED_MODULES: &[&str] = &[
-    "touchHLE::window",
-    "touchHLE::frameworks::uikit::ui_touch",
-    "touchHLE::frameworks::uikit::ui_view",
-    "touchHLE::frameworks::opengles::eagl",
-    "touchHLE::frameworks::uikit::ui_view_controller",
-    "touchHLE::frameworks::foundation::ns_timer",
-    "touchHLE::frameworks::foundation::ns_run_loop",
-    "touchHLE::frameworks::core_animation::ca_display_link",
+    "RadekHLE::window",
+    "RadekHLE::frameworks::uikit::ui_touch",
+    "RadekHLE::frameworks::uikit::ui_view",
+    "RadekHLE::frameworks::opengles::eagl",
+    "RadekHLE::frameworks::uikit::ui_view_controller",
+    "RadekHLE::frameworks::foundation::ns_timer",
+    "RadekHLE::frameworks::foundation::ns_run_loop",
+    "RadekHLE::frameworks::core_animation::ca_display_link",
 ];
+

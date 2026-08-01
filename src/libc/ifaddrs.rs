@@ -32,7 +32,7 @@ pub struct ifaddrs {
     pub ifa_data: u32,
 }
 // SAFETY: the struct is plain data; every field is either a scalar or a guest
-// pointer that touchHLE's pointer type already validates.
+// pointer that RadekHLE's pointer type already validates.
 unsafe impl SafeRead for ifaddrs {}
 
 // ---------------------------------------------------------------------------
@@ -80,7 +80,7 @@ const IF_NAMESIZE: usize = 16;
 /// `unsigned int if_nametoindex(const char *ifname)`
 ///
 /// Returns the index for the named interface, or 0 on error (per POSIX,
-/// which also documents `errno` getting set to `ENXIO`). touchHLE
+/// which also documents `errno` getting set to `ENXIO`). RadekHLE
 /// doesn't expose any host network interfaces to the guest, so the
 /// answer is always "no such interface". Returning 0 silently is the
 /// right behavior — apps that probe `en0` / `pdp_ip0` to detect Wi-Fi
@@ -152,3 +152,4 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(if_nameindex()),
     export_c_func!(if_freenameindex(_)),
 ];
+

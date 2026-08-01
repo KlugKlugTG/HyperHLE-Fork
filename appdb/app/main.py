@@ -1,4 +1,4 @@
-"""FastAPI server for the HyperHLE app compatibility database."""
+"""FastAPI server for the RadekHLE app compatibility database."""
 from __future__ import annotations
 
 import os
@@ -97,7 +97,7 @@ templates.env.filters["fmt_dt"] = _format_dt
 templates.env.filters["iso_utc"] = _iso_utc
 
 
-app = FastAPI(title="HyperHLE app compatibility database")
+app = FastAPI(title="RadekHLE app compatibility database")
 # Trust X-Forwarded-* headers when running behind a TLS-terminating proxy
 # (e.g. Fly). Without this, ``request.url`` reports ``http://`` and any
 # absolute URLs we emit are blocked by browsers as mixed content.
@@ -110,7 +110,7 @@ _session_secret = os.environ.get("SESSION_SECRET") or py_secrets.token_urlsafe(4
 app.add_middleware(
     SessionMiddleware,
     secret_key=_session_secret,
-    session_cookie="hyperhle_session",
+    session_cookie="RadekHLE_session",
     https_only=False,  # Fly terminates TLS in front of us; cookie is still flagged Secure when behind https.
     same_site="lax",
 )
@@ -362,7 +362,7 @@ def _empty_form_data() -> dict:
         "display_name": "",
         "bundle_identifier": "",
         "minimum_ios_version": "",
-        "touchhle_version": "",
+        "RadekHLE_version": "",
         "operating_system": "",
         "gpu": "",
         "scale_hack": "",
@@ -440,7 +440,7 @@ async def submit_parse_log(
     db: Annotated[Session, Depends(get_db)] = None,
     user: CurrentUserDep = None,
 ):
-    """Parse an uploaded HyperHLE / touchHLE log and re-render the submit form
+    """Parse an uploaded RadekHLE / RadekHLE log and re-render the submit form
     with the extracted fields pre-filled."""
     if user is None:
         return _render_login_required(request, db, status_code=401)
@@ -484,7 +484,7 @@ async def submit_parse_log(
     if parsed.minimum_ios_version:
         form["minimum_ios_version"] = parsed.minimum_ios_version
     if parsed.emulator_version:
-        form["touchhle_version"] = parsed.emulator_version
+        form["RadekHLE_version"] = parsed.emulator_version
     if parsed.operating_system:
         form["operating_system"] = parsed.operating_system
     if parsed.gpu:
@@ -562,7 +562,7 @@ async def submit_post(
     display_name: Annotated[str, Form()] = "",
     bundle_identifier: Annotated[str, Form()] = "",
     minimum_ios_version: Annotated[str, Form()] = "",
-    touchhle_version: Annotated[str, Form()] = "",
+    RadekHLE_version: Annotated[str, Form()] = "",
     operating_system: Annotated[str, Form()] = "",
     gpu: Annotated[str, Form()] = "",
     scale_hack: Annotated[str, Form()] = "",
@@ -581,7 +581,7 @@ async def submit_post(
         "display_name": display_name,
         "bundle_identifier": bundle_identifier,
         "minimum_ios_version": minimum_ios_version,
-        "touchhle_version": touchhle_version,
+        "RadekHLE_version": RadekHLE_version,
         "operating_system": operating_system,
         "gpu": gpu,
         "scale_hack": scale_hack,
@@ -634,8 +634,8 @@ async def submit_post(
 
     if not _clean(version_number):
         return _err("Version number is required.")
-    if not _clean(touchhle_version):
-        return _err("HyperHLE version is required.")
+    if not _clean(RadekHLE_version):
+        return _err("RadekHLE version is required.")
     if not _clean(operating_system):
         return _err("Operating system is required.")
     try:
@@ -669,7 +669,7 @@ async def submit_post(
         display_name=_clean(display_name),
         bundle_identifier=_clean(bundle_identifier),
         minimum_ios_version=_clean(minimum_ios_version),
-        touchhle_version=_clean(touchhle_version) or "",
+        RadekHLE_version=_clean(RadekHLE_version) or "",
         operating_system=_clean(operating_system) or "",
         gpu=_clean(gpu),
         scale_hack=sh,
@@ -852,7 +852,7 @@ def _serialise_report(r: Report, *, full: bool) -> dict:
         "operating_system": r.operating_system,
         "gpu": r.gpu,
         "scale_hack": r.scale_hack,
-        "touchhle_version": r.touchhle_version,
+        "RadekHLE_version": r.RadekHLE_version,
         "reported_at": _iso_utc(r.reported_at),
         "reported_by": r.reported_by,
         "url": f"/apps/{r.app_id}#report-{r.id}",
@@ -1016,3 +1016,4 @@ def api_triage_result(
         r.triage_notes = notes
     db.commit()
     return {"ok": True, "report": _serialise_report(r, full=True)}
+

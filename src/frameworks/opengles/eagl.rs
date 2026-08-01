@@ -260,10 +260,10 @@ pub const CLASSES: ClassExports = objc_classes! {
     // Apple's `EAGLContext` documentation for
     // `-renderbufferStorage:fromDrawable:` states that passing `nil` for the
     // drawable "deletes any earlier binding" of the currently bound
-    // renderbuffer to a drawable and returns `YES`. touchHLE used to
+    // renderbuffer to a drawable and returns `YES`. RadekHLE used to
     // assert against this case (`drawable != nil`), which crashed apps
     // that legitimately unbind during teardown (e.g. Resident Evil 4 —
-    // HyperHLE log #5 — calls `renderbufferStorage:fromDrawable:nil`
+    // RadekHLE log #5 — calls `renderbufferStorage:fromDrawable:nil`
     // while tearing down its EAGL surface during a scene transition).
     //
     // Spec behaviour: look up the currently bound renderbuffer (via
@@ -354,10 +354,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 
             // Apple's `-renderbufferStorage:fromDrawable:` derives the
             // renderbuffer size from the CAEAGLayer's bounds. Some apps (e.g.
-            // Beyond Gravity — HyperHLE log #1) momentarily present a layer
+            // Beyond Gravity — RadekHLE log #1) momentarily present a layer
             // whose `bounds.size` is bogus (non-finite, negative, or zero)
             // during an unbind/rebind cycle while tearing down and recreating
-            // their EAGL surface. touchHLE used to `assert!` the size was in a
+            // their EAGL surface. RadekHLE used to `assert!` the size was in a
             // sane range, which aborted the whole emulator. Real iOS never
             // crashes here — it simply allocates a renderbuffer sized to the
             // (screen-sized) drawable. Match that by falling back to the main
@@ -396,7 +396,7 @@ pub const CLASSES: ClassExports = objc_classes! {
             width = width.max(1);
             height = height.max(1);
 
-            if std::env::var_os("TOUCHHLE_FORCE_LANDSCAPE_RENDERBUFFER").is_some() {
+            if std::env::var_os("RadekHLE_FORCE_LANDSCAPE_RENDERBUFFER").is_some() {
                 let is_landscape = env
                     .window
                     .as_ref()
@@ -410,7 +410,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
                 if is_landscape && height > width {
                     log!(
-                        "TOUCHHLE_FORCE_LANDSCAPE_RENDERBUFFER=1: swapping EAGL renderbuffer storage from {}x{} to {}x{}",
+                        "RadekHLE_FORCE_LANDSCAPE_RENDERBUFFER=1: swapping EAGL renderbuffer storage from {}x{} to {}x{}",
                         width,
                         height,
                         height,
@@ -419,7 +419,7 @@ pub const CLASSES: ClassExports = objc_classes! {
                     std::mem::swap(&mut width, &mut height);
                 } else {
                     log!(
-                        "TOUCHHLE_FORCE_LANDSCAPE_RENDERBUFFER=1: keeping EAGL renderbuffer storage at {}x{} (is_landscape={})",
+                        "RadekHLE_FORCE_LANDSCAPE_RENDERBUFFER=1: keeping EAGL renderbuffer storage at {}x{} (is_landscape={})",
                         width,
                         height,
                         is_landscape
@@ -741,7 +741,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 /// Implement framerate limiting.
 ///
 /// The real iPhone OS seems to force 60Hz v-sync in `presentRenderbuffer:`.
-/// touchHLE does not force v-sync, and its users might not have 60Hz monitors
+/// RadekHLE does not force v-sync, and its users might not have 60Hz monitors
 /// in any case, so to avoid excessive FPS or games running too fast, we need
 /// to simulate it.
 ///
@@ -1411,7 +1411,7 @@ unsafe fn present_renderbuffer(env: &mut Environment) {
     // transform to the rootViewController's view so that the app, which
     // typically draws content "upright" inside the EAGL layer's portrait
     // bounds, ends up rotated for landscape display when Core Animation
-    // composites it. touchHLE bypasses CA composition for EAGL apps that
+    // composites it. RadekHLE bypasses CA composition for EAGL apps that
     // call `presentRenderbuffer:` directly, so we have to replicate that
     // additional rotation here. Without it, iPad landscape games (e.g.
     // Plants vs. Zombies HD) render upside-down. iPhone-only landscape
@@ -1427,9 +1427,9 @@ unsafe fn present_renderbuffer(env: &mut Environment) {
                 device_orientation,
                 crate::window::DeviceOrientation::Portrait
             );
-    let rotation_matrix = if std::env::var_os("TOUCHHLE_DISABLE_PRESENT_ROTATION").is_some() {
+    let rotation_matrix = if std::env::var_os("RadekHLE_DISABLE_PRESENT_ROTATION").is_some() {
         log_once!(
-            "TOUCHHLE_DISABLE_PRESENT_ROTATION=1: presenting EAGL renderbuffer without texture rotation"
+            "RadekHLE_DISABLE_PRESENT_ROTATION=1: presenting EAGL renderbuffer without texture rotation"
         );
         crate::matrix::Matrix::<2>::identity()
     } else if needs_autorotation_compensation {
@@ -1454,7 +1454,7 @@ unsafe fn present_renderbuffer(env: &mut Environment) {
         // left to do here is skip the host-side composition step and pump
         // a single SDL swap so the window keeps animating. Without this
         // guard the emulator used to abort with the panic visible in
-        // HyperHLE log #5 (`opengles.rs:56` — Option::unwrap on a None
+        // RadekHLE log #5 (`opengles.rs:56` — Option::unwrap on a None
         // current_ctx).
         log!(
             "present_renderbuffer: no current GL context for thread {}; \
@@ -2324,3 +2324,4 @@ pub fn EAGLGetVersion(env: &mut Environment, major: MutPtr<u32>, minor: MutPtr<u
 }
 
 pub const FUNCTIONS: FunctionExports = &[export_c_func!(EAGLGetVersion(_, _))];
+

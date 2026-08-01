@@ -13,7 +13,7 @@ use crate::mem::{ConstPtr, ConstVoidPtr, GuestISize, GuestUSize, Mem, MutPtr, Mu
 use crate::objc::nil;
 use crate::Environment;
 use std::slice::from_raw_parts;
-use touchHLE_gl_bindings::gles11::{
+use RadekHLE_gl_bindings::gles11::{
     ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER_BINDING, WRITE_ONLY_OES,
 };
 
@@ -42,7 +42,7 @@ const SUPPORTED_COMPRESSED_TEXTURE_FORMATS: &[GLenum] = &[
 ];
 
 fn trace_potatogold_render() -> bool {
-    std::env::var_os("TOUCHHLE_TRACE_POTATOGOLD_RENDER").is_some()
+    std::env::var_os("RadekHLE_TRACE_POTATOGOLD_RENDER").is_some()
 }
 
 #[track_caller]
@@ -68,7 +68,7 @@ where
     // calling thread. The guard above already short-circuits the common
     // case where the *guest* never made a context current, but on edge
     // cases (e.g. context destroyed mid-call, headless GLES driver missing,
-    // see HyperHLE log #5) we may still hit None here. Treat it the same
+    // see RadekHLE log #5) we may still hit None here. Treat it the same
     // as the no-context branch above: log once and return the default.
     let Some(mut gles) = super::sync_context(
         &mut env.framework_state.opengles,
@@ -109,7 +109,7 @@ where
     let trace = env.options.trace_gl_errors;
     let caller = std::panic::Location::caller();
     // _no_skip historically panicked if there was no current context,
-    // but real games (HyperHLE log #5 / Resident Evil 4) hit this on
+    // but real games (RadekHLE log #5 / Resident Evil 4) hit this on
     // worker threads that issue GL calls after `setCurrentContext:nil`.
     // Apple's documented behaviour is "GL calls silently fail" — mirror
     // that by returning the type's default instead of aborting the
@@ -403,7 +403,7 @@ fn glGetString(env: &mut Environment, name: GLenum) -> ConstPtr<GLubyte> {
             gles11::RENDERER => b"PowerVR MBXLite with VGPLite",
             gles11::VERSION => b"OpenGL ES-CM 1.1 (76)",
             // Includes GL_OES_matrix_palette: the real PowerVR SGX in the
-            // iPhone 3GS exposes it, and touchHLE now emulates palette
+            // iPhone 3GS exposes it, and RadekHLE now emulates palette
             // skinning CPU-side (see gles1_on_gl2's skin_vertices). Games such
             // as LEGO Ninjago: Rise of the Snakes feature-test this string and
             // use the palette path for skinned character meshes.
@@ -547,7 +547,7 @@ fn glViewport(env: &mut Environment, x: GLint, y: GLint, width: GLsizei, height:
     {
         log!("UltraHLE MinionJump: viewport swap 768x1024 -> 1024x768");
         (0, 0, 1024, 768)
-    } else if std::env::var_os("TOUCHHLE_FORCE_IPAD_LANDSCAPE_SCREEN").is_some()
+    } else if std::env::var_os("RadekHLE_FORCE_IPAD_LANDSCAPE_SCREEN").is_some()
         && x == 0
         && y == 0
         && width == 768
@@ -561,7 +561,7 @@ fn glViewport(env: &mut Environment, x: GLint, y: GLint, width: GLsizei, height:
     // ULTRAHLE_MINIONJUMP_VIEWPORT_END
     let (mut x, mut y, mut width, mut height) = (x, y, width, height);
 
-    if std::env::var_os("TOUCHHLE_FORCE_LANDSCAPE_VIEWPORT").is_some() {
+    if std::env::var_os("RadekHLE_FORCE_LANDSCAPE_VIEWPORT").is_some() {
         // PotatoGold/adrastea-style landscape apps can end up with a 20px
         // status-bar-shortened portrait-derived viewport, e.g. 460x320,
         // even after UIScreen/EAGL have been made landscape. That leaves the
@@ -574,7 +574,7 @@ fn glViewport(env: &mut Environment, x: GLint, y: GLint, width: GLsizei, height:
 
         if should_force {
             log!(
-                "TOUCHHLE_FORCE_LANDSCAPE_VIEWPORT=1: overriding glViewport({}, {}, {}, {}) to glViewport(0, 0, 480, 320)",
+                "RadekHLE_FORCE_LANDSCAPE_VIEWPORT=1: overriding glViewport({}, {}, {}, {}) to glViewport(0, 0, 480, 320)",
                 x,
                 y,
                 width,
@@ -1264,7 +1264,7 @@ fn glGetBufferPointervOES(
 /// attribute arrays whose pointer is not actually inside guest memory.
 ///
 /// When no buffer object is bound for an attribute array, the host GL driver
-/// reads the vertex data straight from the pointer touchHLE gave it. That
+/// reads the vertex data straight from the pointer RadekHLE gave it. That
 /// pointer is only safe if it addresses guest memory. A guest can leave an
 /// array enabled with a bogus pointer — e.g. a stale offset into a vertex
 /// buffer that was unbound or deleted before the draw (observed in My Talking
@@ -1369,11 +1369,11 @@ fn glDrawArrays(env: &mut Environment, mode: GLenum, first: GLint, count: GLsize
     with_ctx_and_mem(env, |gles, mem| unsafe {
         let disabled_arrays = guard_client_vertex_arrays(gles, mem);
         let fog_state_backup = clamp_fog_state_values(gles);
-        if std::env::var_os("TOUCHHLE_POTATO_NATIVE_GLES2_PC_STATE").is_some() {
+        if std::env::var_os("RadekHLE_POTATO_NATIVE_GLES2_PC_STATE").is_some() {
             static SEEN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
             if !SEEN.swap(true, std::sync::atomic::Ordering::Relaxed) {
                 log!(
-                    "TOUCHHLE_POTATO_NATIVE_GLES2_PC_STATE=1: disabling strict native GLES2 scissor/depth/cull state before Potato draws [this log will only be shown once]"
+                    "RadekHLE_POTATO_NATIVE_GLES2_PC_STATE=1: disabling strict native GLES2 scissor/depth/cull state before Potato draws [this log will only be shown once]"
                 );
             }
 
@@ -1426,11 +1426,11 @@ fn glDrawElements(
     with_ctx_and_mem(env, |gles, mem| unsafe {
         let disabled_arrays = guard_client_vertex_arrays(gles, mem);
         let fog_state_backup = clamp_fog_state_values(gles);
-        if std::env::var_os("TOUCHHLE_POTATO_NATIVE_GLES2_PC_STATE").is_some() {
+        if std::env::var_os("RadekHLE_POTATO_NATIVE_GLES2_PC_STATE").is_some() {
             static SEEN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
             if !SEEN.swap(true, std::sync::atomic::Ordering::Relaxed) {
                 log!(
-                    "TOUCHHLE_POTATO_NATIVE_GLES2_PC_STATE=1: disabling strict native GLES2 scissor/depth/cull state before Potato draws [this log will only be shown once]"
+                    "RadekHLE_POTATO_NATIVE_GLES2_PC_STATE=1: disabling strict native GLES2 scissor/depth/cull state before Potato draws [this log will only be shown once]"
                 );
             }
 
@@ -1757,7 +1757,7 @@ fn glBindTexture(env: &mut Environment, target: GLenum, texture: GLuint) {
 /// level 0 uploaded becomes "incomplete" the moment the guest sets a mipmap
 /// min-filter, and sampling such a texture returns black — which made the
 /// LEGO Ninjago title menu render as a uniform-black quad on Mali-G57 MC2,
-/// even though the LEGO splash logo (whose textures kept the touchHLE-forced
+/// even though the LEGO splash logo (whose textures kept the RadekHLE-forced
 /// GL_LINEAR override from glTexImage2D) rendered fine.
 fn demipmap_filter_value(pname: GLenum, param: GLint) -> GLint {
     if pname != gles11::TEXTURE_MIN_FILTER {
@@ -1834,7 +1834,7 @@ fn glTexParameterx(env: &mut Environment, target: GLenum, pname: GLenum, param: 
 }
 fn glTexParameteriv(env: &mut Environment, target: GLenum, pname: GLenum, params: ConstPtr<GLint>) {
     if pname == gles11::TEXTURE_CROP_RECT_OES {
-        if std::env::var_os("TOUCHHLE_ENABLE_TEXTURE_CROP_RECT").is_none() {
+        if std::env::var_os("RadekHLE_ENABLE_TEXTURE_CROP_RECT").is_none() {
             return;
         }
 
@@ -1846,7 +1846,7 @@ fn glTexParameteriv(env: &mut Environment, target: GLenum, pname: GLenum, params
                 if !SEEN.swap(true, Ordering::Relaxed) {
                     let crop = from_raw_parts(params_ptr, 4);
                     log!(
-                        "TOUCHHLE_ENABLE_TEXTURE_CROP_RECT=1: first glTexParameteriv(GL_TEXTURE_CROP_RECT_OES) = [{}, {}, {}, {}]",
+                        "RadekHLE_ENABLE_TEXTURE_CROP_RECT=1: first glTexParameteriv(GL_TEXTURE_CROP_RECT_OES) = [{}, {}, {}, {}]",
                         crop[0],
                         crop[1],
                         crop[2],
@@ -1880,7 +1880,7 @@ fn glTexParameterfv(
     params: ConstPtr<GLfloat>,
 ) {
     if pname == gles11::TEXTURE_CROP_RECT_OES {
-        if std::env::var_os("TOUCHHLE_ENABLE_TEXTURE_CROP_RECT").is_none() {
+        if std::env::var_os("RadekHLE_ENABLE_TEXTURE_CROP_RECT").is_none() {
             return;
         }
 
@@ -1892,7 +1892,7 @@ fn glTexParameterfv(
                 if !SEEN.swap(true, Ordering::Relaxed) {
                     let crop = from_raw_parts(params_ptr, 4);
                     log!(
-                        "TOUCHHLE_ENABLE_TEXTURE_CROP_RECT=1: first glTexParameterfv(GL_TEXTURE_CROP_RECT_OES) = [{}, {}, {}, {}]",
+                        "RadekHLE_ENABLE_TEXTURE_CROP_RECT=1: first glTexParameterfv(GL_TEXTURE_CROP_RECT_OES) = [{}, {}, {}, {}]",
                         crop[0],
                         crop[1],
                         crop[2],
@@ -1926,7 +1926,7 @@ fn glTexParameterxv(
     params: ConstPtr<GLfixed>,
 ) {
     if pname == gles11::TEXTURE_CROP_RECT_OES {
-        if std::env::var_os("TOUCHHLE_ENABLE_TEXTURE_CROP_RECT").is_none() {
+        if std::env::var_os("RadekHLE_ENABLE_TEXTURE_CROP_RECT").is_none() {
             return;
         }
 
@@ -1938,7 +1938,7 @@ fn glTexParameterxv(
                 if !SEEN.swap(true, Ordering::Relaxed) {
                     let crop = from_raw_parts(params_ptr, 4);
                     log!(
-                        "TOUCHHLE_ENABLE_TEXTURE_CROP_RECT=1: first glTexParameterxv(GL_TEXTURE_CROP_RECT_OES) = [{}, {}, {}, {}]",
+                        "RadekHLE_ENABLE_TEXTURE_CROP_RECT=1: first glTexParameterxv(GL_TEXTURE_CROP_RECT_OES) = [{}, {}, {}, {}]",
                         crop[0],
                         crop[1],
                         crop[2],
@@ -2130,7 +2130,7 @@ fn glCompressedTexImage2D(
         // paletted upload that follows a failed glTexImage2D would report
         // a misleading "compressed upload failed" on the very first call —
         // that's exactly what was happening on Mali-G57 with Temple Run
-        // (HyperHLE log: 1024x1024 RGBA8 upload immediately followed by
+        // (RadekHLE log: 1024x1024 RGBA8 upload immediately followed by
         // 256x256 PVRTC upload, both blamed on the PVRTC path).
         let mut drained = 0u32;
         loop {
@@ -4817,7 +4817,7 @@ fn glGetSynciv(
 
 /// `void glGetBufferPointerv(GLenum target, GLenum pname, void **params)` —
 /// ES 3.0 §6.1.15. The only valid `pname` is `GL_BUFFER_MAP_POINTER`, which
-/// is NULL unless the buffer is currently mapped. touchHLE exposes buffer
+/// is NULL unless the buffer is currently mapped. RadekHLE exposes buffer
 /// mappings to the guest via glMapBufferOES (which hands the app a *guest*
 /// pointer and keeps its own host<->guest mirror), so the raw host pointer
 /// the driver returns is not meaningful in the guest address space. We still
@@ -5579,7 +5579,7 @@ mod shader_preprocessor_normalization_tests {
     #[test]
     fn normalizes_directive_spanning_concatenated_source_strings() {
         // Guest code often calls glShaderSource with count > 1, splitting the
-        // source into several strings. touchHLE concatenates them before
+        // source into several strings. RadekHLE concatenates them before
         // normalization; verify that a directive whose trailing `//comment`
         // only becomes adjacent *after* concatenation is still fixed up.
         // Real case: Gameloft's "9mm" glues `#endif//...` at a chunk boundary,
@@ -5593,3 +5593,4 @@ mod shader_preprocessor_normalization_tests {
         assert!(!out.contains("#endif//trailing comment"));
     }
 }
+

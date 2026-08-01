@@ -1,13 +1,13 @@
-# HyperHLE app compatibility database
+# RadekHLE app compatibility database
 
-A community-run compatibility database for [HyperHLE](https://github.com/j92580498-max/touchHLE)
-(a community fork of the touchHLE iPhone OS emulator), modelled on the
-original [appdb.touchhle.org](https://appdb.touchhle.org/).
+A community-run compatibility database for [RadekHLE](https://github.com/j92580498-max/RadekHLE)
+(a community fork of the RadekHLE iPhone OS emulator), modelled on the
+original [appdb.RadekHLE.org](https://appdb.RadekHLE.org/).
 
 Anyone can submit a compatibility report for an app they've tested in
-HyperHLE: app name, version, OS, GPU, rating (1–5⭐), remarks, screenshot
+RadekHLE: app name, version, OS, GPU, rating (1–5⭐), remarks, screenshot
 (uploaded as a file). The site aggregates reports per app and per app
-version, and can pre-fill the form from an uploaded HyperHLE log.
+version, and can pre-fill the form from an uploaded RadekHLE log.
 
 ## Stack
 
@@ -43,7 +43,7 @@ appdb/
     ├── main.py            # FastAPI routes
     ├── db.py              # SQLAlchemy models, engine, init_db
     ├── seed.py            # demo data
-    ├── log_parser.py      # HyperHLE / touchHLE log → form fields
+    ├── log_parser.py      # RadekHLE / RadekHLE log → form fields
     ├── templates/         # Jinja2 templates
     │   ├── base.html
     │   ├── index.html         # Apps list + per-rating stats
@@ -62,7 +62,7 @@ appdb/
 | GET | `/apps/{id}` | App detail page (versions + reports) |
 | GET | `/submit` | Compatibility report form |
 | POST | `/submit` | Create a new report (and optionally a new app) |
-| POST | `/submit/parse-log` | Parse uploaded HyperHLE log → re-render the form pre-filled |
+| POST | `/submit/parse-log` | Parse uploaded RadekHLE log → re-render the form pre-filled |
 | GET | `/about` | Rating scale and house rules |
 | GET | `/uploads/{filename}` | Static — serves uploaded screenshots |
 | GET | `/healthz` | Liveness check |
@@ -75,7 +75,8 @@ screenshots).
 
 ## Notes
 
-- HyperHLE is a community fork of touchHLE; this database is **not**
-  affiliated with upstream touchHLE.
+- RadekHLE is a community fork of RadekHLE; this database is **not**
+  affiliated with upstream RadekHLE.
 - Reports are anonymous — there is no login. To prevent spam in
   production, add a CAPTCHA or rate-limiting before exposing it widely.
+

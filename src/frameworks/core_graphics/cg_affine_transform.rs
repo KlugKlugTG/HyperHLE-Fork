@@ -51,7 +51,7 @@ impl GuestArg for CGAffineTransform {
 }
 impl_GuestRet_for_large_struct!(CGAffineTransform);
 
-// These conversions allow sharing code with the touchHLE Matrix type.
+// These conversions allow sharing code with the RadekHLE Matrix type.
 // Note that they transpose the matrix relative to what Apple documents (see
 // the doc comment on the struct above), because our Matrix type is built on
 // OpenGL-style (M × v) column-vector multiplication for transformations, vs.
@@ -321,3 +321,4 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CGSizeApplyAffineTransform(_, _)),
     export_c_func!(CGRectApplyAffineTransform(_, _)),
 ];
+

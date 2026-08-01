@@ -46,7 +46,7 @@ pub fn vm_allocate(
     } else {
         size
     };
-    // touchHLE delegates page-granularity Mach VM allocations to the
+    // RadekHLE delegates page-granularity Mach VM allocations to the
     // standard guest heap allocator. This is fine in practice — apps
     // call vm_allocate to obtain page-aligned scratch buffers, which
     // env.mem.alloc does honour — but it does mean we can't enforce
@@ -120,7 +120,7 @@ fn vm_deallocate(
 ///
 /// Real Mach `vm_remap` maps the physical pages backing a region of one task's
 /// address space into another (or the same) task, optionally sharing them.
-/// touchHLE has a single flat guest address space and no notion of shared
+/// RadekHLE has a single flat guest address space and no notion of shared
 /// physical pages, so we approximate it: allocate a fresh page-aligned region
 /// and copy the source bytes into it. This is what callers like the Mono/Boehm
 /// GC actually need to keep running — a valid, readable mapping of the same
@@ -214,3 +214,4 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(vm_remap(_, _, _, _, _, _, _, _, _, _, _)),
     export_c_func!(vm_purgable_control(_, _, _, _)),
 ];
+

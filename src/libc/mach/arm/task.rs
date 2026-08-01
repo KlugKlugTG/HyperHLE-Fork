@@ -81,7 +81,7 @@ fn task_set_exception_ports(
     // handler with this call. Per Apple's
     // [task_set_exception_ports](https://developer.apple.com/documentation/kernel/1402141-task_set_exception_ports?language=objc)
     // docs the kernel is supposed to forward matching exceptions to
-    // `new_port`. touchHLE does not deliver guest faults via Mach ports —
+    // `new_port`. RadekHLE does not deliver guest faults via Mach ports —
     // the underlying ARM emulator panics on a bad access — so storing the
     // port is observably equivalent to a successful no-op for the guest.
     // We log it at debug verbosity (this is hot in Mono start-up) and
@@ -112,7 +112,7 @@ fn task_set_exception_ports(
 /// docs: installs `new_port` as the exception handler for `exception_mask`
 /// and returns the previously-installed ports in the `old_*` out parameters.
 ///
-/// touchHLE does not deliver guest faults via Mach ports — the underlying
+/// RadekHLE does not deliver guest faults via Mach ports — the underlying
 /// ARM emulator panics on a bad access — so we record the swap by writing
 /// zero entries to the "previous" out-arrays (signifying no prior handler
 /// was installed) and return `KERN_SUCCESS`. Mono's exception thread relies
@@ -143,7 +143,7 @@ fn task_swap_exception_ports(
     );
     // Apple's docs say `masks`, `old_handlers`, `old_behaviors`, `old_flavors`
     // are output arrays sized by `masksCnt` (in: max count, out: actual count).
-    // Since touchHLE never had a previous handler installed for any mask,
+    // Since RadekHLE never had a previous handler installed for any mask,
     // we report zero installed handlers.
     if !masks_cnt.is_null() {
         env.mem.write(masks_cnt, 0);
@@ -170,3 +170,4 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(task_set_exception_ports(_, _, _, _, _)),
     export_c_func!(task_swap_exception_ports(_, _, _, _, _, _, _, _, _, _)),
 ];
+

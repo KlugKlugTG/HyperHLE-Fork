@@ -120,7 +120,7 @@ pub fn objc_storeWeak(
 
 /// `id objc_storeWeakOrNil(id *location, id newObj)` — same as above
 /// but documented to tolerate a deallocating object (returns nil
-/// instead of crashing). touchHLE never enters the "deallocating but
+/// instead of crashing). RadekHLE never enters the "deallocating but
 /// not yet deallocated" intermediate state, so we forward.
 pub fn objc_storeWeakOrNil(
     env: &mut Environment,
@@ -237,3 +237,4 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(objc_copyWeak(_, _)),
     export_c_func!(objc_moveWeak(_, _)),
 ];
+

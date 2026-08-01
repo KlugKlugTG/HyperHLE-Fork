@@ -101,7 +101,7 @@ fn pthread_mutexattr_gettype(
 ///   - `PTHREAD_PRIO_INHERIT  = 1` (priority inheritance)
 ///   - `PTHREAD_PRIO_PROTECT  = 2` (priority protection / ceiling)
 ///
-/// touchHLE is single-process and runs on the host scheduler; priority
+/// RadekHLE is single-process and runs on the host scheduler; priority
 /// boosts are not user-observable. We therefore validate the protocol
 /// argument like Apple does and treat the setting as a no-op, returning
 /// `0` on success and `EINVAL` for unknown protocols. See
@@ -308,3 +308,4 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(pthread_mutex_unlock(_)),
     export_c_func!(pthread_mutex_destroy(_)),
 ];
+

@@ -498,7 +498,7 @@ impl Mem {
                 // Insert a sentinel to emit the notice only once.
                 set.insert((0xFFFF_FFFE, false));
                 log!(
-                    "touchHLE::mem: further NULL-PAGE warnings silenced after {} unique sites",
+                    "RadekHLE::mem: further NULL-PAGE warnings silenced after {} unique sites",
                     MAX_UNIQUE_LOGS
                 );
             }
@@ -518,7 +518,7 @@ impl Mem {
             " — returning stub page"
         };
         log!(
-            "touchHLE::mem: NULL-PAGE {} at 0x{:08x} (size: 0x{:x}) from {}{} \
+            "RadekHLE::mem: NULL-PAGE {} at 0x{:08x} (size: 0x{:x}) from {}{} \
              (unique sites logged: {}/{})",
             op_type,
             at,
@@ -743,7 +743,7 @@ impl Mem {
     }
 
     /// Returns whether a host pointer addresses a location inside the guest's
-    /// memory region. Used to sanity-check pointers that touchHLE hands to host
+    /// memory region. Used to sanity-check pointers that RadekHLE hands to host
     /// APIs (e.g. client-side OpenGL vertex arrays): a pointer outside this
     /// range is wild and dereferencing it on the host would crash the emulator.
     pub fn is_host_ptr_in_guest_mem(&self, host_ptr: *const std::ffi::c_void) -> bool {
@@ -1098,3 +1098,4 @@ mod mem_tests {
         assert_eq!((p + 0x8).to_bits(), 0x0000_0010);
     }
 }
+

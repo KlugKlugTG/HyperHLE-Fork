@@ -23,7 +23,7 @@
 //! counterpart (e.g. `kCTFontAttributeName` == the `CFStringRef` for
 //! the C string "NSFont", which is the same as the AppKit / UIKit
 //! `NSFontAttributeName`), which is what makes CoreText / Foundation
-//! attributed strings toll-free bridgeable. For touchHLE's purposes
+//! attributed strings toll-free bridgeable. For RadekHLE's purposes
 //! the exact textual content only matters for identity comparisons;
 //! we mirror the spelling Apple's public headers document.
 //!
@@ -124,43 +124,43 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 (env, this, _cmd);
 
-@implementation _touchHLE_CTFontDescriptor: NSObject
+@implementation _RadekHLE_CTFontDescriptor: NSObject
 - (())dealloc {
     env.objc.dealloc_object(this, &mut env.mem)
 }
 @end
 
-@implementation _touchHLE_CTFont: NSObject
+@implementation _RadekHLE_CTFont: NSObject
 - (())dealloc {
     env.objc.dealloc_object(this, &mut env.mem)
 }
 @end
 
-@implementation _touchHLE_CFAttributedString: NSObject
+@implementation _RadekHLE_CFAttributedString: NSObject
 - (())dealloc {
     env.objc.dealloc_object(this, &mut env.mem)
 }
 @end
 
-@implementation _touchHLE_CTTypesetter: NSObject
+@implementation _RadekHLE_CTTypesetter: NSObject
 - (())dealloc {
     env.objc.dealloc_object(this, &mut env.mem)
 }
 @end
 
-@implementation _touchHLE_CTLine: NSObject
+@implementation _RadekHLE_CTLine: NSObject
 - (())dealloc {
     env.objc.dealloc_object(this, &mut env.mem)
 }
 @end
 
-@implementation _touchHLE_CTFramesetter: NSObject
+@implementation _RadekHLE_CTFramesetter: NSObject
 - (())dealloc {
     env.objc.dealloc_object(this, &mut env.mem)
 }
 @end
 
-@implementation _touchHLE_CTFrame: NSObject
+@implementation _RadekHLE_CTFrame: NSObject
 - (())dealloc {
     env.objc.dealloc_object(this, &mut env.mem)
 }
@@ -169,37 +169,37 @@ pub const CLASSES: ClassExports = objc_classes! {
 };
 
 fn alloc_descriptor(env: &mut Environment, attrs: id) -> CTFontDescriptorRef {
-    let class = env.objc.get_known_class("_touchHLE_CTFontDescriptor", &mut env.mem);
+    let class = env.objc.get_known_class("_RadekHLE_CTFontDescriptor", &mut env.mem);
     env.objc.alloc_object(class, Box::new(CTFontDescriptorHostObject { attrs }), &mut env.mem)
 }
 
 fn alloc_font(env: &mut Environment, font: id) -> CTFontRef {
-    let class = env.objc.get_known_class("_touchHLE_CTFont", &mut env.mem);
+    let class = env.objc.get_known_class("_RadekHLE_CTFont", &mut env.mem);
     env.objc.alloc_object(class, Box::new(CTFontHostObject { font }), &mut env.mem)
 }
 
 fn alloc_attr_string(env: &mut Environment, string: id, attrs: id) -> CFAttributedStringRef {
-    let class = env.objc.get_known_class("_touchHLE_CFAttributedString", &mut env.mem);
+    let class = env.objc.get_known_class("_RadekHLE_CFAttributedString", &mut env.mem);
     env.objc.alloc_object(class, Box::new(CTAttributedStringHostObject { string, attrs }), &mut env.mem)
 }
 
 fn alloc_typesetter(env: &mut Environment, attr_string: id) -> CTTypesetterRef {
-    let class = env.objc.get_known_class("_touchHLE_CTTypesetter", &mut env.mem);
+    let class = env.objc.get_known_class("_RadekHLE_CTTypesetter", &mut env.mem);
     env.objc.alloc_object(class, Box::new(CTTypesetterHostObject { attr_string }), &mut env.mem)
 }
 
 fn alloc_line(env: &mut Environment, text: id, font: id) -> CTLineRef {
-    let class = env.objc.get_known_class("_touchHLE_CTLine", &mut env.mem);
+    let class = env.objc.get_known_class("_RadekHLE_CTLine", &mut env.mem);
     env.objc.alloc_object(class, Box::new(CTLineHostObject { text, font }), &mut env.mem)
 }
 
 fn alloc_framesetter(env: &mut Environment, attr_string: id) -> CTFramesetterRef {
-    let class = env.objc.get_known_class("_touchHLE_CTFramesetter", &mut env.mem);
+    let class = env.objc.get_known_class("_RadekHLE_CTFramesetter", &mut env.mem);
     env.objc.alloc_object(class, Box::new(CTFramesetterHostObject { attr_string }), &mut env.mem)
 }
 
 fn alloc_frame(env: &mut Environment, line: id, range: CFRange) -> CTFrameRef {
-    let class = env.objc.get_known_class("_touchHLE_CTFrame", &mut env.mem);
+    let class = env.objc.get_known_class("_RadekHLE_CTFrame", &mut env.mem);
     env.objc.alloc_object(class, Box::new(CTFrameHostObject { line, range }), &mut env.mem)
 }
 
@@ -466,9 +466,9 @@ fn CTLineGetGlyphCount(env: &mut Environment, line: CTLineRef) -> i32 {
 
 /// `CFArrayRef CTLineGetGlyphRuns(CTLineRef line)`
 ///
-/// Returns the array of glyph runs that make up the line. touchHLE lays text
+/// Returns the array of glyph runs that make up the line. RadekHLE lays text
 /// out as a single run, so we return a one-element array wrapping the line
-/// itself (our `_touchHLE_CTLine` host object also stands in for a run — the
+/// itself (our `_RadekHLE_CTLine` host object also stands in for a run — the
 /// run-level getters used by the apps in the corpus, e.g. glyph count, work
 /// the same way). Returning a real (empty-safe) `CFArray` rather than NULL
 /// prevents callers from dereferencing a NULL array.
@@ -637,7 +637,7 @@ fn CTFramesetterSuggestFrameSizeWithConstraints(
 ///     CFRange stringRange, CGPathRef path, CFDictionaryRef frameAttributes)`
 ///
 /// Creates a frame laying the framesetter's attributed string into the
-/// supplied path's bounding region. touchHLE represents the laid-out frame as
+/// supplied path's bounding region. RadekHLE represents the laid-out frame as
 /// a single `CTLine` over the whole text; `CTFrameGetLines` then returns it.
 ///
 /// Reference: <https://developer.apple.com/documentation/coretext/1509702-ctframesettercreateframe>
@@ -674,7 +674,7 @@ fn CTFramesetterCreateFrame(
 
 /// `CFArrayRef CTFrameGetLines(CTFrameRef frame)`
 ///
-/// Returns the array of `CTLine`s that make up the frame. touchHLE lays the
+/// Returns the array of `CTLine`s that make up the frame. RadekHLE lays the
 /// frame out as a single line, so this returns a one-element array.
 ///
 /// Reference: <https://developer.apple.com/documentation/coretext/1509601-ctframegetlines>
@@ -762,7 +762,7 @@ fn CTFrameDraw(env: &mut Environment, frame: CTFrameRef, context: id) {
 ///     CTFontDescriptorRef attributes)`
 ///
 /// Creates a CTFont from a CGFont. We wrap a system UIFont at the requested
-/// size in a real `_touchHLE_CTFont` host object so subsequent metric queries
+/// size in a real `_RadekHLE_CTFont` host object so subsequent metric queries
 /// (`CTFontGetAscent`/`Descent`/`Leading`/`Size`) and line drawing work.
 ///
 /// Reference: <https://developer.apple.com/documentation/coretext/1509694-ctfontcreatewithgraphicsfont>
@@ -1113,3 +1113,4 @@ pub const DYLIB: HostDylib = HostDylib {
     constant_exports: &[CONSTANTS],
     function_exports: &[FUNCTIONS],
 };
+

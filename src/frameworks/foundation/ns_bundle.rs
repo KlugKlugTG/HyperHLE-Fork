@@ -91,7 +91,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     if let Some(bundle) = env.framework_state.foundation.ns_bundle.main_bundle {
         bundle
     } else {
-        let new = msg_class![env; _touchHLE_NSBundle_Static alloc];
+        let new = msg_class![env; _RadekHLE_NSBundle_Static alloc];
         env.framework_state.foundation.ns_bundle.main_bundle = Some(new);
         new
     }
@@ -257,7 +257,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 + (id)allFrameworks {
-    // No dynamically loaded frameworks in touchHLE.
+    // No dynamically loaded frameworks in RadekHLE.
     msg_class![env; NSArray array]
 }
 
@@ -411,7 +411,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 //
 // Per Apple's [NSBundle Reference](https://developer.apple.com/documentation/foundation/nsbundle/1418338-load):
 // "Dynamically loads the bundle's executable code into a running
-// program, if the code has not already been loaded." touchHLE links
+// program, if the code has not already been loaded." RadekHLE links
 // every bundle's executable image up-front at app launch (via dyld), so
 // there is never any deferred code to load. The documented return
 // value for "code already loaded successfully" is YES, which is what
@@ -432,7 +432,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // Per Apple's [NSBundle Reference](https://developer.apple.com/documentation/foundation/nsbundle/1417447-loadandreturnerror):
 // "On output, if the bundle was not loaded successfully, this contains
 // an error object describing why; otherwise, it contains no value."
-// touchHLE always treats the bundle as loaded (see -load above), so we
+// RadekHLE always treats the bundle as loaded (see -load above), so we
 // never populate the out-error and return YES.
 - (bool)loadAndReturnError:(id)_error { // NSError**
     true
@@ -936,10 +936,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 // =========================================================================
-// MARK: - _touchHLE_NSBundle_Static (main bundle — never released)
+// MARK: - _RadekHLE_NSBundle_Static (main bundle — never released)
 // =========================================================================
 
-@implementation _touchHLE_NSBundle_Static: NSBundle
+@implementation _RadekHLE_NSBundle_Static: NSBundle
 
 + (id)allocWithZone:(NSZonePtr)_zone {
     let bundle_path = env.bundle.bundle_path().as_str().to_string();
@@ -1175,3 +1175,4 @@ fn scan_quoted_sanitized(env: &mut Environment, scanner: id) -> id {
     assert!(range.location == NSNotFound as NSUInteger); // TODO
     res
 }
+

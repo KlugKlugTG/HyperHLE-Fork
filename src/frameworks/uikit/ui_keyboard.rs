@@ -318,7 +318,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 /// Helper called by text-input views (UITextField, UITextView) to post the
 /// standard keyboard-will/did-show notifications with an empty frame userInfo.
-/// In touchHLE we never actually show a keyboard, but apps that observe these
+/// In RadekHLE we never actually show a keyboard, but apps that observe these
 /// notifications (to scroll their content) need them to fire.
 pub fn post_keyboard_notifications(env: &mut crate::Environment, will_show: bool) {
     use crate::frameworks::foundation::ns_string::get_static_str;
@@ -350,3 +350,4 @@ pub fn post_keyboard_notifications(env: &mut crate::Environment, will_show: bool
 
     crate::objc::release(env, user_info);
 }
+

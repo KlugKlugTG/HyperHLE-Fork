@@ -301,7 +301,7 @@ fn strncat(env: &mut Environment, s1: MutPtr<u8>, s2: ConstPtr<u8>, n: GuestUSiz
 /// The `dest_size` parameter is the total buffer size of `dest` (as known at
 /// compile time via `__builtin_object_size`). If the concatenation would
 /// overflow, the real implementation calls `__chk_fail`. We simply delegate
-/// to the normal `strncat` since touchHLE already guards against OOB writes
+/// to the normal `strncat` since RadekHLE already guards against OOB writes
 /// at the memory subsystem level.
 fn __strncat_chk(
     env: &mut Environment,
@@ -698,3 +698,4 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(strnlen(_, _)),
     export_c_func!(strcasestr(_, _)),
 ];
+

@@ -55,7 +55,7 @@ pub const kCGBitmapByteOrderMask: CGBitmapInfo = kCGImageByteOrderMask;
 pub const CLASSES: ClassExports = objc_classes! {
 (env, this, _cmd);
 
-@implementation _touchHLE_CGImage: NSObject
+@implementation _RadekHLE_CGImage: NSObject
 
 - (id)systemUptime {
     nil
@@ -92,7 +92,7 @@ pub fn CGImageRetain(env: &mut Environment, c: CGImageRef) -> CGImageRef {
 
 pub fn from_image(env: &mut Environment, image: Image) -> CGImageRef {
     let host_obj = Box::new(CGImageHostObject { image });
-    let class = env.objc.get_known_class("_touchHLE_CGImage", &mut env.mem);
+    let class = env.objc.get_known_class("_RadekHLE_CGImage", &mut env.mem);
     env.objc.alloc_object(class, host_obj, &mut env.mem)
 }
 
@@ -726,7 +726,7 @@ pub const FUNCTIONS: FunctionExports = &[
 
 /// `CGImageProperty*` / `kCGImageDestination*` / `kCGImageSource*` are
 /// `extern const CFStringRef` keys published by `ImageIO.framework`.
-/// touchHLE has no live ImageIO pipeline, but apps embed references to
+/// RadekHLE has no live ImageIO pipeline, but apps embed references to
 /// these symbols in their non-lazy symbol pointer table — usually to
 /// read EXIF / GIF / PNG / JPEG metadata back from images they decoded
 /// elsewhere — so we publish them as CFString placeholders matching
@@ -1046,3 +1046,4 @@ pub const CONSTANTS: ConstantExports = &[
         HostConstant::NSString("kCGImageSourceTypeIdentifierHint"),
     ),
 ];
+

@@ -12,7 +12,7 @@
 //! When a nib references `UICustomObject` it is typically wrapped inside a
 //! `UIClassSwapper`: the `UIClassName` key holds the app's custom class name,
 //! and the `UIOriginalClassName` key is `"UICustomObject"`. If the app's
-//! custom class is not registered in touchHLE, the nib loader falls back to
+//! custom class is not registered in RadekHLE, the nib loader falls back to
 //! creating an instance of `UICustomObject` directly, which is why the class
 //! must be a real, instantiable class instead of being treated as a marker
 //! string. This file provides that real implementation.
@@ -63,3 +63,4 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
+

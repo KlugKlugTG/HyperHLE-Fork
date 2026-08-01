@@ -55,13 +55,13 @@ pub(crate) struct NSRunLoopHostObject {
     /// by the run loop. The timer must remove itself when invalidated.
     timers: Vec<id>,
     /// Strong references to `CFRunLoopSourceRef` objects (toll-free bridged
-    /// via `_touchHLE_CFRunLoopSource`) currently registered in this run
+    /// via `_RadekHLE_CFRunLoopSource`) currently registered in this run
     /// loop, per Apple's CFRunLoopAddSource semantics.
     pub(crate) sources: Vec<id>,
     /// Strong references to `NSPort*` objects registered via
     /// `-[NSRunLoop addPort:forMode:]`. The run loop owns its scheduled ports
     /// (per Apple's docs), so we retain them here and release on removal.
-    /// touchHLE has no Mach message sources, so these ports never deliver
+    /// RadekHLE has no Mach message sources, so these ports never deliver
     /// input, but tracking them keeps ownership correct and lets apps that
     /// attach a port purely to keep `-[NSRunLoop run]` alive work.
     ports: Vec<id>,
@@ -129,7 +129,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // Adds a port as an input source to the run loop. See:
 // https://developer.apple.com/documentation/foundation/nsrunloop/1417511-addport
-// touchHLE has no Mach message delivery, so the port never fires an input
+// RadekHLE has no Mach message delivery, so the port never fires an input
 // source, but the run loop takes ownership of it (retains it) exactly as
 // Cocoa does. Many old games attach a port only to keep `-[NSRunLoop run]`
 // from returning immediately; our `run_run_loop` already loops until stopped,
@@ -437,7 +437,7 @@ pub fn run_run_loop(
 
         // Process Audio Services completion callbacks. Apple's
         // `AudioServicesAddSystemSoundCompletion` fires its registered
-        // routine on the run loop that owned it; touchHLE only models a
+        // routine on the run loop that owned it; RadekHLE only models a
         // single run loop, so we poll OpenAL source state once per tick
         // and dispatch finished completions here.
         tick_system_sound_completions(env);
@@ -446,7 +446,7 @@ pub fn run_run_loop(
             media_player::handle_players(env);
         }
 
-        // Unfortunately, touchHLE has to poll for certain things repeatedly;
+        // Unfortunately, RadekHLE has to poll for certain things repeatedly;
         // it can't just wait until the next event appears.
         //
         // For optimal responsiveness we could poll as often as possible, but
@@ -524,3 +524,4 @@ fn run_loop_for_thread(env: &mut Environment, this: Class, thread_id: ThreadId) 
         .ns_run_loop
         .run_loop
 }
+

@@ -290,7 +290,7 @@ fn gethostbyname(env: &mut Environment, name: ConstPtr<u8>) -> MutPtr<u8> {
         octets
     } else {
         match hostname.as_str() {
-            "localhost" | "loopback" | "touchHLE" => [127, 0, 0, 1],
+            "localhost" | "loopback" | "RadekHLE" => [127, 0, 0, 1],
             "broadcasthost" => [255, 255, 255, 255],
             _ => {
                 if !env.options.network_access {
@@ -477,7 +477,7 @@ fn getaddrinfo(
             .unwrap_or_default()
             .to_owned();
         // Allow localhost even without network access.
-        if hn != "localhost" && hn != "127.0.0.1" && hn != "touchHLE" && parse_ipv4(&hn).is_none() {
+        if hn != "localhost" && hn != "127.0.0.1" && hn != "RadekHLE" && parse_ipv4(&hn).is_none() {
             log_dbg!("getaddrinfo: network disabled (node={}) -> EAI_FAIL", hn);
             return EAI_FAIL;
         }
@@ -540,7 +540,7 @@ fn getaddrinfo(
             octets
         } else {
             match hostname.as_str() {
-                "localhost" | "loopback" | "touchHLE" => [127, 0, 0, 1],
+                "localhost" | "loopback" | "RadekHLE" => [127, 0, 0, 1],
                 _ => {
                     if !env.options.network_access {
                         log!(
@@ -768,3 +768,4 @@ pub const CONSTANTS: ConstantExports = &[(
     "_h_errno",
     HostConstant::Custom(|env| -> ConstVoidPtr { h_errno_ptr(env).cast().cast_const() }),
 )];
+

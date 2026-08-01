@@ -54,7 +54,7 @@ pub fn app_picker(options: Options) -> Result<(PathBuf, Vec<String>), String> {
     let apps_dir = paths::user_data_base_path().join(paths::APPS_DIR);
 
     let apps: Result<Vec<AppInfo>, String> = if !apps_dir.is_dir() {
-        Err(format!("The {} directory couldn't be found. Check you're running touchHLE from the right directory.", apps_dir.display()))
+        Err(format!("The {} directory couldn't be found. Check you're running RadekHLE from the right directory.", apps_dir.display()))
     } else {
         enumerate_apps(&apps_dir)
             .map_err(|err| {
@@ -160,7 +160,7 @@ impl HostObject for AppPickerDelegateHostObject {}
 pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
     // Not a real iOS dylib obviously. This shouldn't really be in the list of
     // dylibs if we can avoid it somehow (TODO?).
-    path: "/.touchHLE/AppPickerHelpers.dylib",
+    path: "/.RadekHLE/AppPickerHelpers.dylib",
     aliases: &[],
     class_exports: &[CLASSES],
     constant_exports: &[],
@@ -174,7 +174,7 @@ const CLASSES: ClassExports = objc_classes! {
 
 (env, this, _cmd);
 
-@implementation _touchHLE_AppPickerDelegate: NSObject
+@implementation _RadekHLE_AppPickerDelegate: NSObject
 
 - (())iconTapped:(id)sender {
     // There is no allocWithZone: that creates AppPickerDelegateHostObject, so
@@ -280,7 +280,7 @@ const CLASSES: ClassExports = objc_classes! {
     // Assert (see above).
     let _ = env.objc.borrow_mut::<AppPickerDelegateHostObject>(this);
 
-    let url = ns_string::get_static_str(env, "https://touchhle.org/");
+    let url = ns_string::get_static_str(env, "https://RadekHLE.org/");
     let url: id = msg_class![env; NSURL URLWithString:url];
     let ui_application: id = msg_class![env; UIApplication sharedApplication];
     assert!(msg![env; ui_application openURL:url]);
@@ -331,7 +331,7 @@ fn app_picker_inner(
     let ui_application: id = msg_class![env; UIApplication new];
     let delegate = env
         .objc
-        .get_known_class("_touchHLE_AppPickerDelegate", &mut env.mem);
+        .get_known_class("_RadekHLE_AppPickerDelegate", &mut env.mem);
     let delegate = env.objc.alloc_object(
         delegate,
         Box::<AppPickerDelegateHostObject>::default(),
@@ -418,7 +418,7 @@ fn app_picker_inner(
         let text = ns_string::from_rust_string(
             env,
             format!(
-                "touchHLE {}{}{}",
+                "RadekHLE {}{}{}",
                 crate::branding(),
                 if crate::branding().is_empty() {
                     ""
@@ -535,7 +535,7 @@ fn app_picker_inner(
         buttons_row2_center,
         &[
             ("Copyright info", "copyrightInfoShow"),
-            ("touchHLE.org", "visitWebsite"),
+            ("RadekHLE.org", "visitWebsite"),
         ],
         None,
     );
@@ -604,7 +604,7 @@ fn app_picker_inner(
     () = msg![env; window makeKeyAndVisible];
 
     let main_run_loop: id = msg_class![env; NSRunLoop mainRunLoop];
-    // If an app is picked, this loop returns. If the user quits touchHLE, the
+    // If an app is picked, this loop returns. If the user quits RadekHLE, the
     // process exits.
     let app_path = loop {
         run_run_loop_single_iteration(env, main_run_loop);
@@ -621,7 +621,7 @@ fn app_picker_inner(
                     crate::frameworks::core_animation::recomposite_if_necessary(
                         env, /* force: */ true,
                     );
-                    // Ensure touchHLE is responsive from the OS perspective,
+                    // Ensure RadekHLE is responsive from the OS perspective,
                     // otherwise screen redraw might not show up? (Unclear if
                     // this explanation is correct.)
                     run_run_loop_single_iteration(env, main_run_loop);
@@ -1858,3 +1858,4 @@ fn make_device_model_dropdown(
 
     (button, menu_view, items, thumb_view)
 }
+

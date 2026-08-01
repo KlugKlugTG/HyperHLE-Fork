@@ -15,7 +15,7 @@
 //! `+weakObjectsHashTable`, which is an Objective-C `NSSet`-like
 //! collection that holds zeroing-weak references to its members.
 //!
-//! touchHLE does not ship a zeroing-weak runtime, so weak references
+//! RadekHLE does not ship a zeroing-weak runtime, so weak references
 //! degrade to strong ones — but `NSHashTable`'s public surface
 //! (`-count`, `-anyObject`, `-addObject:`, `-removeObject:`,
 //! `-containsObject:`, `-allObjects`, `-objectEnumerator`,
@@ -39,7 +39,7 @@ use crate::objc::{
 };
 
 // `NSPointerFunctionsOptions` (subset). Apple `<Foundation/NSPointerFunctions.h>`.
-// touchHLE does not switch behaviour on these — `NSHashTable` is always
+// RadekHLE does not switch behaviour on these — `NSHashTable` is always
 // strong-personality-by-object — so we expose them for the public type
 // signatures only.
 pub type NSHashTableOptions = NSUInteger;
@@ -213,3 +213,4 @@ pub const CLASSES: ClassExports = objc_classes! {
 const _: fn() = || {
     let _ = release as fn(&mut crate::Environment, id);
 };
+

@@ -926,7 +926,7 @@ fn fcntl(
         }
         F_SETFD => {
             let flags: i32 = args.start().next(env);
-            // FD_CLOEXEC (close-on-exec) is a no-op in HyperHLE because the
+            // FD_CLOEXEC (close-on-exec) is a no-op in RadekHLE because the
             // emulator is a single guest process that never calls exec().
             // Per Apple's `man 2 fcntl`, FD_CLOEXEC causes the descriptor to
             // be closed when a new process image is created via exec — this
@@ -968,7 +968,7 @@ fn fcntl(
         // ----------------------------------------------------------------
         F_GETLK => {
             // POSIX `fcntl(F_GETLK)` reports whether a lock that would
-            // block the request is held by **another process**. HyperHLE
+            // block the request is held by **another process**. RadekHLE
             // is a single guest process, so there is no external
             // contender — per Apple `man 2 fcntl` we always report
             // F_UNLCK after validating the request struct.
@@ -984,7 +984,7 @@ fn fcntl(
         F_SETLK | F_SETLKW => {
             // POSIX advisory locks are owned by the process, not the fd:
             // locks held by the same process **never** conflict with each
-            // other (`man 2 fcntl`, "File Locking"). HyperHLE is a single
+            // other (`man 2 fcntl`, "File Locking"). RadekHLE is a single
             // guest process, so there are no inter-process conflicts to
             // detect. We still validate the request struct and track the
             // lock per-fd so it is released on `close(2)`.
@@ -1183,7 +1183,7 @@ fn fcntl(
 /// <https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/flock.2.html>
 ///
 /// `flock(2)` advisory locks only contend between *different* processes.
-/// HyperHLE is a single guest process, so any number of locks within the
+/// RadekHLE is a single guest process, so any number of locks within the
 /// guest can coexist. We still validate the operation, track the lock
 /// state per fd for diagnostics, and release on `close(2)`.
 fn flock(env: &mut Environment, fd: FileDescriptor, operation: FLockFlag) -> i32 {
@@ -1464,3 +1464,4 @@ fn release_range_from_locks(locks: &mut Vec<LockRange>, release: &LockRange) {
     }
     *locks = new_locks;
 }
+

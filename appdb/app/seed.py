@@ -1,7 +1,7 @@
 """Seed the database with a small set of example apps and reports.
 
 This is purely demo data so a fresh deployment isn't empty. It mirrors a few
-well-known apps from https://appdb.touchhle.org/ but the reports are
+well-known apps from https://appdb.RadekHLE.org/ but the reports are
 illustrative — they are not copied verbatim.
 """
 from __future__ import annotations
@@ -30,7 +30,7 @@ SEED_APPS: list[dict] = [
                 display_name="Monkey Ball",
                 bundle_identifier="com.ooi.supermonkeyball",
                 minimum_ios_version="2.0",
-                touchhle_version="v0.2.3",
+                RadekHLE_version="v0.2.3",
                 operating_system="Windows 11 23H2",
                 gpu="RTX 2060",
                 scale_hack="Yes",
@@ -44,7 +44,7 @@ SEED_APPS: list[dict] = [
                 display_name="Monkey Ball",
                 bundle_identifier="com.ooi.supermonkeybal",
                 minimum_ios_version="2.0",
-                touchhle_version="v0.2.3",
+                RadekHLE_version="v0.2.3",
                 operating_system="Android 13",
                 gpu="Mali-G52 MC2",
                 scale_hack="Yes",
@@ -58,7 +58,7 @@ SEED_APPS: list[dict] = [
                 display_name="SMB Lite",
                 bundle_identifier="smblite",
                 minimum_ios_version="2.0",
-                touchhle_version="v0.2.1",
+                RadekHLE_version="v0.2.1",
                 operating_system="Windows 11",
                 gpu="NVIDIA Quadro T2000",
                 scale_hack="Yes",
@@ -83,7 +83,7 @@ SEED_APPS: list[dict] = [
                 display_name="Angry Birds",
                 bundle_identifier="com.clickgamer.AngryBirds",
                 minimum_ios_version="3.0",
-                touchhle_version="dev (this fork)",
+                RadekHLE_version="dev (this fork)",
                 operating_system="Android 14",
                 gpu="Adreno 740",
                 scale_hack="Yes",
@@ -108,7 +108,7 @@ SEED_APPS: list[dict] = [
                 display_name="Vanguard",
                 bundle_identifier="com.square-enix.VanguardSM",
                 minimum_ios_version="2.2",
-                touchhle_version="v0.2.2-723-g3207e84",
+                RadekHLE_version="v0.2.2-723-g3207e84",
                 operating_system="Android 15",
                 gpu="Exynos",
                 scale_hack="Yes",
@@ -122,7 +122,7 @@ SEED_APPS: list[dict] = [
                 display_name="Vanguard",
                 bundle_identifier="com.square-enix.VanguardSM",
                 minimum_ios_version="2.2",
-                touchhle_version="v0.2.2-1515-97fc52f",
+                RadekHLE_version="v0.2.2-1515-97fc52f",
                 operating_system="Android 15",
                 gpu="Adreno",
                 scale_hack="Couldn't test",
@@ -144,7 +144,7 @@ SEED_APPS: list[dict] = [
         "reports": [
             dict(
                 version_number="1.7",
-                touchhle_version="v0.2.2",
+                RadekHLE_version="v0.2.2",
                 operating_system="Windows 10",
                 gpu="Intel UHD 620",
                 scale_hack="Yes",
@@ -166,7 +166,7 @@ SEED_APPS: list[dict] = [
         "reports": [
             dict(
                 version_number="2.0",
-                touchhle_version="v0.2.2",
+                RadekHLE_version="v0.2.2",
                 operating_system="macOS Sonoma 14.5",
                 gpu="Apple M1",
                 scale_hack="Yes",
@@ -203,3 +203,4 @@ def seed() -> None:
 
 if __name__ == "__main__":
     seed()
+

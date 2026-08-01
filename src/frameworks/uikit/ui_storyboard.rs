@@ -587,7 +587,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (())perform {
     // The default Apple implementation walks the responder chain to find
     // the navigation/tab/presented controller appropriate for the segue's
-    // kind. touchHLE supports the most common case: "show" via a
+    // kind. RadekHLE supports the most common case: "show" via a
     // navigation controller, with modal presentation as the fallback.
     let (source, destination) = {
         let h = env.objc.borrow::<UIStoryboardSegueHostObject>(this);
@@ -618,3 +618,4 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
+

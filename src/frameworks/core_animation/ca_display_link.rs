@@ -70,7 +70,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     // Because the timer will pass itself as a second arg in ns_timer::handle_timer,
     // we need a re-direction: the timer fires on the display link, which then
     // calls the original selector, passing the link as a second argument.
-    let redirect_sel: SEL = env.objc.lookup_selector("_touchHLE_displayLinkTimerDidFire:").unwrap();
+    let redirect_sel: SEL = env.objc.lookup_selector("_RadekHLE_displayLinkTimerDidFire:").unwrap();
     let ns_timer = msg_class![env; NSTimer timerWithTimeInterval:(1.0/60.0)
                      target:display_link
                    selector:redirect_sel
@@ -202,7 +202,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // call to the game's target/selector, passing `this` (the CADisplayLink)
 // as the argument — matching the iOS contract where the selector receives
 // the CADisplayLink as its sole argument.
-- (())_touchHLE_displayLinkTimerDidFire:(id)timer { // NSTimer *
+- (())_RadekHLE_displayLinkTimerDidFire:(id)timer { // NSTimer *
     let &CADisplayLinkHostObject {
         target,
         selector,
@@ -223,3 +223,4 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
+

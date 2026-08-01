@@ -238,7 +238,7 @@ fn CFSetRemoveValue(
 
 /// Apple docs: "Removes all values from the set." Implementation
 /// forwards to `-[NSMutableSet removeAllObjects]`, which the existing
-/// touchHLE NSMutableSet implements properly (releases each member
+/// RadekHLE NSMutableSet implements properly (releases each member
 /// per the documented Cocoa semantics, which mirror
 /// `kCFTypeSetCallBacks`'s release callback).
 pub fn CFSetRemoveAllValues(env: &mut Environment, set: CFMutableSetRef) {
@@ -293,3 +293,4 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CFSetRemoveValue(_, _)),
     export_c_func!(CFSetRemoveAllValues(_)),
 ];
+

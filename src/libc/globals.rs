@@ -7,7 +7,7 @@
 //!
 //! Apple's libsystem exposes several `extern` globals that the dynamic
 //! linker resolves at load time. Apps reach them either by `extern`
-//! declaration or via convenience wrappers. The dyld linker in touchHLE
+//! declaration or via convenience wrappers. The dyld linker in RadekHLE
 //! resolves "non-lazy" symbols using the `ConstantExports` mechanism;
 //! each entry returns the *address* of a guest-side storage slot that
 //! the runtime fills in with the appropriate value.
@@ -24,7 +24,7 @@ use crate::mem::{guest_size_of, ConstPtr, ConstVoidPtr, MutPtr, Ptr};
 use crate::Environment;
 
 /// `extern char **environ;` — base of the program's environment vector.
-/// touchHLE has no real environment block, so we expose a one-element
+/// RadekHLE has no real environment block, so we expose a one-element
 /// NUL-terminated array (`{ NULL }`) which is what newly-spawned
 /// processes see when they `unsetenv` everything.
 fn environ_ptr(env: &mut Environment) -> ConstVoidPtr {
@@ -117,3 +117,4 @@ pub const CONSTANTS: ConstantExports = &[
     ("_vm_page_mask", HostConstant::Custom(vm_page_mask_ptr)),
     ("_vm_page_shift", HostConstant::Custom(vm_page_shift_ptr)),
 ];
+

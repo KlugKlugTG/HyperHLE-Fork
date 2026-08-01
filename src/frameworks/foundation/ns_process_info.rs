@@ -80,7 +80,7 @@ fn assert_process_info_singleton(env: &mut Environment, this: id) {
 
 /// Fake OS version used when the app queries the host system version.
 ///
-/// touchHLE targets early iPhone OS apps; we report iOS 12.0.0 so that any
+/// RadekHLE targets early iPhone OS apps; we report iOS 12.0.0 so that any
 /// iOS 8+ feature gate (which is the floor for many third-party SDKs that
 /// query `operatingSystemVersion`) passes without triggering the
 /// "unsupported version" path inside the app.
@@ -147,7 +147,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (id)hostName {
     assert_process_info_singleton(env, this);
-    ns_string::get_static_str(env, "touchHLE-host.local")
+    ns_string::get_static_str(env, "RadekHLE-host.local")
 }
 
 - (id)arguments {
@@ -326,3 +326,4 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
+

@@ -11,7 +11,7 @@
 //! <https://developer.apple.com/documentation/glkit/glkview>
 //! <https://developer.apple.com/documentation/glkit/glkviewcontroller>
 //!
-//! touchHLE does not implement the full GLKit stack, but apps built against
+//! RadekHLE does not implement the full GLKit stack, but apps built against
 //! iOS 5+ commonly link the framework and allocate these classes at startup
 //! (previously this hit the `UnimplementedClass` "SUPER HACK" warning and
 //! left the app without a working render loop). This module provides real
@@ -208,7 +208,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (())bindDrawable {
     // Apple docs: binds the underlying framebuffer object so the app can
-    // render into it. touchHLE's EAGL path renders straight into the
+    // render into it. RadekHLE's EAGL path renders straight into the
     // app's own framebuffer/renderbuffer objects, so there is no separate
     // GLKit-managed FBO to bind here.
     log_dbg!("[(GLKView*){:?} bindDrawable] (no-op)", this);
@@ -349,3 +349,4 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
     constant_exports: &[CONSTANTS],
     function_exports: &[FUNCTIONS],
 };
+

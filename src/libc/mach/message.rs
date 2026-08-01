@@ -69,7 +69,7 @@ fn mach_msg(
         notify
     );
 
-    // touchHLE is single-process, so there is no real IPC: sends complete
+    // RadekHLE is single-process, so there is no real IPC: sends complete
     // instantly and receives can never observe a real message. The Mono
     // exception thread loops on `mach_msg(MACH_RCV_MSG)` to wait for the
     // kernel to forward thread exceptions to it; because we never inject
@@ -83,7 +83,7 @@ fn mach_msg(
     // same end-user behaviour as the previous stub but without burning a
     // CPU core.
     //
-    // IMPORTANT: touchHLE runs every guest thread as a coroutine on the
+    // IMPORTANT: RadekHLE runs every guest thread as a coroutine on the
     // same host OS thread. Calling `std::thread::sleep` here would block
     // **all** other guest threads (including the Unity main thread), so
     // Mono apps would appear to freeze immediately after the exception
@@ -129,3 +129,4 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(mach_msg(_, _, _, _, _, _, _)),
     export_c_func!(exc_server(_, _)),
 ];
+

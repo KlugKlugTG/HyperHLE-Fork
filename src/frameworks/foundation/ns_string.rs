@@ -322,7 +322,7 @@ impl StringHostObject {
             NSUTF8StringEncoding => {
                 let string = match std::str::from_utf8(&bytes) {
                     Ok(valid) => valid.to_owned(),
-                    Err(_) if std::env::var_os("TOUCHHLE_UTF8_FALLBACK_WINDOWS_1252").is_some() => {
+                    Err(_) if std::env::var_os("RadekHLE_UTF8_FALLBACK_WINDOWS_1252").is_some() => {
                         let (cow, _encoding_used, _had_errors) = WINDOWS_1252.decode(&bytes);
                         cow.into_owned()
                     }
@@ -341,7 +341,7 @@ impl StringHostObject {
             NSUTF16StringEncoding
             | NSUTF16BigEndianStringEncoding
             | NSUTF16LittleEndianStringEncoding => {
-                // Keep the long-standing touchHLE default: BOMless
+                // Keep the long-standing RadekHLE default: BOMless
                 // NSUnicodeStringEncoding decodes as little-endian.
                 let is_big_endian = match encoding {
                     NSUTF16BigEndianStringEncoding => true,
@@ -547,7 +547,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     // to the concrete backing store regardless of which subclass we
     // were sent to so storyboard-decoded string subclasses can be
     // constructed without rewriting their `+allocWithZone:`.
-    msg_class![env; _touchHLE_NSString allocWithZone:zone]
+    msg_class![env; _RadekHLE_NSString allocWithZone:zone]
 }
 
 + (bool)supportsSecureCoding { true }
@@ -929,9 +929,9 @@ pub const CLASSES: ClassExports = objc_classes! {
 
     // Apple's documentation says `[NSString compare:]` raises
     // `NSInvalidArgumentException` if `other` is nil, but real-world iPhone
-    // OS apps (e.g. Angry Birds Crystal init path — HyperHLE log shows
+    // OS apps (e.g. Angry Birds Crystal init path — RadekHLE log shows
     // `assertion 'left != right' failed; left: (null), right: (null)`)
-    // pass nil and rely on a soft failure. touchHLE doesn't implement
+    // pass nil and rely on a soft failure. RadekHLE doesn't implement
     // Objective-C exceptions, so the closest "documented" behaviour is to
     // treat the non-nil receiver as ordered after nil instead of crashing
     // the emulator. (`isEqualToString:` in this file already follows the
@@ -1204,7 +1204,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         }
     }
     components.push(current_component);
-    let class = env.objc.get_known_class("_touchHLE_NSString", &mut env.mem);
+    let class = env.objc.get_known_class("_RadekHLE_NSString", &mut env.mem);
     let component_ns_strings: Vec<id> = components.drain(..).map(|utf16| {
         let host_object = Box::new(StringHostObject::Utf16(utf16));
         env.objc.alloc_object(class, host_object, &mut env.mem)
@@ -1260,7 +1260,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     let cap = (to as usize).min(1024);
     let mut res_utf16: Utf16String = Vec::with_capacity(cap);
     for_each_code_unit(env, this, |idx, c| { if idx < to { res_utf16.push(c); } });
-    let res = msg_class![env; _touchHLE_NSString alloc];
+    let res = msg_class![env; _RadekHLE_NSString alloc];
     *env.objc.borrow_mut(res) = StringHostObject::Utf16(res_utf16);
     autorelease(env, res)
 }
@@ -1268,7 +1268,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (id)substringFromIndex:(NSUInteger)from {
     let mut res_utf16: Utf16String = Vec::new();
     for_each_code_unit(env, this, |idx, c| { if idx >= from { res_utf16.push(c); } });
-    let res = msg_class![env; _touchHLE_NSString alloc];
+    let res = msg_class![env; _RadekHLE_NSString alloc];
     *env.objc.borrow_mut(res) = StringHostObject::Utf16(res_utf16);
     autorelease(env, res)
 }
@@ -1307,7 +1307,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         cursor += 1;
         if cursor >= pad_length { cursor = 0; }
     }
-    let res = msg_class![env; _touchHLE_NSString alloc];
+    let res = msg_class![env; _RadekHLE_NSString alloc];
     *env.objc.borrow_mut(res) = StringHostObject::Utf16(res_utf16);
     autorelease(env, res)
 }
@@ -1366,7 +1366,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     let mut new_utf16 = Vec::with_capacity((this_len + other_len) as usize);
     for_each_code_unit(env, this, |_idx, c| { new_utf16.push(c); });
     for_each_code_unit(env, other, |_idx, c| { new_utf16.push(c); });
-    let class = env.objc.get_known_class("_touchHLE_NSString", &mut env.mem);
+    let class = env.objc.get_known_class("_RadekHLE_NSString", &mut env.mem);
     let host_object = Box::new(StringHostObject::Utf16(new_utf16));
     env.objc.alloc_object(class, host_object, &mut env.mem)
 }
@@ -1464,7 +1464,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // __objc_selrefs / __objc_methname section contains non-UTF-8 entries
 // — typical for partially-decrypted IPAs — `register_bin_categories`
 // skips the entry and the app then spams the runtime with thousands of
-// "_touchHLE_NSString does not respond to selector fileExistsAtPath:"
+// "_RadekHLE_NSString does not respond to selector fileExistsAtPath:"
 // warnings while silently getting the wrong answer.
 //
 // Implementing the same forward as a host method on NSString gives the
@@ -1515,7 +1515,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         i += 1;
     }
     let host_object = StringHostObject::decode(Cow::Owned(bytes), encoding);
-    let class = env.objc.get_known_class("_touchHLE_NSString", &mut env.mem);
+    let class = env.objc.get_known_class("_RadekHLE_NSString", &mut env.mem);
     let new = env.objc.alloc_object(class, Box::new(host_object), &mut env.mem);
     autorelease(env, new)
 }
@@ -1641,7 +1641,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         lineBreakMode:(UILineBreakMode)line_break_mode
    baselineAdjustment:(NSInteger)baseline_adjustment {
     // Apple's UIStringDrawing.h: deprecated in iOS 7 but valid for the
-    // iPhone OS 2.x / 3.x applications touchHLE targets. The method draws
+    // iPhone OS 2.x / 3.x applications RadekHLE targets. The method draws
     // the receiver into the current graphics context starting at `point`,
     // bounded to `width`, with the font rescaled toward `fontSize` (never
     // larger than the supplied font's pointSize) and using the given
@@ -1950,7 +1950,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 + (id)allocWithZone:(NSZonePtr)zone {
     assert!(this == env.objc.get_known_class("NSMutableString", &mut env.mem));
-    msg_class![env; _touchHLE_NSMutableString allocWithZone:zone]
+    msg_class![env; _RadekHLE_NSMutableString allocWithZone:zone]
 }
 
 + (bool)supportsSecureCoding { true }
@@ -2077,7 +2077,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 @end
 
-@implementation _touchHLE_NSString: NSString
+@implementation _RadekHLE_NSString: NSString
 
 + (id)allocWithZone:(NSZonePtr)_zone {
     let host_object = Box::new(StringHostObject::Utf8(Cow::Borrowed("")));
@@ -2088,11 +2088,11 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (id)initWithCoder:(id)coder {
     let class: Class = msg![env; coder class];
-    let nib_archive_class: Class = msg_class![env; _touchHLE_NIBArchiveDecoder class];
+    let nib_archive_class: Class = msg_class![env; _RadekHLE_NIBArchiveDecoder class];
     let new_str = if env.objc.class_is_subclass_of(class, nib_archive_class) {
         _nib_archive_decoder::decode_current_string(env, coder)
     } else {
-        println!("Warning: _touchHLE_NSString initWithCoder: unsupported coder class, returning empty string");
+        println!("Warning: _RadekHLE_NSString initWithCoder: unsupported coder class, returning empty string");
         get_static_str(env, "")
     };
     release(env, this);
@@ -2381,7 +2381,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         release(env, content);
         release(env, key);
     } else {
-        println!("Warning: _touchHLE_NSString encodeWithCoder: unsupported coder class, skipping");
+        println!("Warning: _RadekHLE_NSString encodeWithCoder: unsupported coder class, skipping");
     }
 }
 
@@ -2468,7 +2468,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 @end
 
-@implementation _touchHLE_NSString_Static: _touchHLE_NSString
+@implementation _RadekHLE_NSString_Static: _RadekHLE_NSString
 
 + (id)allocWithZone:(NSZonePtr)_zone {
     let host_object = Box::new(StringHostObject::Utf8(Cow::Borrowed("")));
@@ -2482,7 +2482,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 @end
 
-@implementation _touchHLE_NSString_CFConstantString_UTF8: _touchHLE_NSString_Static
+@implementation _RadekHLE_NSString_CFConstantString_UTF8: _RadekHLE_NSString_Static
 
 - (ConstPtr<u8>)UTF8String {
     let cfstringStruct { bytes, .. } = env.mem.read(this.cast());
@@ -2523,7 +2523,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         release(env, content);
         release(env, key);
     } else {
-        println!("Warning: _touchHLE_NSString_CFConstantString_UTF8 encodeWithCoder: unsupported coder class, skipping");
+        println!("Warning: _RadekHLE_NSString_CFConstantString_UTF8 encodeWithCoder: unsupported coder class, skipping");
     }
 }
 
@@ -2546,10 +2546,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 @end
 
-@implementation _touchHLE_NSString_CFConstantString_UTF16: _touchHLE_NSString_Static
+@implementation _RadekHLE_NSString_CFConstantString_UTF16: _RadekHLE_NSString_Static
 @end
 
-@implementation _touchHLE_NSMutableString: NSMutableString
+@implementation _RadekHLE_NSMutableString: NSMutableString
 
 + (id)allocWithZone:(NSZonePtr)_zone {
     let host_object = Box::new(StringHostObject::Utf8(Cow::Borrowed("")));
@@ -2566,7 +2566,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     // becomes nil, which on Minecraft PE shows up as empty Create World
     // text fields and a non-functional keyboard.
     let class: Class = msg![env; coder class];
-    let nib_archive_class: Class = msg_class![env; _touchHLE_NIBArchiveDecoder class];
+    let nib_archive_class: Class = msg_class![env; _RadekHLE_NIBArchiveDecoder class];
     if env.objc.class_is_subclass_of(class, nib_archive_class) {
         let decoded = _nib_archive_decoder::decode_current_string(env, coder);
         if decoded != nil {
@@ -2574,7 +2574,7 @@ pub const CLASSES: ClassExports = objc_classes! {
             release(env, decoded);
         }
     } else {
-        println!("Warning: _touchHLE_NSMutableString initWithCoder: unsupported coder class, returning empty string");
+        println!("Warning: _RadekHLE_NSMutableString initWithCoder: unsupported coder class, returning empty string");
     }
     this
 }
@@ -2713,7 +2713,7 @@ pub fn register_constant_strings(bin: &MachO, mem: &mut Mem, objc: &mut ObjC) {
             let decoded = String::from_utf8_lossy(mem.bytes_at(bytes, length)).into_owned();
             (
                 StringHostObject::Utf8(Cow::Owned(decoded)),
-                "_touchHLE_NSString_CFConstantString_UTF8",
+                "_RadekHLE_NSString_CFConstantString_UTF8",
             )
         } else if flags == 0x7D0 {
             let decoded = mem
@@ -2723,7 +2723,7 @@ pub fn register_constant_strings(bin: &MachO, mem: &mut Mem, objc: &mut ObjC) {
                 .collect();
             (
                 StringHostObject::Utf16(decoded),
-                "_touchHLE_NSString_CFConstantString_UTF16",
+                "_RadekHLE_NSString_CFConstantString_UTF16",
             )
         } else {
             // The constant string flags field encodes the underlying encoding.
@@ -2751,7 +2751,7 @@ pub fn get_static_str(env: &mut Environment, from: &'static str) -> id {
     if let Some(&existing) = State::get(env).static_str_pool.get(from) {
         existing
     } else {
-        let new = msg_class![env; _touchHLE_NSString_Static alloc];
+        let new = msg_class![env; _RadekHLE_NSString_Static alloc];
         *env.objc.borrow_mut(new) = StringHostObject::Utf8(Cow::Borrowed(from));
         State::get(env).static_str_pool.insert(from, new);
         new
@@ -2759,21 +2759,21 @@ pub fn get_static_str(env: &mut Environment, from: &'static str) -> id {
 }
 
 pub fn from_rust_string(env: &mut Environment, from: String) -> id {
-    let string: id = msg_class![env; _touchHLE_NSString alloc];
+    let string: id = msg_class![env; _RadekHLE_NSString alloc];
     let host_object: &mut StringHostObject = env.objc.borrow_mut(string);
     *host_object = StringHostObject::Utf8(Cow::Owned(from));
     string
 }
 
 pub fn mutable_from_rust_string(env: &mut Environment, from: String) -> id {
-    let string: id = msg_class![env; _touchHLE_NSMutableString alloc];
+    let string: id = msg_class![env; _RadekHLE_NSMutableString alloc];
     let host_object: &mut StringHostObject = env.objc.borrow_mut(string);
     *host_object = StringHostObject::Utf8(Cow::Owned(from));
     string
 }
 
 pub fn from_u16_vec(env: &mut Environment, from: Vec<u16>) -> id {
-    let string: id = msg_class![env; _touchHLE_NSString alloc];
+    let string: id = msg_class![env; _RadekHLE_NSString alloc];
     let host_object: &mut StringHostObject = env.objc.borrow_mut(string);
     *host_object = StringHostObject::Utf16(from);
     string
@@ -3111,7 +3111,7 @@ fn string_by_replacing_occurrences_inner(
             }
         }
     }
-    let result_ns_string = msg_class![env; _touchHLE_NSString alloc];
+    let result_ns_string = msg_class![env; _RadekHLE_NSString alloc];
     *env.objc.borrow_mut(result_ns_string) = StringHostObject::Utf16(result);
     autorelease(env, result_ns_string)
 }
@@ -3155,7 +3155,7 @@ pub fn CFStringGetCharactersPtr(env: &mut Environment, the_string: id) -> ConstP
     let class: Class = msg![env; the_string class];
     let constant_utf16_class = env
         .objc
-        .get_known_class("_touchHLE_NSString_CFConstantString_UTF16", &mut env.mem);
+        .get_known_class("_RadekHLE_NSString_CFConstantString_UTF16", &mut env.mem);
     if class == constant_utf16_class {
         let cfstr: cfstringStruct = env.mem.read(the_string.cast());
         cfstr.bytes.cast()
@@ -3163,3 +3163,4 @@ pub fn CFStringGetCharactersPtr(env: &mut Environment, the_string: id) -> ConstP
         Ptr::null()
     }
 }
+

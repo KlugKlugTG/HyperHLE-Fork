@@ -1016,13 +1016,13 @@ pub fn handle_events(env: &mut Environment) -> Option<Instant> {
                 ui_touch::handle_event(env, event)
             }
             Event::AppWillResignActive => {
-                // Getting this event means touchHLE is becoming inactive, e.g.
+                // Getting this event means RadekHLE is becoming inactive, e.g.
                 // due to switching apps. The obvious way to handle this would
                 // be to just send `applicationWillResignActive:` to the
                 // UIApplicationDelegate. However:
-                // - touchHLE's event loop can't handle an inactive app well
+                // - RadekHLE's event loop can't handle an inactive app well
                 //   right now. For example, audio isn't paused.
-                // - touchHLE's event loop can't handle the subsequent
+                // - RadekHLE's event loop can't handle the subsequent
                 //   termination of an app right now: it doesn't manage to send
                 //   the `applicationWillTerminate:` message in time. This can
                 //   mean loss of data!
@@ -1071,3 +1071,4 @@ pub fn handle_events(env: &mut Environment) -> Option<Instant> {
 
     ui_accelerometer::handle_accelerometer(env)
 }
+

@@ -5,7 +5,7 @@
  */
 //! Minimal Metal.framework compatibility layer.
 //!
-//! Metal is a native Apple GPU API, while HyperHLE renders through its
+//! Metal is a native Apple GPU API, while RadekHLE renders through its
 //! portable GLES presentation path. This layer intentionally provides the
 //! object and descriptor contract used during app startup and resource setup;
 //! it does not pretend to execute Metal command streams on non-Apple hosts.
@@ -77,7 +77,7 @@ const CLASSES: ClassExports = objc_classes! {
 }
 
 - (id)init { this }
-- (id)name { metal_string(env, "HyperHLE Metal compatibility device") }
+- (id)name { metal_string(env, "RadekHLE Metal compatibility device") }
 - (bool)hasUnifiedMemory { true }
 - (NSUInteger)recommendedMaxWorkingSetSize { 0 }
 - (bool)supportsFamily:(NSUInteger)_family { false }
@@ -284,3 +284,4 @@ pub const CONSTANTS: ConstantExports = &[
         crate::dyld::HostConstant::Custom(|env| constant_uinteger(env, MTL_STORE_ACTION_STORE)),
     ),
 ];
+

@@ -3,18 +3,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
-//! Paths for host files used by touchHLE: settings, fonts, etc.
+//! Paths for host files used by RadekHLE: settings, fonts, etc.
 //!
 //! There are three categories of files:
 //!
-//! * Resources bundled with touchHLE that neither touchHLE nor the user should
+//! * Resources bundled with RadekHLE that neither RadekHLE nor the user should
 //!   modify: [DYLIBS_DIR], [FONTS_DIR], [DEFAULT_OPTIONS_FILE]. Depending on
 //!   the platform these may or may not be ordinary files, and must be accessed
 //!   through [ResourceFile].
-//! * Files the user is expected to modify, but not touchHLE: [APPS_DIR],
+//! * Files the user is expected to modify, but not RadekHLE: [APPS_DIR],
 //!   [USER_OPTIONS_FILE], [WALLPAPER_FILES]. These are ordinary files and are
 //!   found in [user_data_base_path].
-//! * Files that touchHLE will create and modify, and the user may modify if
+//! * Files that RadekHLE will create and modify, and the user may modify if
 //!   they want to: [SANDBOX_DIR], [PHOTO_ALBUM_DIR].
 //!   These are ordinary files and are found in [user_data_base_path].
 //!
@@ -26,17 +26,17 @@ use std::io::{Read, Seek};
 use std::path::{Path, PathBuf};
 
 /// Name of the directory containing ARMv6 dynamic libraries bundled with
-/// touchHLE.
-pub const DYLIBS_DIR: &str = "touchHLE_dylibs";
+/// RadekHLE.
+pub const DYLIBS_DIR: &str = "RadekHLE_dylibs";
 
-/// Name of the directory containing fonts bundled with touchHLE.
-pub const FONTS_DIR: &str = "touchHLE_fonts";
+/// Name of the directory containing fonts bundled with RadekHLE.
+pub const FONTS_DIR: &str = "RadekHLE_fonts";
 
-/// Name of the file containing touchHLE's default options for various apps.
-pub const DEFAULT_OPTIONS_FILE: &str = "touchHLE_default_options.txt";
+/// Name of the file containing RadekHLE's default options for various apps.
+pub const DEFAULT_OPTIONS_FILE: &str = "RadekHLE_default_options.txt";
 
-/// macOS-only: If touchHLE is located in a .app bundle, return the path of the
-/// Resources directory. If touchHLE is not located in a .app bundle, return
+/// macOS-only: If RadekHLE is located in a .app bundle, return the path of the
+/// Resources directory. If RadekHLE is not located in a .app bundle, return
 /// [None].
 #[allow(dead_code)]
 fn get_macos_bundled_resources_path() -> Option<PathBuf> {
@@ -52,7 +52,7 @@ fn get_macos_bundled_resources_path() -> Option<PathBuf> {
 }
 
 /// Abstraction over a platform-specific type for accessing a resource bundled
-/// with touchHLE.
+/// with RadekHLE.
 pub struct ResourceFile {
     #[cfg(target_os = "android")]
     file: sdl2::rwops::RWops<'static>,
@@ -88,36 +88,36 @@ impl std::fmt::Debug for ResourceFile {
 }
 
 /// Whether various resources are in user-accessible files. If they aren't,
-/// touchHLE has to be able to display their license terms.
+/// RadekHLE has to be able to display their license terms.
 pub const RESOURCES_ARE_EXTERNAL_FILES: bool = cfg!(not(target_os = "android"));
 
 /// Name of the directory where the user can put apps if they want them to
 /// appear in the app picker.
-pub const APPS_DIR: &str = "touchHLE_apps";
+pub const APPS_DIR: &str = "RadekHLE_apps";
 
 /// Name of the file intended for the user's own options.
-pub const USER_OPTIONS_FILE: &str = "touchHLE_options.txt";
+pub const USER_OPTIONS_FILE: &str = "RadekHLE_options.txt";
 
 /// Names of files the user can put a wallpaper image (for the app picker) in.
 #[allow(unused)]
 pub const WALLPAPER_FILES: &[&str] = &[
-    "touchHLE_wallpaper.png",
-    "touchHLE_wallpaper.jpg",
-    "touchHLE_wallpaper.jpeg",
+    "RadekHLE_wallpaper.png",
+    "RadekHLE_wallpaper.jpg",
+    "RadekHLE_wallpaper.jpeg",
 ];
 
-/// Name of the directory where touchHLE will store sandboxed app data, e.g.
+/// Name of the directory where RadekHLE will store sandboxed app data, e.g.
 /// the `Documents` directory.
-pub const SANDBOX_DIR: &str = "touchHLE_sandbox";
+pub const SANDBOX_DIR: &str = "RadekHLE_sandbox";
 
 /// Name of the directory where redirected/exported SQLite databases live.
-pub const SQLITE_DIR: &str = "touchHLE_sqlite";
+pub const SQLITE_DIR: &str = "RadekHLE_sqlite";
 
-/// Name of the directory where touchHLE will store IMG_####.PNG files saved to
+/// Name of the directory where RadekHLE will store IMG_####.PNG files saved to
 /// the Photo Album.
 pub const PHOTO_ALBUM_DIR: &str = "DCIM/100APPLE";
 
-/// Get a platform-specific base path needed for accessing touchHLE's
+/// Get a platform-specific base path needed for accessing RadekHLE's
 /// user-modifiable files. This is empty on platforms other than Android.
 pub fn user_data_base_path() -> Cow<'static, Path> {
     #[cfg(target_os = "android")]
@@ -143,12 +143,12 @@ pub fn user_data_base_path() -> Cow<'static, Path> {
     }
     #[cfg(not(target_os = "android"))]
     {
-        // When touchHLE is run from a .app bundle on macOS, the user might not
+        // When RadekHLE is run from a .app bundle on macOS, the user might not
         // be able to control the current directory, so user data needs to go in
         // a standard location.
         if get_macos_bundled_resources_path().is_some() {
             return Cow::from(PathBuf::from(
-                sdl2::filesystem::pref_path("touchhle.org", "touchHLE").unwrap(),
+                sdl2::filesystem::pref_path("RadekHLE.org", "RadekHLE").unwrap(),
             ));
         }
         Cow::from(Path::new("."))
@@ -162,7 +162,7 @@ pub fn url_for_opening_user_data_dir() -> Result<String, String> {
         // See DocumentsProvider.kt, app/build.gradle and AndroidManifest.xml
         let brand = crate::branding();
         Ok(format!(
-            "content://org.touchhle.android{}{}.provider/root/root",
+            "content://org.RadekHLE.android{}{}.provider/root/root",
             if brand.is_empty() { "" } else { "." },
             brand.to_lowercase()
         ))
@@ -187,7 +187,7 @@ pub fn url_for_opening_user_data_dir() -> Result<String, String> {
 
 /// Only meaningful on certain OSes: create the user data directory if it
 /// doesn't exist, and populate it with templates or README files. (On other
-/// platforms these are simply bundled with touchHLE in a ZIP file.)
+/// platforms these are simply bundled with RadekHLE in a ZIP file.)
 pub fn prepopulate_user_data_dir() {
     if std::env::consts::OS != "android" && std::env::consts::OS != "macos" {
         return;
@@ -236,14 +236,14 @@ pub fn prepopulate_user_data_dir() {
     if !apps_dir_readme.is_file() {
         let content = include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/touchHLE_apps/README.txt"
+            "/RadekHLE_apps/README.txt"
         ));
         create_file(&apps_dir_readme, content);
     }
 
     let user_options = base_path.join(USER_OPTIONS_FILE);
     if !user_options.is_file() {
-        let content = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/touchHLE_options.txt"));
+        let content = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/RadekHLE_options.txt"));
         create_file(&user_options, content);
     }
 
@@ -252,3 +252,4 @@ pub fn prepopulate_user_data_dir() {
         create_file(&options_help, crate::options::OPTIONS_HELP);
     }
 }
+

@@ -19,7 +19,7 @@ use crate::Environment;
 /// `GKErrorNotAuthenticated = 6`. Returned by GameKit APIs when the
 /// local player is not signed in to Game Center. We use this code in
 /// the NSError we hand back to authentication completion handlers,
-/// because touchHLE has no Game Center connectivity and so the local
+/// because RadekHLE has no Game Center connectivity and so the local
 /// player can never be authenticated.
 const GK_ERROR_NOT_AUTHENTICATED: i32 = 6;
 
@@ -41,7 +41,7 @@ fn make_not_authenticated_error(env: &mut Environment) -> id {
     let desc_val = from_rust_string(
         env,
         "The requested operation could not be completed because local \
-         player has not been authenticated. (touchHLE: Game Center is \
+         player has not been authenticated. (RadekHLE: Game Center is \
          offline)"
             .to_string(),
     );
@@ -176,7 +176,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
     let player_id = ns_string::from_rust_string(
         env,
-        "GKLocalPlayer:touchHLE".to_string(),
+        "GKLocalPlayer:RadekHLE".to_string(),
     );
     let alias   = ns_string::from_rust_string(env, "Player".to_string());
     let display = ns_string::from_rust_string(env, "Player".to_string());
@@ -202,7 +202,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // "The completion handler is called with a nil error if the
 //  identifier was set, or an NSError if the request failed."
 //
-// touchHLE has no Game Center connectivity, so the request always
+// RadekHLE has no Game Center connectivity, so the request always
 // fails with `GKErrorNotAuthenticated`. We still invoke the
 // completion handler so the caller can proceed.
 + (())setDefaultLeaderboardIdentifier:(id)_identifier
@@ -285,7 +285,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // "If the local player can't be authenticated, GameKit calls your
 //  completion handler with an error."
 //
-// touchHLE has no Game Center connectivity, so we follow the documented
+// RadekHLE has no Game Center connectivity, so we follow the documented
 // "not authenticated" branch: leave `isAuthenticated == NO` and invoke the
 // completion handler with a `GKErrorNotAuthenticated` NSError.
 //
@@ -323,7 +323,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
     let sel = env
         .objc
-        .register_host_selector("_touchHLE_deliverAuthCompletion".to_string(), &mut env.mem);
+        .register_host_selector("_RadekHLE_deliverAuthCompletion".to_string(), &mut env.mem);
     () = msg![env; this performSelector:sel withObject:nil afterDelay:0.0_f64];
 }
 
@@ -331,7 +331,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // iteration (main thread). Posts the state-change notification first, to
 // match GameKit's documented ordering, then invokes the block and releases
 // our retained reference.
-- (())_touchHLE_deliverAuthCompletion {
+- (())_RadekHLE_deliverAuthCompletion {
     let handler = {
         let host = env.objc.borrow_mut::<GKLocalPlayerHostObject>(this);
         let h = host.pending_completion_handler;
@@ -385,7 +385,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
     let sel = env
         .objc
-        .register_host_selector("_touchHLE_deliverAuthHandler".to_string(), &mut env.mem);
+        .register_host_selector("_RadekHLE_deliverAuthHandler".to_string(), &mut env.mem);
     () = msg![env; this performSelector:sel withObject:nil afterDelay:0.0_f64];
 }
 
@@ -397,7 +397,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // iteration (main thread) with a nil view controller and a not-authenticated
 // error. We keep the handler retained on the host object (do not release it
 // here) because GameKit may invoke it more than once.
-- (())_touchHLE_deliverAuthHandler {
+- (())_RadekHLE_deliverAuthHandler {
     let handler = env.objc.borrow::<GKLocalPlayerHostObject>(this).authenticate_handler;
     if handler == nil {
         return;
@@ -481,3 +481,4 @@ pub const CONSTANTS: ConstantExports = &[
         HostConstant::NSString(GKPlayerDidChangeNotificationName),
     ),
 ];
+

@@ -1,24 +1,24 @@
 name: Request an app fix (IPA + logs)
-description: Request that a specific app/game be fixed in HyperHLE. Requires an IPA link, a log file, and a description of the bug/crash.
+description: Request that a specific app/game be fixed in RadekHLE. Requires an IPA link, a log file, and a description of the bug/crash.
 labels: ["app fix request"]
 body:
   - type: markdown
     attributes:
       value: |
         Use this form to request that a specific app or game be fixed in
-        HyperHLE. This is the same request the Telegram bot files on your behalf.
+        RadekHLE. This is the same request the Telegram bot files on your behalf.
 
         **Three things are required** for a fix to be investigated:
         1. A direct **IPA link** (or zipped `.app`) so the app can be downloaded and run.
         2. A **log file** from the run that shows the failure.
         3. A clear **description of the bug/crash**.
 
-        Please make sure you are testing against the **latest HyperHLE build from
-        [Actions](https://github.com/HyperHLE/HyperHLE/actions)** (or the latest
-        [release](https://github.com/HyperHLE/HyperHLE/releases)) before filing.
+        Please make sure you are testing against the **latest RadekHLE build from
+        [Actions](https://github.com/RadekHLE/RadekHLE/actions)** (or the latest
+        [release](https://github.com/RadekHLE/RadekHLE/releases)) before filing.
 
         Before opening a request, please search
-        [existing issues](https://github.com/HyperHLE/HyperHLE/issues) to avoid
+        [existing issues](https://github.com/RadekHLE/RadekHLE/issues) to avoid
         duplicates.
   - type: input
     attributes:
@@ -46,10 +46,10 @@ body:
       required: true
   - type: input
     attributes:
-      label: HyperHLE version tested (latest from Actions)
+      label: RadekHLE version tested (latest from Actions)
       description: |
-        The version or commit of the latest HyperHLE build from
-        https://github.com/HyperHLE/HyperHLE/actions that you tested against.
+        The version or commit of the latest RadekHLE build from
+        https://github.com/RadekHLE/RadekHLE/actions that you tested against.
       placeholder: 'v1.0.2 / commit abcdef0'
     validations:
       required: true
@@ -96,7 +96,7 @@ body:
       options:
         - label: I have searched existing issues and this is not a duplicate.
           required: true
-        - label: I tested against the latest HyperHLE build from Actions / the latest release.
+        - label: I tested against the latest RadekHLE build from Actions / the latest release.
           required: true
         - label: I legally own the app / game I am asking about.
           required: true
@@ -104,3 +104,4 @@ body:
           required: true
         - label: I understand that fixes are best-effort and there is no guarantee that this specific app will be made to work.
           required: true
+

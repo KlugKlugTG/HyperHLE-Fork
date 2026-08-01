@@ -5,7 +5,7 @@
  */
 //! Auto Layout / UIFontDescriptor / NSLocalizableString placeholders.
 //!
-//! HyperHLE renders the screen using a frame-based UI (everything is
+//! RadekHLE renders the screen using a frame-based UI (everything is
 //! positioned through `frame`, `bounds` and `center` on `UIView`). It does
 //! not implement Apple's Cascade Auto Layout engine. However, modern
 //! storyboards and xibs frequently reference layout-related classes from
@@ -257,7 +257,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 //
 // `_UILayoutGuide` is the legacy private name (pre-iOS 9). `UILayoutGuide`
 // is the public class introduced in iOS 9. Both behave as non-drawing
-// guides positioned via Auto Layout. HyperHLE does not run a constraint
+// guides positioned via Auto Layout. RadekHLE does not run a constraint
 // solver, so the guides remain at zero frame; storyboards that reference
 // `topLayoutGuide` / `bottomLayoutGuide` still decode correctly though.
 
@@ -400,3 +400,4 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
+

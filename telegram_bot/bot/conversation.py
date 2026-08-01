@@ -583,8 +583,8 @@ async def on_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         if candidate.version:
             info = candidate
             break
-    req.hyperhle_version = info.commit or info.version
-    req.hyperhle_version_url = info.run_url
+    req.RadekHLE_version = info.commit or info.version
+    req.RadekHLE_version_url = info.run_url
     latest = await gh.latest_commit(info.branch or "trunk")
     if latest is not None:
         req.latest_commit_sha = latest.sha
@@ -609,12 +609,12 @@ async def on_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await _forward_to_maintainer(update, context, req, issue)
 
     if req.up_to_date is True:
-        build_line = t(context, "build_ok", v=req.hyperhle_version)
+        build_line = t(context, "build_ok", v=req.RadekHLE_version)
     elif req.up_to_date is False:
         build_line = t(
             context,
             "build_outdated",
-            v=req.hyperhle_version,
+            v=req.RadekHLE_version,
             latest=req.latest_commit_sha[:7],
             actions=cfg.actions_url,
         )
@@ -800,3 +800,4 @@ def register_handlers(application: Application) -> None:
     application.add_handler(
         CallbackQueryHandler(on_setlang, pattern=r"^setlang:(en|ru|ar)$")
     )
+

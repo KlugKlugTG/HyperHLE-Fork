@@ -19,16 +19,16 @@ MAX_LOG_CHARS = 20_000
 
 _URL_RE = re.compile(r"https?://\S+")
 
-# First line of every HyperHLE / touchHLE log, e.g.
-#   touchHLE UNOFFICIAL 8d65eca — https://touchhle.org/
-#   HyperHLE v1.0.2 — https://touchhle.org/
+# First line of every RadekHLE / RadekHLE log, e.g.
+#   RadekHLE UNOFFICIAL 8d65eca — https://RadekHLE.org/
+#   RadekHLE v1.0.2 — https://RadekHLE.org/
 _LOG_HEADER_RE = re.compile(
-    r"^(?:touchHLE|HyperHLE)\s+(?:UNOFFICIAL\s+)?(?P<ver>[\w.]+)\s+[—–-]",
+    r"^(?:RadekHLE|RadekHLE)\s+(?:UNOFFICIAL\s+)?(?P<ver>[\w.]+)\s+[—–-]",
     re.MULTILINE | re.IGNORECASE,
 )
 # Second line on Actions-built binaries, e.g.
-#   Built from branch "trunk" of "HyperHLE/HyperHLE" by GitHub Actions
-#   workflow run https://github.com/HyperHLE/HyperHLE/actions/runs/123.
+#   Built from branch "trunk" of "RadekHLE/RadekHLE" by GitHub Actions
+#   workflow run https://github.com/RadekHLE/RadekHLE/actions/runs/123.
 _BUILT_FROM_RE = re.compile(
     r'Built from branch "(?P<branch>[^"]+)" of "(?P<repo>[^"]+)"'
     r"\s+by GitHub Actions workflow run\s+(?P<url>https?://\S+?)\.?\s*$",
@@ -40,7 +40,7 @@ _BACKTICKS_RE = re.compile(r"`+")
 
 @dataclass(frozen=True)
 class LogBuildInfo:
-    """Build identity extracted from a HyperHLE log header."""
+    """Build identity extracted from a RadekHLE log header."""
 
     version: str = ""  # raw header version, e.g. "8d65eca" or "v1.0.2"
     commit: str = ""  # set only when the version is a commit hash
@@ -49,7 +49,7 @@ class LogBuildInfo:
 
 
 def has_log_header(text: str) -> bool:
-    """True if `text` begins like a genuine HyperHLE / touchHLE log.
+    """True if `text` begins like a genuine RadekHLE / RadekHLE log.
 
     Used as a sanity check on uploaded/pasted logs so screenshots, random
     documents or unrelated text can't be submitted as a "log".
@@ -111,8 +111,8 @@ class FixRequest:
     gpu: str = ""
 
     # Filled in at submit time from the log header + the GitHub commits API.
-    hyperhle_version: str = ""  # build from the user's log
-    hyperhle_version_url: str = ""  # workflow run that built it, if known
+    RadekHLE_version: str = ""  # build from the user's log
+    RadekHLE_version_url: str = ""  # workflow run that built it, if known
     latest_commit_sha: str = ""  # head of the branch the log was built from
     up_to_date: bool | None = None  # None = could not verify
 
@@ -145,13 +145,13 @@ class FixRequest:
         return out
 
     def _version_line(self) -> str:
-        if not self.hyperhle_version:
+        if not self.RadekHLE_version:
             return "(no build hash found in the log)"
-        # hyperhle_version comes from the log header regex ([\w.]+); fence it
+        # RadekHLE_version comes from the log header regex ([\w.]+); fence it
         # anyway so it can never break the surrounding Markdown.
-        ver = gh_inline_code(self.hyperhle_version)
-        if self.hyperhle_version_url:
-            base = f"[{ver}]({self.hyperhle_version_url})"
+        ver = gh_inline_code(self.RadekHLE_version)
+        if self.RadekHLE_version_url:
+            base = f"[{ver}]({self.RadekHLE_version_url})"
         else:
             base = ver
         if self.up_to_date is True:
@@ -218,7 +218,7 @@ class FixRequest:
         if self.app_version:
             lines.append(f"**App version:** {gh_inline_code(self.app_version)}")
         lines.append(
-            f"**HyperHLE build (from the log):** {self._version_line()}",
+            f"**RadekHLE build (from the log):** {self._version_line()}",
         )
         if self.operating_system:
             lines.append(f"**Operating system:** {gh_inline_code(self.operating_system)}")
@@ -243,7 +243,7 @@ class FixRequest:
         reporter = f" by {gh_inline_code(self.reporter)}" if self.reporter else ""
         footer = (
             "\n\n---\n"
-            f"_Filed via the HyperHLE Telegram fix bot._{reporter}"
+            f"_Filed via the RadekHLE Telegram fix bot._{reporter}"
         )
 
         marker = "\n\n### Log file(s)\n"
@@ -271,7 +271,7 @@ class FixRequest:
         out.append(f"From: {self.reporter or 'unknown'}")
         out += [
             f"App: {self.app_name}" + (f" {self.app_version}" if self.app_version else ""),
-            f"HyperHLE build (from log): {self.hyperhle_version or 'unknown'}{build_status}",
+            f"RadekHLE build (from log): {self.RadekHLE_version or 'unknown'}{build_status}",
         ]
         if self.operating_system:
             out.append(f"OS: {self.operating_system}")
@@ -294,3 +294,4 @@ class FixRequest:
         if self.media_note:
             out.append(f"Media: {self.media_note}")
         return "\n".join(out)
+

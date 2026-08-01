@@ -83,7 +83,7 @@ pub const kCFStreamSocketSecurityLevelNegotiatedSSL: &str =
 // CFFTPStream property keys, per Apple's CFFTPStream reference:
 // <https://developer.apple.com/documentation/cfnetwork/cfftpstream>.
 // These are CFString constants used to configure FTP read/write streams
-// (e.g. via `CFReadStreamSetProperty`). touchHLE does not implement real FTP
+// (e.g. via `CFReadStreamSetProperty`). RadekHLE does not implement real FTP
 // networking, but exporting the constants keeps guest apps that merely
 // reference these symbols (e.g. "PotaTossSocial", whose networking layer links
 // against `kCFStreamPropertyFTPAttemptPersistentConnection`) from hitting an
@@ -298,13 +298,13 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 (env, this, _cmd);
 
-@implementation _touchHLE_CFReadStream: NSObject
+@implementation _RadekHLE_CFReadStream: NSObject
 - (())dealloc {
     env.objc.dealloc_object(this, &mut env.mem)
 }
 @end
 
-@implementation _touchHLE_CFWriteStream: NSObject
+@implementation _RadekHLE_CFWriteStream: NSObject
 - (())dealloc {
     env.objc.dealloc_object(this, &mut env.mem)
 }
@@ -317,7 +317,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 fn alloc_read_stream(env: &mut Environment) -> CFReadStreamRef {
     let class = env
         .objc
-        .get_known_class("_touchHLE_CFReadStream", &mut env.mem);
+        .get_known_class("_RadekHLE_CFReadStream", &mut env.mem);
     env.objc.alloc_object(
         class,
         Box::new(CFReadStreamHostObject {
@@ -332,7 +332,7 @@ fn alloc_read_stream(env: &mut Environment) -> CFReadStreamRef {
 fn alloc_write_stream(env: &mut Environment) -> CFWriteStreamRef {
     let class = env
         .objc
-        .get_known_class("_touchHLE_CFWriteStream", &mut env.mem);
+        .get_known_class("_RadekHLE_CFWriteStream", &mut env.mem);
     env.objc.alloc_object(
         class,
         Box::new(CFWriteStreamHostObject {
@@ -790,3 +790,4 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CFWriteStreamUnscheduleFromRunLoop(_, _, _)),
     export_c_func!(CFStreamCreatePairWithSocketToCFHost(_, _, _, _, _)),
 ];
+

@@ -7,7 +7,7 @@
 //! Quick-and-dirty decoding of miscellaneous formats (MP3, AAC, CAF) to linear
 //! PCM.
 //!
-//! This should be the only module in touchHLE that makes use of [symphonia].
+//! This should be the only module in RadekHLE that makes use of [symphonia].
 //!
 //! Note on the Symphonia 0.6 API (which differs substantially from 0.5):
 //!
@@ -175,3 +175,4 @@ pub fn decode_symphonia_to_pcm(file: Cursor<Vec<u8>>) -> Result<SymphoniaDecoded
         channels: channels.try_into().unwrap(),
     })
 }
+

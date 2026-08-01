@@ -1,4 +1,4 @@
-# touchHLE code of conduct
+# RadekHLE code of conduct
 
 ## General
 
@@ -16,4 +16,5 @@ I do not feel like a full-length, corporate project-style “code of conduct” 
 **⚠️ Do not talk about using pirated content.**<br>
 **⚠️ You _will_ be banned if you ignore this warning.**<br>
 
-These are not the only copyright rules applicable to touchHLE. Please also read the [contribution guide](CONTRIBUTING.md) if you are going to contribute code.
+These are not the only copyright rules applicable to RadekHLE. Please also read the [contribution guide](CONTRIBUTING.md) if you are going to contribute code.
+

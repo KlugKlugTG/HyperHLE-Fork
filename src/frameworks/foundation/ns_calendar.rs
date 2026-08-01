@@ -254,7 +254,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 // Apple's `autoupdatingCurrentCalendar` returns a calendar that tracks later
-// changes to the user's locale/calendar settings. touchHLE has no live system
+// changes to the user's locale/calendar settings. RadekHLE has no live system
 // settings to track, so behaving like `currentCalendar` is equivalent and
 // avoids returning nil (which apps querying it at launch don't expect).
 + (id)autoupdatingCurrentCalendar {
@@ -600,3 +600,4 @@ fn test_gregorian_weekday_from_time_interval() {
     // Feb 9 2026 — Monday (9170 days after epoch)
     do_test("2026-02-09", 86400.0 * 9170.0, 2);
 }
+

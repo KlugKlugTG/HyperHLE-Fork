@@ -6,7 +6,7 @@
 //! Stub for `ImageIO.framework/ImageIO`.
 //!
 //! ImageIO provides reading and writing of image files (PNG, JPEG, etc.)
-//! via `CGImageSource` and `CGImageDestination`. touchHLE already handles
+//! via `CGImageSource` and `CGImageDestination`. RadekHLE already handles
 //! most image decoding through CoreGraphics and stb_image.
 //!
 //! This stub satisfies the Mach-O dependency so the "missing dylib"
@@ -24,3 +24,4 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
     constant_exports: &[],
     function_exports: &[FUNCTIONS],
 };
+

@@ -1,5 +1,5 @@
 /*
- * FBSession stub for touchHLE
+ * FBSession stub for RadekHLE
  */
 
 use crate::objc::{id, msg, nil, objc_classes, ClassExports, HostObject, NSZonePtr};
@@ -76,3 +76,4 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
+

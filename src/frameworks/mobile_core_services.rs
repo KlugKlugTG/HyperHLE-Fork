@@ -15,9 +15,9 @@
 //! Without a [crate::dyld::HostDylib] entry for the path
 //! `/System/Library/Frameworks/MobileCoreServices.framework/`
 //! `MobileCoreServices`,
-//! touchHLE prints a `Warning: app binary depends on unimplemented or missing
+//! RadekHLE prints a `Warning: app binary depends on unimplemented or missing
 //! dylib …` at startup, which can spook users into reporting otherwise-fine
-//! apps as broken (e.g. HyperHLE appdb report #23, Mutant Fridge).
+//! apps as broken (e.g. RadekHLE appdb report #23, Mutant Fridge).
 //!
 //! This stub exists so the dependency is recognized and the warning is
 //! suppressed. Real UTType handling is not implemented; functions that
@@ -213,3 +213,4 @@ pub const CONSTANTS: ConstantExports = &[
         HostConstant::NSString("UTTypeTagSpecification"),
     ),
 ];
+

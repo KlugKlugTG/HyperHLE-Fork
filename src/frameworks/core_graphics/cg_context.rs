@@ -33,7 +33,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // CGContext seems to be a CFType-based type, but in our implementation those
 // are just Objective-C types, so we need a class for it, but its name is not
 // visible anywhere.
-@implementation _touchHLE_CGContext: NSObject
+@implementation _RadekHLE_CGContext: NSObject
 
 - (())dealloc {
     let host_obj = env.objc.borrow::<CGContextHostObject>(this);
@@ -361,7 +361,7 @@ fn CGContextSetFillColorSpace(
     //      appropriate for the color space."
     // https://developer.apple.com/documentation/coregraphics/1455380-cgcontextsetfillcolorspace
     //
-    // touchHLE always works in device RGB internally — switching color
+    // RadekHLE always works in device RGB internally — switching color
     // spaces would require reimplementing Quartz's CIE colour pipeline,
     // which is out of scope. Instead, reset the fill colour to the
     // device-RGB default (opaque black), matching what real Quartz does
@@ -1213,10 +1213,10 @@ fn CGContextSetFont(env: &mut Environment, context: CGContextRef, font: CGFontRe
     if context.is_null() {
         return;
     }
-    // On real iOS, UIFont and CGFont are toll-free bridged. In HyperHLE they are
+    // On real iOS, UIFont and CGFont are toll-free bridged. In RadekHLE they are
     // separate types. Handle three cases:
-    // 1. Already a _touchHLE_CGFont — use as-is.
-    // 2. A live UIFont — wrap it in a _touchHLE_CGFont on the fly.
+    // 1. Already a _RadekHLE_CGFont — use as-is.
+    // 2. A live UIFont — wrap it in a _RadekHLE_CGFont on the fly.
     // 3. A freed/nil-isa object (use-after-free) — substitute Liberation Sans
     //    so text is at least visible rather than silently dropped.
     let font = if font.is_null() {
@@ -1228,7 +1228,7 @@ fn CGContextSetFont(env: &mut Environment, context: CGContextRef, font: CGFontRe
         // Case 2: live UIFont — convert.
         if let Some(f) = uikit::ui_font::font_from_uifont(env, font) {
             let host_obj = Box::new(CGFontHostObject { font: f });
-            let class = env.objc.get_known_class("_touchHLE_CGFont", &mut env.mem);
+            let class = env.objc.get_known_class("_RadekHLE_CGFont", &mut env.mem);
             env.objc.alloc_object(class, host_obj, &mut env.mem)
         } else {
             font
@@ -1239,7 +1239,7 @@ fn CGContextSetFont(env: &mut Environment, context: CGContextRef, font: CGFontRe
         log_dbg!("CGContextSetFont: unrecognised font {:?} (possibly freed UIFont); \
                   substituting Liberation Sans", font);
         let host_obj = Box::new(CGFontHostObject { font: crate::font::Font::sans_regular() });
-        let class = env.objc.get_known_class("_touchHLE_CGFont", &mut env.mem);
+        let class = env.objc.get_known_class("_RadekHLE_CGFont", &mut env.mem);
         env.objc.alloc_object(class, host_obj, &mut env.mem)
     };
     CGFontRetain(env, font);
@@ -1555,3 +1555,4 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CGContextSetAllowsFontSubpixelPositioning(_, _)),
     export_c_func!(CGContextSetShouldSubpixelQuantizeFonts(_, _)),
 ];
+

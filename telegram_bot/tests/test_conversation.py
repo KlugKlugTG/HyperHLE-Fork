@@ -17,7 +17,7 @@ from conftest import (
     make_text_update,
 )
 
-REAL_HEADER = "touchHLE UNOFFICIAL 8d65eca — https://touchhle.org/"
+REAL_HEADER = "RadekHLE UNOFFICIAL 8d65eca — https://RadekHLE.org/"
 
 
 def last_reply(update):
@@ -320,3 +320,4 @@ async def test_on_confirm_survives_markdown_failure():
     # The user still got their confirmation, sent as plain text on retry.
     assert bot.sent
     assert bot.sent[-1].get("parse_mode") is None
+

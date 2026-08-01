@@ -19,7 +19,7 @@ fn ptrace(env: &mut Environment, request: i32, pid: pid_t, addr: MutPtr<u8>, dat
         PT_DENY_ATTACH => {
             log_dbg!("ptrace(PT_DENY_ATTACH) called by app for anti-debugging.");
 
-            // Честная реализация: если в TouchHLE включен и подключен
+            // Честная реализация: если в RadekHLE включен и подключен
             // GDB-сервер,
             // мы должны завершить процесс, как это делает реальная iOS.
             if env.is_debugging_enabled() {
@@ -49,3 +49,4 @@ fn ptrace(env: &mut Environment, request: i32, pid: pid_t, addr: MutPtr<u8>, dat
 }
 
 pub const FUNCTIONS: FunctionExports = &[export_c_func!(ptrace(_, _, _, _))];
+

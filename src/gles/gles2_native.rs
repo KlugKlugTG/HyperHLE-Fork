@@ -121,7 +121,7 @@ impl GLESContext for GLES2NativeContext {
 ///
 /// On strict OpenGL ES 3.0+ contexts `glGetString(GL_EXTENSIONS)` is
 /// deprecated and may return an empty string. We can't use `glGetStringi`
-/// here because the touchHLE GLES 2.0 raw bindings (generated for Core
+/// here because the RadekHLE GLES 2.0 raw bindings (generated for Core
 /// ES 2.0 only) don't expose it. When the legacy string is unavailable we
 /// conservatively return `false`, which causes us to software-decode PVRTC.
 /// That's the safe choice: it produces correct output everywhere, at the
@@ -1694,3 +1694,4 @@ impl GLES for GLES2Native<'_> {
     ) {
     }
 }
+

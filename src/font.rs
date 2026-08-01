@@ -501,7 +501,7 @@ pub fn sans_bold_zh() -> Font {
         // RustType requires a "draw pixel" callback that will be called for
         // each pixel in the glyph's bounding box, in left-to-right
         // top-to-bottom order. This is unfortunately incompatible with
-        // touchHLE's code which needs to be able to sample the pixels in any
+        // RadekHLE's code which needs to be able to sample the pixels in any
         // order in order to support rotation. This is worked around by creating
         // a temporary bitmap for the glyph, and then the caller of this
         // function can provide a "draw glyph" callback that can do whatever it
@@ -1127,3 +1127,4 @@ fn glyph_name_from_post_table(
         _ => None,
     }
 }
+

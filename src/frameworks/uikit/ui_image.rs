@@ -1,5 +1,5 @@
 /*
- * Implementation of UIImage for iOS 2.0 - 4.3.5 targeting TouchHLE.
+ * Implementation of UIImage for iOS 2.0 - 4.3.5 targeting RadekHLE.
  */
 
 use crate::dyld::{export_c_func, FunctionExports};
@@ -126,7 +126,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // iOS 4.0+
 + (id)imageWithCGImage:(CGImageRef)cg_image scale:(CGFloat)_scale orientation:(NSInteger)orientation {
-    // touchHLE's UIImage doesn't honour the scale factor (the app already
+    // RadekHLE's UIImage doesn't honour the scale factor (the app already
     // assumes the image's pixel dimensions are correct), so we just call
     // the regular initializer and store the orientation. Apps on iOS 5/6
     // (e.g. ketchapp's "2 Cars") rely on this overload existing —
@@ -524,3 +524,4 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(UIImageJPEGRepresentation(_, _)),
     export_c_func!(UIImageWriteToSavedPhotosAlbum(_, _, _, _)),
 ];
+

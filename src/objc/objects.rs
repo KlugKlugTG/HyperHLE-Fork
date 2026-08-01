@@ -18,7 +18,7 @@ use std::sync::Mutex;
 /// hold `T`; callers get a stable reference that isn't aliased with buffers
 /// for other objects/types.
 ///
-/// The cache is behind a single process-wide `Mutex` because touchHLE keeps
+/// The cache is behind a single process-wide `Mutex` because RadekHLE keeps
 /// a single `ObjC` instance but this function is used from both immutable
 /// (`&self`) and mutable (`&mut self`) receivers, and from many framework
 /// modules. Contention here is only hit on the error path, so a plain
@@ -440,3 +440,4 @@ impl super::ObjC {
         }
     }
 }
+

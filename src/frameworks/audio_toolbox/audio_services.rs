@@ -329,7 +329,7 @@ fn AudioServicesAddSystemSoundCompletion(
     // system sound finishes playing. […] If inRunLoop is NULL, the system
     // installs the callback in the main run loop in its default mode."
     //
-    // touchHLE runs a single ARM run loop, so we ignore inRunLoop /
+    // RadekHLE runs a single ARM run loop, so we ignore inRunLoop /
     // inRunLoopMode (the polling is performed unconditionally from
     // ns_run_loop's tick). We DO support the documented "unregister via
     // NULL completion routine" idiom (passing NULL is also handled
@@ -435,3 +435,4 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(AudioServicesAddSystemSoundCompletion(_, _, _, _, _)),
     export_c_func!(AudioServicesRemoveSystemSoundCompletion(_)),
 ];
+

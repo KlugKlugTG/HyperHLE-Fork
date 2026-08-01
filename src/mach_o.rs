@@ -664,7 +664,7 @@ impl MachO {
                 LoadCommand::EncryptionInfo { id, .. } => {
                     if id != 0 {
                         return Err(
-                            "The executable is encrypted. touchHLE can't run encrypted apps!",
+                            "The executable is encrypted. RadekHLE can't run encrypted apps!",
                         );
                     }
                 }
@@ -920,3 +920,4 @@ impl MachO {
         self.sections.iter().find(|section| by.test(section))
     }
 }
+

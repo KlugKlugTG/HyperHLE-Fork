@@ -5,7 +5,7 @@
  */
 //! `CoreBluetooth.framework/CoreBluetooth`
 //!
-//! CoreBluetooth is iOS's Bluetooth Low Energy stack (iOS 5+). touchHLE
+//! CoreBluetooth is iOS's Bluetooth Low Energy stack (iOS 5+). RadekHLE
 //! does not currently emulate a BLE radio, but apps reference the
 //! framework's exported string-constant keys at load time during normal
 //! initialisation paths (e.g. registering KVO observers, building up
@@ -161,3 +161,4 @@ pub const DYLIB: HostDylib = HostDylib {
     constant_exports: &[CONSTANTS],
     function_exports: &[],
 };
+

@@ -143,7 +143,7 @@ fn init_common(env: &mut Environment, this: id) -> id {
 
     let selector = env
         .objc
-        .lookup_selector("_touchHLE_flipAction:forEvent:")
+        .lookup_selector("_RadekHLE_flipAction:forEvent:")
         .unwrap();
     () = msg![env; this addTarget:this
                            action:selector
@@ -339,7 +339,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // "Private" methods, not a part of API
 
-- (())_touchHLE_flipAction:(id)sender forEvent:(id)event { // UIEvent*
+- (())_RadekHLE_flipAction:(id)sender forEvent:(id)event { // UIEvent*
     assert_eq!(this, sender);
 
     let is_on = env.objc.borrow::<UISwitchHostObject>(this).is_on;
@@ -351,3 +351,4 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
+

@@ -1,10 +1,10 @@
 name: Download and run IPA
 
 # Manually-triggered workflow that downloads an `.ipa` (or zipped `.app`) from a
-# provided URL, builds touchHLE, and runs the app under touchHLE on Linux,
+# provided URL, builds RadekHLE, and runs the app under RadekHLE on Linux,
 # Windows and macOS.
 #
-# touchHLE normally opens a window and runs the app indefinitely, neither of
+# RadekHLE normally opens a window and runs the app indefinitely, neither of
 # which suits CI, so the run is bounded by `dev-scripts/ci-run-app.sh`, which
 # launches the emulator, waits a fixed number of seconds, and then stops it.
 # On Linux the run happens under a virtual framebuffer (xvfb) so SDL has a
@@ -24,7 +24,7 @@ on:
         required: false
         default: "60"
       extra_args:
-        description: Extra arguments to pass to touchHLE (e.g. "--scale-hack=2")
+        description: Extra arguments to pass to RadekHLE (e.g. "--scale-hack=2")
         type: string
         required: false
         default: ""
@@ -46,19 +46,19 @@ jobs:
         include:
           - os: ubuntu-latest
             name: Linux
-            bin: ./target/release/touchHLE
+            bin: ./target/release/RadekHLE
             boost_key: boost_1_81_0_linux
           - os: windows-latest
             name: Windows
-            bin: ./target/release/touchHLE.exe
+            bin: ./target/release/RadekHLE.exe
             boost_key: boost_1_81_0_windows
           - os: macos-latest
             name: macOS
-            bin: ./target/release/touchHLE
+            bin: ./target/release/RadekHLE
             boost_key: boost_1_81_0_macos
 
     steps:
-      - name: Checkout touchHLE
+      - name: Checkout RadekHLE
         uses: actions/checkout@main
         with:
           submodules: recursive
@@ -126,11 +126,11 @@ jobs:
         with:
           cmakeVersion: "~3.29.0"
 
-      - name: Build touchHLE
+      - name: Build RadekHLE
         run: cargo build --release
 
       # The Windows runners only expose Microsoft's GDI generic OpenGL 1.1,
-      # which can't satisfy the OpenGL 2.1 context that touchHLE's GLES1-on-GL2
+      # which can't satisfy the OpenGL 2.1 context that RadekHLE's GLES1-on-GL2
       # layer requires. Both the native GLES path and the GL2 fallback therefore
       # fail and the app aborts with "Couldn't create OpenGL ES 1.1 context!".
       # Drop in Mesa3D's llvmpipe software renderer as a per-app opengl32.dll
@@ -148,7 +148,7 @@ jobs:
             "https://github.com/pal1000/mesa-dist-win/releases/download/${MESA_VERSION}/mesa3d-${MESA_VERSION}-release-msvc.7z"
           7z x mesa.7z -omesa
           # The opengl32.dll loader plus its gallium/llvmpipe dependencies must
-          # sit next to touchHLE.exe so Windows loads Mesa instead of the system
+          # sit next to RadekHLE.exe so Windows loads Mesa instead of the system
           # OpenGL. Copying the whole x64 set keeps every dependency satisfied.
           cp mesa/x64/*.dll target/release/
           # Force the software rasterizer; the runners have no usable GPU.
@@ -171,7 +171,7 @@ jobs:
         shell: bash
         run: ${{ matrix.bin }} downloaded_app/app.ipa --info
 
-      - name: Run app under touchHLE
+      - name: Run app under RadekHLE
         shell: bash
         env:
           RUN_SECONDS: ${{ inputs.run_seconds }}
@@ -192,6 +192,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@main
         with:
-          name: HyperHLE_run_log_${{ matrix.name }}
+          name: RadekHLE_run_log_${{ matrix.name }}
           path: run.log
           if-no-files-found: ignore
+

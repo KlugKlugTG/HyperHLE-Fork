@@ -12,14 +12,14 @@
 //! `/System/Library/Frameworks/CoreMedia.framework/CoreMedia` in their Mach-O
 //! load commands.
 //!
-//! Without a [crate::dyld::HostDylib] entry for that path, touchHLE prints a
+//! Without a [crate::dyld::HostDylib] entry for that path, RadekHLE prints a
 //! `Warning: app binary depends on unimplemented or missing dylib
 //! "/System/Library/Frameworks/CoreMedia.framework/CoreMedia"` at startup,
 //! which can spook users into reporting otherwise-fine apps as broken (e.g.
-//! HyperHLE appdb report #22, GhostToasters).
+//! RadekHLE appdb report #22, GhostToasters).
 //!
 //! This stub exists so that the dependency is recognized and the warning is
-//! suppressed. The few CoreMedia functions touchHLE currently implements
+//! suppressed. The few CoreMedia functions RadekHLE currently implements
 //! (`CMSampleBufferGetImageBuffer`, `CMSampleBufferDataIsReady`, …) are
 //! registered with [crate::frameworks::core_video] for historical reasons;
 //! `dyld` searches all framework `function_exports` regardless of which
@@ -171,7 +171,7 @@ pub const CONSTANTS: ConstantExports = &[
 /// and the C-visible arguments shift one slot to the right. Apple
 /// inlined this helper in `<CoreMedia/CMTime.h>` before iOS 7.1 and
 /// began exporting an out-of-line `_CMTimeMake` symbol shortly after,
-/// which is the symbol the touchHLE-targeted apps reference here.
+/// which is the symbol the RadekHLE-targeted apps reference here.
 /// <https://developer.apple.com/documentation/coremedia/cmtimemake(_:_:)>
 fn CMTimeMake(env: &mut Environment, out: MutPtr<u8>, value: i64, timescale: i32) -> MutPtr<u8> {
     // Apple ARM 32-bit ABI lays out `CMTime` as:
@@ -201,3 +201,4 @@ fn CMTimeMake(env: &mut Environment, out: MutPtr<u8>, value: i64, timescale: i32
 }
 
 pub const FUNCTIONS: FunctionExports = &[export_c_func!(CMTimeMake(_, _, _))];
+

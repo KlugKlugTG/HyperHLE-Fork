@@ -170,7 +170,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     if matches!(
         env.bundle.bundle_identifier(),
         "com.apprisetec9.minionjump" | "com.risinghighapps.kingdomprincepro"
-    ) || std::env::var_os("TOUCHHLE_FORCE_IPAD_DEVICE_IDENTITY").is_some() {
+    ) || std::env::var_os("RadekHLE_FORCE_IPAD_DEVICE_IDENTITY").is_some() {
         return ns_string::get_static_str(env, "iPad");
     }
     // ULTRAHLE_MINIONJUMP_MODEL_END
@@ -193,7 +193,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     if matches!(
         env.bundle.bundle_identifier(),
         "com.apprisetec9.minionjump" | "com.risinghighapps.kingdomprincepro"
-    ) || std::env::var_os("TOUCHHLE_FORCE_IPAD_DEVICE_IDENTITY").is_some() {
+    ) || std::env::var_os("RadekHLE_FORCE_IPAD_DEVICE_IDENTITY").is_some() {
         return ns_string::get_static_str(env, "iPad");
     }
     // ULTRAHLE_MINIONJUMP_NAME_END
@@ -215,12 +215,12 @@ pub const CLASSES: ClassExports = objc_classes! {
     ns_string::get_static_str(env, "6.1")
 }
 - (id)uniqueIdentifier {
-    ns_string::get_static_str(env, "touchHLEdevice..........................")
+    ns_string::get_static_str(env, "RadekHLEdevice..........................")
 }
 
 // `-identifierForVendor` (iOS 6.0+) — `NSUUID *` that uniquely identifies the
 // device to the app's vendor. Apple guarantees the value is stable for all
-// apps from the same vendor while at least one is installed; touchHLE has
+// apps from the same vendor while at least one is installed; RadekHLE has
 // no system-wide install database, so we derive a deterministic UUIDv5 from
 // the vendor prefix of the app's bundle identifier. Same vendor → same
 // UUID across launches; different vendors → different UUIDs.
@@ -270,7 +270,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     if matches!(
         env.bundle.bundle_identifier(),
         "com.apprisetec9.minionjump" | "com.risinghighapps.kingdomprincepro"
-    ) || std::env::var_os("TOUCHHLE_FORCE_IPAD_DEVICE_IDENTITY").is_some() {
+    ) || std::env::var_os("RadekHLE_FORCE_IPAD_DEVICE_IDENTITY").is_some() {
         return UIUserInterfaceIdiomPad;
     }
     // ULTRAHLE_MINIONJUMP_IDIOM_END
@@ -338,7 +338,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     if matches!(
         env.bundle.bundle_identifier(),
         "com.apprisetec9.minionjump" | "com.risinghighapps.kingdomprincepro"
-    ) || std::env::var_os("TOUCHHLE_FORCE_IPAD_DEVICE_IDENTITY").is_some() {
+    ) || std::env::var_os("RadekHLE_FORCE_IPAD_DEVICE_IDENTITY").is_some() {
         return ns_string::get_static_str(env, "iPad2,1");
     }
     // ULTRAHLE_MINIONJUMP_PLATFORM_END
@@ -356,7 +356,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     if matches!(
         env.bundle.bundle_identifier(),
         "com.apprisetec9.minionjump" | "com.risinghighapps.kingdomprincepro"
-    ) || std::env::var_os("TOUCHHLE_FORCE_IPAD_DEVICE_IDENTITY").is_some() {
+    ) || std::env::var_os("RadekHLE_FORCE_IPAD_DEVICE_IDENTITY").is_some() {
         return ns_string::get_static_str(env, "iPad2,1");
     }
     // ULTRAHLE_MINIONJUMP_HWMODEL_END
@@ -379,3 +379,4 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
+

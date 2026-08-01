@@ -69,7 +69,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 + (id)allocWithZone:(NSZonePtr)zone {
     assert!(this == env.objc.get_known_class("NSCharacterSet", &mut env.mem));
-    msg_class![env; _touchHLE_NSCharacterSet allocWithZone:zone]
+    msg_class![env; _RadekHLE_NSCharacterSet allocWithZone:zone]
 }
 
 // MARK: Standard character sets
@@ -412,7 +412,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         set: host.set.clone(),
         inverted: host.inverted,
     });
-    let class = env.objc.get_known_class("_touchHLE_NSMutableCharacterSet", &mut env.mem);
+    let class = env.objc.get_known_class("_RadekHLE_NSMutableCharacterSet", &mut env.mem);
     let new = env.objc.alloc_object(class, new_host, &mut env.mem);
     autorelease(env, new)
 }
@@ -420,10 +420,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 // =========================================================================
-// MARK: - _touchHLE_NSCharacterSet
+// MARK: - _RadekHLE_NSCharacterSet
 // =========================================================================
 
-@implementation _touchHLE_NSCharacterSet: NSCharacterSet
+@implementation _RadekHLE_NSCharacterSet: NSCharacterSet
 
 + (id)allocWithZone:(NSZonePtr)_zone {
     let host_object = Box::new(CharacterSetHostObject {
@@ -477,8 +477,8 @@ pub const CLASSES: ClassExports = objc_classes! {
     if this == other { return true; }
     if other == nil { return false; }
     // Check that other is also a character set before borrowing.
-    let cs_class = env.objc.get_known_class("_touchHLE_NSCharacterSet", &mut env.mem);
-    let mcs_class = env.objc.get_known_class("_touchHLE_NSMutableCharacterSet", &mut env.mem);
+    let cs_class = env.objc.get_known_class("_RadekHLE_NSCharacterSet", &mut env.mem);
+    let mcs_class = env.objc.get_known_class("_RadekHLE_NSMutableCharacterSet", &mut env.mem);
     let other_class: id = msg![env; other class];
     let is_cs: bool = msg![env; other_class isSubclassOfClass:cs_class];
     let is_mcs: bool = msg![env; other_class isSubclassOfClass:mcs_class];
@@ -502,7 +502,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         set: old.set.clone(),
         inverted: !old.inverted,
     });
-    let class = env.objc.get_known_class("_touchHLE_NSCharacterSet", &mut env.mem);
+    let class = env.objc.get_known_class("_RadekHLE_NSCharacterSet", &mut env.mem);
     let new = env.objc.alloc_object(class, new_host, &mut env.mem);
     autorelease(env, new)
 }
@@ -513,7 +513,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         set: old.set.clone(),
         inverted: old.inverted,
     });
-    let class = env.objc.get_known_class("_touchHLE_NSMutableCharacterSet", &mut env.mem);
+    let class = env.objc.get_known_class("_RadekHLE_NSMutableCharacterSet", &mut env.mem);
     let new = env.objc.alloc_object(class, new_host, &mut env.mem);
     autorelease(env, new)
 }
@@ -528,7 +528,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 + (id)allocWithZone:(NSZonePtr)zone {
     assert!(this == env.objc.get_known_class("NSMutableCharacterSet", &mut env.mem));
-    msg_class![env; _touchHLE_NSMutableCharacterSet allocWithZone:zone]
+    msg_class![env; _RadekHLE_NSMutableCharacterSet allocWithZone:zone]
 }
 
 // NSMutableCopying — mutable copy is also mutable.
@@ -543,7 +543,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         set: host.set.clone(),
         inverted: host.inverted,
     });
-    let class = env.objc.get_known_class("_touchHLE_NSCharacterSet", &mut env.mem);
+    let class = env.objc.get_known_class("_RadekHLE_NSCharacterSet", &mut env.mem);
     let new = env.objc.alloc_object(class, new_host, &mut env.mem);
     autorelease(env, new)
 }
@@ -551,10 +551,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 // =========================================================================
-// MARK: - _touchHLE_NSMutableCharacterSet
+// MARK: - _RadekHLE_NSMutableCharacterSet
 // =========================================================================
 
-@implementation _touchHLE_NSMutableCharacterSet: NSMutableCharacterSet
+@implementation _RadekHLE_NSMutableCharacterSet: NSMutableCharacterSet
 
 + (id)allocWithZone:(NSZonePtr)_zone {
     let host_object = Box::new(CharacterSetHostObject {
@@ -632,7 +632,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         set: old.set.clone(),
         inverted: !old.inverted,
     });
-    let class = env.objc.get_known_class("_touchHLE_NSCharacterSet", &mut env.mem);
+    let class = env.objc.get_known_class("_RadekHLE_NSCharacterSet", &mut env.mem);
     let new = env.objc.alloc_object(class, new_host, &mut env.mem);
     autorelease(env, new)
 }
@@ -676,3 +676,4 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
+

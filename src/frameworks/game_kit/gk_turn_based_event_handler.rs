@@ -17,14 +17,14 @@
 //! <https://developer.apple.com/documentation/gamekit/gkturnbasedeventhandler>
 //! <https://developer.apple.com/documentation/gamekit/gkturnbasedeventhandlerdelegate>
 //!
-//! Before this class existed in touchHLE, the `sharedTurnBasedEventHandler`
+//! Before this class existed in RadekHLE, the `sharedTurnBasedEventHandler`
 //! call hit the generic "unimplemented class" path, which zero-fills r0/r1
 //! and returns. The Unity GameKit binding then treated the resulting nil
 //! singleton as a fatal condition: it kept re-dispatching into a stub that
 //! trapped on an `UndefinedInstruction` at a bogus low address (0x4000),
 //! looping until the emulator's bypass limit (256) was hit and it panicked.
 //!
-//! Since touchHLE has no network connectivity and can never receive real
+//! Since RadekHLE has no network connectivity and can never receive real
 //! turn-based events, the singleton stores the caller's delegate but never
 //! delivers any events — exactly what a real device does when the local
 //! player is signed out of Game Center and no matches exist.
@@ -116,7 +116,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // delegate. We expose them as no-ops on the singleton so apps that call
 // them directly (rare, but happens in test harnesses) get the same
 // "nothing pending" result a real signed-out device produces. No events
-// are ever delivered because touchHLE has no Game Center connectivity.
+// are ever delivered because RadekHLE has no Game Center connectivity.
 //
 // <https://developer.apple.com/documentation/gamekit/gkturnbasedeventhandlerdelegate/handleinvitefromgamecenter(_:)>
 - (())handleInviteFromGameCenter:(id)_player_ids_to_invite {
@@ -145,7 +145,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 };
 
-/// Tears down the cached singleton (kept for completeness; touchHLE has
+/// Tears down the cached singleton (kept for completeness; RadekHLE has
 /// no per-app teardown path today but mirrors `gk_local_player`).
 #[allow(dead_code)]
 pub fn reset(env: &mut Environment) {
@@ -154,3 +154,4 @@ pub fn reset(env: &mut Environment) {
         release(env, handler);
     }
 }
+

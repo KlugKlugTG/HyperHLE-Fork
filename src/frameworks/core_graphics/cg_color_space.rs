@@ -18,7 +18,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 (env, this, _cmd);
 
-@implementation _touchHLE_CGColorSpace: NSObject
+@implementation _RadekHLE_CGColorSpace: NSObject
 @end
 
 };
@@ -52,7 +52,7 @@ pub type CGColorSpaceRef = CFTypeRef;
 fn alloc_color_space(env: &mut Environment, name: &'static str) -> CGColorSpaceRef {
     let isa = env
         .objc
-        .get_known_class("_touchHLE_CGColorSpace", &mut env.mem);
+        .get_known_class("_RadekHLE_CGColorSpace", &mut env.mem);
     env.objc
         .alloc_object(isa, Box::new(CGColorSpaceHostObject { name }), &mut env.mem)
 }
@@ -73,7 +73,7 @@ pub fn CGColorSpaceCreateWithName(env: &mut Environment, name: CFStringRef) -> C
     let name_str = ns_string::to_rust_string(env, name).into_owned();
 
     let canonical: &'static str = match name_str.as_str() {
-        // RGB-family — all map to our GenericRGB pipeline. touchHLE does not
+        // RGB-family — all map to our GenericRGB pipeline. RadekHLE does not
         // model wide-gamut / linear / Adobe RGB / Rec. 709 / 2020 separately;
         // the closest match in our renderer is the standard sRGB-ish path.
         s if s == kCGColorSpaceGenericRGB
@@ -245,7 +245,7 @@ fn CGColorSpaceCopyName(env: &mut Environment, cs: CGColorSpaceRef) -> CFStringR
 }
 
 fn CGColorSpaceIsWideGamutRGB(_env: &mut Environment, _cs: CGColorSpaceRef) -> bool {
-    // touchHLE only models sRGB-equivalent spaces — never wide gamut.
+    // RadekHLE only models sRGB-equivalent spaces — never wide gamut.
     false
 }
 
@@ -319,3 +319,4 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CGColorSpaceIsWideGamutRGB(_)),
     export_c_func!(CGColorSpaceSupportsOutput(_)),
 ];
+

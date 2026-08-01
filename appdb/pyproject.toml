@@ -1,7 +1,7 @@
 [project]
-name = "hyperhle-appdb"
+name = "RadekHLE-appdb"
 version = "0.1.0"
-description = "HyperHLE app compatibility database — community reports of which iPhone OS apps work in HyperHLE."
+description = "RadekHLE app compatibility database — community reports of which iPhone OS apps work in RadekHLE."
 requires-python = ">=3.11"
 dependencies = [
     "fastapi[standard]>=0.115.0",
@@ -19,3 +19,4 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 packages = ["app"]
+

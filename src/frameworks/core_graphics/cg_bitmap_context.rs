@@ -115,7 +115,7 @@ pub fn CGBitmapContextCreate(
 
     let isa = env
         .objc
-        .get_known_class("_touchHLE_CGContext", &mut env.mem);
+        .get_known_class("_RadekHLE_CGContext", &mut env.mem);
     env.objc
         .alloc_object(isa, Box::new(host_object), &mut env.mem)
 }
@@ -537,3 +537,4 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CGBitmapContextGetHeight(_)),
     export_c_func!(CGBitmapContextGetBytesPerRow(_)),
 ];
+

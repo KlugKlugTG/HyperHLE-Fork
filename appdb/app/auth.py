@@ -29,7 +29,7 @@ GITHUB_AUTHORIZE_URL = "https://github.com/login/oauth/authorize"
 GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token"
 GITHUB_USER_URL = "https://api.github.com/user"
 
-OAUTH_STATE_COOKIE = "hyperhle_oauth_state"
+OAUTH_STATE_COOKIE = "RadekHLE_oauth_state"
 SESSION_USER_KEY = "user_id"
 
 
@@ -230,3 +230,4 @@ __all__ = [
     "require_login",
     "start_login",
 ]
+

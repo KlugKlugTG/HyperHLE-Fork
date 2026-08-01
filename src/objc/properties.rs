@@ -369,7 +369,7 @@ pub(super) fn objc_setProperty(
 /// `@property (nonatomic, retain)` / `@property (nonatomic, strong)`
 /// setters. We just forward to the generic implementation so the ivar
 /// receives a real `objc_retain` of the new value (with proper
-/// `objc_release` of the previous value), instead of touchHLE silently
+/// `objc_release` of the previous value), instead of RadekHLE silently
 /// dropping the assignment.
 ///
 /// Note the argument order: `(self, _cmd, newValue, offset)` — the
@@ -391,7 +391,7 @@ pub(super) fn objc_setProperty_nonatomic(
 /// `_objc_setProperty(…, atomic=true, should_copy=0)` for autosynthesised
 /// `@property (atomic, retain)` / `@property (atomic, strong)` setters
 /// (i.e. the default atomic kind when no explicit `nonatomic` is given).
-/// touchHLE previously installed a return-0 stub for this entry point,
+/// RadekHLE previously installed a return-0 stub for this entry point,
 /// which silently dropped every assignment on atomic properties and led to
 /// guest crashes when the property was later read back as nil.
 ///
@@ -415,7 +415,7 @@ pub(super) fn objc_setProperty_atomic(
 /// `_objc_setProperty(…, atomic=false, should_copy=1)` for autosynthesised
 /// `@property (nonatomic, copy)` setters; we just forward to the generic
 /// implementation so the ivar gets a real `copyWithZone:` of the new value
-/// (with proper retain/release of the previous value), instead of touchHLE
+/// (with proper retain/release of the previous value), instead of RadekHLE
 /// installing a return-0 stub that silently drops every assignment.
 ///
 /// Note the argument order: `(self, _cmd, newValue, offset)` — the
@@ -469,14 +469,14 @@ pub(super) fn objc_copyStruct(
 /// > Returns the name of a property.
 /// > Return Value: A C string containing the property's name.
 ///
-/// `objc_property_t` is an opaque pointer; in touchHLE it points at the
+/// `objc_property_t` is an opaque pointer; in RadekHLE it points at the
 /// `property_t { name, attributes }` entry parsed from the app binary's
 /// property list (see [ClassHostObject::add_properties_from_bin]). We read
 /// the `name` field and return the guest pointer to that C string directly,
 /// matching real libobjc which returns a pointer into the property struct
 /// (the caller must NOT free it).
 ///
-/// touchHLE previously had no implementation, so dyld installed a return-0
+/// RadekHLE previously had no implementation, so dyld installed a return-0
 /// stub. Returning NULL for `property_getName` breaks reflective code such
 /// as KVC's `-dictionaryWithValuesForKeys:` and JSON/serialization helpers
 /// that enumerate a class's properties (e.g. Spy Mouse HD's ad SDK).
@@ -547,3 +547,4 @@ macro_rules! todo_objc_setter {
     };
 }
 pub use crate::todo_objc_setter;
+
