@@ -84,9 +84,12 @@ fn assert_process_info_singleton(env: &mut Environment, this: id) {
 /// iOS 8+ feature gate (which is the floor for many third-party SDKs that
 /// query `operatingSystemVersion`) passes without triggering the
 /// "unsupported version" path inside the app.
-const OS_VERSION_MAJOR: i32 = 12;
-const OS_VERSION_MINOR: i32 = 0;
-const OS_VERSION_PATCH: i32 = 0;
+fn os_version(env: &Environment) -> (i32, i32, i32) {
+    env.options
+        .as_ref()
+        .ios_version
+        .unwrap_or(crate::options::LATEST_IOS_VERSION)
+}
 
 pub const CLASSES: ClassExports = objc_classes! {
 
@@ -205,19 +208,14 @@ pub const CLASSES: ClassExports = objc_classes! {
 // pointer, which produced the assertion failure observed in Bloons TD 5.
 - (NSOperatingSystemVersion)operatingSystemVersion {
     assert_process_info_singleton(env, this);
-    NSOperatingSystemVersion {
-        major: OS_VERSION_MAJOR,
-        minor: OS_VERSION_MINOR,
-        patch: OS_VERSION_PATCH,
-    }
+    let (major, minor, patch) = os_version(env);
+    NSOperatingSystemVersion { major, minor, patch }
 }
 
 - (id)operatingSystemVersionString {
     assert_process_info_singleton(env, this);
-    let s = format!(
-        "Version {}.{}.{} (Build 16A366)",
-        OS_VERSION_MAJOR, OS_VERSION_MINOR, OS_VERSION_PATCH
-    );
+    let (major, minor, patch) = os_version(env);
+    let s = format!("Version {major}.{minor}.{patch} (Build 16A366)");
     let cstr = env.mem.alloc_and_write_cstr(s.as_bytes());
     msg_class![env; NSString stringWithUTF8String:cstr]
 }
@@ -235,10 +233,15 @@ pub const CLASSES: ClassExports = objc_classes! {
 // (`...:minor:patch:`), so it was unreachable from real apps.
 - (bool)isOperatingSystemAtLeastVersion:(NSOperatingSystemVersion)version {
     assert_process_info_singleton(env, this);
+    let (current_major, current_minor, current_patch) = os_version(env);
     let NSOperatingSystemVersion { major, minor, patch } = version;
-    if major != OS_VERSION_MAJOR { return major < OS_VERSION_MAJOR; }
-    if minor != OS_VERSION_MINOR { return minor < OS_VERSION_MINOR; }
-    patch <= OS_VERSION_PATCH
+    if major != current_major {
+        return major < current_major;
+    }
+    if minor != current_minor {
+        return minor < current_minor;
+    }
+    patch <= current_patch
 }
 
 // =========================================================================

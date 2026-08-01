@@ -78,6 +78,10 @@ Device options:
         (smaller value becomes the width), and the initial orientation option
         still applies. A manual --screen-size= always wins over the resolution
         auto-detection.
+    --ios-version=MAJOR.MINOR[.PATCH]
+        Select the iOS version reported to the game. The default is "Latest",
+        currently the highest compatibility version exposed by HyperHLE.
+
 
 Game controller options:
     --deadzone=...

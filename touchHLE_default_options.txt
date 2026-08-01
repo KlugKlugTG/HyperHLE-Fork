@@ -334,3 +334,8 @@ com.wb.GreenLantern: --landscape-left --prefer-gles2-context
 
 # Where's My Water?: iPhone portrait OpenGL ES 1 profile.
 com.disney.SwampyGame: --device-family=iphone-3gs
+
+# LEGO Ninjago: The Final Battle
+# Uses OpenAL streaming audio; keep its fixed-function landscape profile and
+# force the compatibility texture filter on strict mobile GLES drivers.
+com.lego.ninjago.thefinalbattle: --landscape-left --fix-texture-min-filter

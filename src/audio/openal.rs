@@ -89,11 +89,8 @@ fn ensure_openal_backend_available() {
     // made. No other thread can be reading the environment concurrently.
     unsafe {
         std::env::set_var("ALSOFT_DRIVERS", "null");
-        // Try to increase the default OpenAL Soft buffer size to reduce
-        // choppy audio on devices that default to small ring buffers. Users
-        // may override by setting ALSOFT_BUFFER_SIZE externally.
         if std::env::var_os("ALSOFT_BUFFER_SIZE").is_none() {
-            std::env::set_var("ALSOFT_BUFFER_SIZE", "512");
+            std::env::set_var("ALSOFT_BUFFER_SIZE", "1024");
         }
     }
 }

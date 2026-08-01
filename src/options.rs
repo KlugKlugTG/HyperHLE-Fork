@@ -31,6 +31,9 @@ pub enum Button {
     LeftShoulder,
 }
 
+/// Highest iOS version currently exposed by the emulator compatibility layer.
+pub const LATEST_IOS_VERSION: (i32, i32, i32) = (12, 0, 0);
+
 /// Struct containing all user-configurable options.
 #[derive(Clone)]
 pub struct Options {
@@ -43,6 +46,8 @@ pub struct Options {
     /// `--screen-size=WxH` override below.
     pub host_screen_size: Option<(u32, u32)>,
     pub initial_orientation: DeviceOrientation,
+    /// iOS version reported to guest applications. `None` uses the latest compatibility version.
+    pub ios_version: Option<(i32, i32, i32)>,
     pub scale_hack: NonZeroU32,
     pub deadzone: f32,
     pub analog_stick_tilt_controls: bool,
@@ -121,6 +126,7 @@ impl Default for Options {
             auto_device_family: false,
             host_screen_size: None,
             initial_orientation: DeviceOrientation::Portrait,
+            ios_version: None,
             scale_hack: NonZeroU32::new(1).unwrap(),
             analog_stick_tilt_controls: true,
             deadzone: 0.1,
@@ -187,6 +193,25 @@ impl Options {
                 self.auto_device_family = false;
                 self.device_family = Some(parsed);
             }
+        } else if let Some(value) = arg.strip_prefix("--ios-version=") {
+            let mut parts = value.split('.');
+            let major: i32 = parts
+                .next()
+                .ok_or_else(|| "--ios-version= requires MAJOR.MINOR[.PATCH]".to_string())?
+                .parse()
+                .map_err(|_| "Invalid major version for --ios-version=".to_string())?;
+            let minor: i32 = parts
+                .next()
+                .ok_or_else(|| "--ios-version= requires MAJOR.MINOR[.PATCH]".to_string())?
+                .parse()
+                .map_err(|_| "Invalid minor version for --ios-version=".to_string())?;
+            let patch: i32 = parts.next().unwrap_or("0").parse().map_err(|_| {
+                "Invalid patch version for --ios-version=".to_string()
+            })?;
+            if parts.next().is_some() || major < 1 || minor < 0 || patch < 0 {
+                return Err("Invalid value for --ios-version=".to_string());
+            }
+            self.ios_version = Some((major, minor, patch));
         } else if let Some(value) = arg.strip_prefix("--screen-size=") {
             let (w, h) = value
                 .split_once(|c| c == 'x' || c == 'X' || c == ',')
