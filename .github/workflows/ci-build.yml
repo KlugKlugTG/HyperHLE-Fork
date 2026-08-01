@@ -21,7 +21,7 @@ jobs:
       - name: Install system deps
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y pkg-config libasound2-dev libssl-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libgl1-mesa-dev
+          sudo apt-get install -y pkg-config build-essential cmake libboost-all-dev libpulse-dev libasound2-dev libssl-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libgl1-mesa-dev libsndio-dev
       - name: Build (release)
         run: cargo build --release
       - name: Upload build artifacts
