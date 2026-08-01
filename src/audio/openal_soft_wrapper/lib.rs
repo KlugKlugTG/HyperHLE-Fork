@@ -27,7 +27,7 @@
 // уже объявлены с *mut — это была единственная расхожденность.
 // ============================================================
 
-// Allow the crate to have a non-snake-case name (RadekHLE).
+// Allow the crate to have a non-snake-case name (touchHLE).
 // This also allows items in the crate to have non-snake-case names.
 #![allow(non_snake_case)]
 
@@ -259,5 +259,4 @@ extern "C" {
     pub fn alDopplerVelocity(dopplerVelocity: ALfloat);
     pub fn alSpeedOfSound(speed: ALfloat);
 }
-
 

@@ -1,10 +1,10 @@
-name: Build RadekHLE
+name: Build HyperHLE
 
 on:
   workflow_dispatch:
     inputs:
-      publish_RadekHLE_release:
-        description: Publish a RadekHLE release (after all builds succeed)
+      publish_hyperhle_release:
+        description: Publish a HyperHLE release (after all builds succeed)
         type: boolean
         default: false
   push:
@@ -25,7 +25,7 @@ jobs:
     runs-on: macos-latest  
 
     steps:  
-      - name: Checkout RadekHLE
+      - name: Checkout touchHLE
         uses: actions/checkout@main
         with:
           submodules: recursive
@@ -62,9 +62,9 @@ jobs:
       - name: Create .app bundle and DMG
         # `hdiutil create` periodically fails on the `macos-15-arm64` GitHub
         # Actions runners with `hdiutil: create failed - Resource busy` when
-        # Spotlight (`mds`/`mds_stores`) decides to index `RadekHLE-dmg-src`
+        # Spotlight (`mds`/`mds_stores`) decides to index `touchHLE-dmg-src`
         # at the same moment hdiutil tries to snapshot it, or when a stale
-        # `/Volumes/RadekHLE` from a previous run hasn't fully detached.
+        # `/Volumes/touchHLE` from a previous run hasn't fully detached.
         # Mirror the workaround Apple documents in TN2065 / `hdiutil(1)` —
         # detach any stray attachment, pass `-ov` so an existing image is
         # overwritten cleanly, and retry a few times. See
@@ -73,47 +73,47 @@ jobs:
           set -eu
           cd dev-scripts
           ./make-macos-bundle.sh \
-            ../target/x86_64-apple-darwin/release/RadekHLE \
-            "`cargo run --package RadekHLE_version`" \
-            "`cargo run --package RadekHLE_version -- --branding`"
-          mkdir RadekHLE-dmg-src
-          mv *.app RadekHLE-dmg-src/
+            ../target/x86_64-apple-darwin/release/touchHLE \
+            "`cargo run --package touchHLE_version`" \
+            "`cargo run --package touchHLE_version -- --branding`"
+          mkdir touchHLE-dmg-src
+          mv *.app touchHLE-dmg-src/
           # Forbid Spotlight from indexing the staging folder so it can't
           # race with hdiutil for an exclusive handle.
-          touch RadekHLE-dmg-src/.metadata_never_index || true
+          touch touchHLE-dmg-src/.metadata_never_index || true
           # Tear down any stale mount left over from a previous run.
-          if [ -d "/Volumes/RadekHLE" ]; then
-            hdiutil detach -force "/Volumes/RadekHLE" || true
+          if [ -d "/Volumes/touchHLE" ]; then
+            hdiutil detach -force "/Volumes/touchHLE" || true
           fi
           # Retry hdiutil up to 5 times with growing back-off.
           attempt=1
           max_attempts=5
-          until hdiutil create -ov -volname RadekHLE \
-              -srcfolder RadekHLE-dmg-src RadekHLE.dmg; do
+          until hdiutil create -ov -volname touchHLE \
+              -srcfolder touchHLE-dmg-src touchHLE.dmg; do
             if [ "$attempt" -ge "$max_attempts" ]; then
               echo "hdiutil create still failed after $max_attempts attempts" >&2
               exit 1
             fi
             sleep_secs=$((attempt * 5))
             echo "hdiutil create failed (attempt $attempt); retrying in ${sleep_secs}s" >&2
-            if [ -d "/Volumes/RadekHLE" ]; then
-              hdiutil detach -force "/Volumes/RadekHLE" || true
+            if [ -d "/Volumes/touchHLE" ]; then
+              hdiutil detach -force "/Volumes/touchHLE" || true
             fi
             sleep "$sleep_secs"
             attempt=$((attempt + 1))
           done
-          mv RadekHLE.dmg ..
+          mv touchHLE.dmg ..
           
       - uses: actions/upload-artifact@main
         with:
-          name: RadekHLE_macOS_x86_64
-          path: RadekHLE.dmg
+          name: HyperHLE_macOS_x86_64
+          path: touchHLE.dmg
 
   build-linux:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout RadekHLE
+      - name: Checkout touchHLE
         uses: actions/checkout@main
         with:
           submodules: recursive
@@ -172,18 +172,18 @@ jobs:
         run: cargo build --release
 
       - name: Create bundle
-        run: cd dev-scripts && ./make-linux-bundle.sh ../target/release/RadekHLE && mv RadekHLE_linux_bundle/ ..
+        run: cd dev-scripts && ./make-linux-bundle.sh ../target/release/touchHLE && mv touchHLE_linux_bundle/ ..
 
       - uses: actions/upload-artifact@main
         with:
-          name: RadekHLE_Linux_x86_64
-          path: RadekHLE_linux_bundle/
+          name: HyperHLE_Linux_x86_64
+          path: touchHLE_linux_bundle/
 
   build-android:
     runs-on: ubuntu-latest  
 
     steps:  
-    - name: Checkout RadekHLE
+    - name: Checkout touchHLE
       uses: actions/checkout@main
       with:
         submodules: recursive
@@ -272,21 +272,21 @@ jobs:
       run: echo 'sdk.dir='$ANDROID_SDK_ROOT > android/local.properties  
 
     - name: Build for Android  
-      run: cd android && ../gradle/gradle-8.11.1/bin/gradle assembleRelease && mv app/build/outputs/apk/release/app-release.apk ../RadekHLE.apk  
+      run: cd android && ../gradle/gradle-8.11.1/bin/gradle assembleRelease && mv app/build/outputs/apk/release/app-release.apk ../touchHLE.apk  
       env:  
         ANDROID_NDK_ROOT: '/usr/local/lib/android/sdk/ndk/25.2.9519653'  
         CMAKE: ${{ github.workspace }}/vendor/cmake/bin/cmake  
 
     - uses: actions/upload-artifact@main
       with:  
-        name: RadekHLE_Android_AArch64  
-        path: RadekHLE.apk
+        name: HyperHLE_Android_AArch64  
+        path: touchHLE.apk
 
   build-win:
     runs-on: windows-2022  
 
     steps:  
-    - name: Checkout RadekHLE
+    - name: Checkout touchHLE
       uses: actions/checkout@main
       with:
         submodules: recursive
@@ -319,14 +319,14 @@ jobs:
 
     - name: Create bundle  
       shell: bash  
-      run: cd dev-scripts && ./make-windows-bundle.sh ../target/release/RadekHLE.exe && mv RadekHLE_windows_bundle/ ..  
+      run: cd dev-scripts && ./make-windows-bundle.sh ../target/release/touchHLE.exe && mv touchHLE_windows_bundle/ ..  
       
     - uses: actions/upload-artifact@main
       with:  
-        name: RadekHLE_Windows_x86_64  
-        path: RadekHLE_windows_bundle/
+        name: HyperHLE_Windows_x86_64  
+        path: touchHLE_windows_bundle/
 
-  check-RadekHLE-release:
+  check-hyperhle-release:
     runs-on: ubuntu-latest
     if: >-
       (github.event_name == 'push' && github.ref == 'refs/heads/trunk') ||
@@ -337,21 +337,21 @@ jobs:
       changelog_from: ${{ steps.check.outputs.changelog_from }}
       changelog_limit: ${{ steps.check.outputs.changelog_limit }}
     steps:
-      - name: Checkout RadekHLE
+      - name: Checkout touchHLE
         uses: actions/checkout@main
         with:
           fetch-depth: 0
-      - name: Check whether a RadekHLE release is due
+      - name: Check whether a HyperHLE release is due
         id: check
         env:
-          FORCE_RadekHLE_RELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_RadekHLE_release && 'true' || '' }}
-        run: ./dev-scripts/RadekHLE-should-release.sh
+          FORCE_HYPERHLE_RELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_hyperhle_release && 'true' || '' }}
+        run: ./dev-scripts/hyperhle-should-release.sh
 
-  publish-RadekHLE-release:
-    needs: [check-RadekHLE-release, build-osx, build-linux, build-android, build-win]
+  publish-hyperhle-release:
+    needs: [check-hyperhle-release, build-osx, build-linux, build-android, build-win]
     if: >-
-      needs.check-RadekHLE-release.result == 'success' &&
-      needs.check-RadekHLE-release.outputs.should_release == 'true' &&
+      needs.check-hyperhle-release.result == 'success' &&
+      needs.check-hyperhle-release.outputs.should_release == 'true' &&
       needs.build-osx.result == 'success' &&
       needs.build-linux.result == 'success' &&
       needs.build-android.result == 'success' &&
@@ -360,7 +360,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Checkout RadekHLE
+      - name: Checkout touchHLE
         uses: actions/checkout@main
         with:
           submodules: recursive
@@ -368,40 +368,39 @@ jobs:
       - name: Download macOS artifact
         uses: actions/download-artifact@main
         with:
-          name: RadekHLE_macOS_x86_64
+          name: HyperHLE_macOS_x86_64
           path: artifacts/macos
       - name: Download Android artifact
         uses: actions/download-artifact@main
         with:
-          name: RadekHLE_Android_AArch64
+          name: HyperHLE_Android_AArch64
           path: artifacts/android
       - name: Download Windows artifact
         uses: actions/download-artifact@main
         with:
-          name: RadekHLE_Windows_x86_64
+          name: HyperHLE_Windows_x86_64
           path: artifacts/windows
       - name: Download Linux artifact
         uses: actions/download-artifact@main
         with:
-          name: RadekHLE_Linux_x86_64
+          name: HyperHLE_Linux_x86_64
           path: artifacts/linux
       - name: Install packaging tools
         run: sudo apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq pandoc zip
-      - name: Package RadekHLE release files
+      - name: Package HyperHLE release files
         env:
           GITHUB_SERVER_URL: ${{ github.server_url }}
-          FORCE_RadekHLE_RELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_RadekHLE_release && 'true' || '' }}
-          VERSION: ${{ needs.check-RadekHLE-release.outputs.version }}
-          CHANGELOG_FROM: ${{ needs.check-RadekHLE-release.outputs.changelog_from }}
-          CHANGELOG_LIMIT: ${{ needs.check-RadekHLE-release.outputs.changelog_limit }}
-        run: ./dev-scripts/package-RadekHLE-release.sh "$VERSION" "$CHANGELOG_FROM"
-      - name: Publish RadekHLE release
+          FORCE_HYPERHLE_RELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_hyperhle_release && 'true' || '' }}
+          VERSION: ${{ needs.check-hyperhle-release.outputs.version }}
+          CHANGELOG_FROM: ${{ needs.check-hyperhle-release.outputs.changelog_from }}
+          CHANGELOG_LIMIT: ${{ needs.check-hyperhle-release.outputs.changelog_limit }}
+        run: ./dev-scripts/package-hyperhle-release.sh "$VERSION" "$CHANGELOG_FROM"
+      - name: Publish HyperHLE release
         uses: softprops/action-gh-release@master
         with:
-          tag_name: ${{ needs.check-RadekHLE-release.outputs.version }}
-          name: RadekHLE ${{ needs.check-RadekHLE-release.outputs.version }}
+          tag_name: ${{ needs.check-hyperhle-release.outputs.version }}
+          name: HyperHLE ${{ needs.check-hyperhle-release.outputs.version }}
           body_path: release/RELEASE_NOTES.md
           files: |
-            release/RadekHLE_*.zip
+            release/HyperHLE_*.zip
           fail_on_unmatched_files: true
-

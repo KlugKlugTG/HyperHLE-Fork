@@ -133,9 +133,9 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // resetSystemTimeZone clears the cached system time zone so that the next
 // call to systemTimeZone re-reads it from the OS / user preferences.
-// Since RadekHLE always uses UTC we just log and no-op.
+// Since touchHLE always uses UTC we just log and no-op.
 + (())resetSystemTimeZone {
-    log_dbg!("NSTimeZone resetSystemTimeZone — ignored (RadekHLE uses UTC)");
+    log_dbg!("NSTimeZone resetSystemTimeZone — ignored (touchHLE uses UTC)");
 }
 
 + (id)defaultTimeZone {
@@ -229,7 +229,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // `- (NSString *)localizedName:(NSTimeZoneNameStyle)style locale:(NSLocale *)locale`
 //
 // Returns a localized presentation name for this time zone in the given
-// `style`. RadekHLE does not ship CLDR data, so the `locale` argument is
+// `style`. touchHLE does not ship CLDR data, so the `locale` argument is
 // accepted for API compatibility (the requested locale is logged for debug
 // purposes) and the name is derived from the static [ZONE_TABLE] entry —
 // long styles return the human-friendly CLDR-style name (e.g. "Pacific
@@ -248,7 +248,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
     if locale != nil {
         log_dbg!(
-            "-[NSTimeZone localizedName:{} locale:{:?}] for zone {:?} (RadekHLE ignores locale)",
+            "-[NSTimeZone localizedName:{} locale:{:?}] for zone {:?} (touchHLE ignores locale)",
             style,
             locale,
             name_str,
@@ -347,4 +347,3 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
-

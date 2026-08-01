@@ -9,7 +9,7 @@
 //! `SLServiceType*` string identifiers used to talk to system-level Twitter,
 //! Facebook, Sina/Tencent Weibo and LinkedIn accounts.
 //!
-//! RadekHLE only targets pre-iOS-4-era games today, but many later apps still
+//! touchHLE only targets pre-iOS-4-era games today, but many later apps still
 //! list Social as a Mach-O dependency (often pulled in transitively by an
 //! analytics or sharing SDK such as Flurry or Facebook Audience Network) and
 //! reference its `SLServiceType*` constants by symbol name.  Without a
@@ -47,7 +47,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 (env, this, _cmd);
 
 // `SLComposeViewController` (iOS 6.0+). Presents the system share sheet
-// for a given service. RadekHLE has no UIKit presentation pipeline and no
+// for a given service. touchHLE has no UIKit presentation pipeline and no
 // Settings-app account configuration, so following Apple's documented
 // contract we report every service as unavailable. Apps then take their
 // "service is not configured" code path instead of crashing on
@@ -56,7 +56,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 @implementation SLComposeViewController: UIViewController
 
 // `+ (BOOL)isAvailableForServiceType:(NSString *)serviceType` — `YES` if
-// the user is signed into the requested service. RadekHLE has no Accounts
+// the user is signed into the requested service. touchHLE has no Accounts
 // framework, so always `NO`.
 + (bool)isAvailableForServiceType:(id)_service_type {
     false
@@ -77,7 +77,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // (Twitter/Facebook/etc.) configured in iOS Settings.
 // <https://developer.apple.com/documentation/social/slrequest>
 //
-// RadekHLE has no Accounts framework, so any request asynchronously
+// touchHLE has no Accounts framework, so any request asynchronously
 // completes with an SLRequestErrorDomain error. The request can still
 // be transformed into an NSURLRequest via `-preparedURLRequest`, which
 // some apps inspect even without actually performing the call.
@@ -187,7 +187,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())performRequestWithHandler:(id)_handler {
-    // RadekHLE has no Accounts framework, so we cannot authenticate any
+    // touchHLE has no Accounts framework, so we cannot authenticate any
     // request. Invoke the handler synchronously on the main run loop with
     // an SLRequestErrorDomain error indicating the service is unavailable.
     log!(
@@ -278,4 +278,3 @@ pub const CONSTANTS: ConstantExports = &[
 ];
 
 pub const FUNCTIONS: FunctionExports = &[];
-

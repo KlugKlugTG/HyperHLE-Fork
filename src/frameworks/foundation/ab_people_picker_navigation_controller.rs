@@ -188,7 +188,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // =========================================================================
 // MARK: - UIViewController overrides
-// RadekHLE has no contacts UI. When presented we immediately fire
+// touchHLE has no contacts UI. When presented we immediately fire
 // peoplePickerNavigationControllerDidCancel: so the app can clean up.
 // =========================================================================
 
@@ -360,4 +360,3 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
-

@@ -159,7 +159,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 //
 // On real iOS, UIWindow's frame matches UIScreen.bounds and touches always
 // land inside it, so the standard UIView hitTest implementation is fine.
-// In RadekHLE, however, the host window can be larger than the iPhone's
+// In touchHLE, however, the host window can be larger than the iPhone's
 // virtual screen (Android phones, large desktop windows). Even with the
 // touch-coordinate clamp in `transform_input_coords`, edge cases such as
 // the rootViewController's view being rotated for landscape orientation
@@ -339,7 +339,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     // After moving to the top there are no obstructing siblings, so the
     // appearance lifecycle is fired iff the view is not explicitly
     // hidden via -setHidden:YES. The previous TODO existed because
-    // RadekHLE had no way to detect this case; we now defer to
+    // touchHLE had no way to detect this case; we now defer to
     // -isHidden, which mirrors UIKit's actual visibility test.
     let was_subview = env
         .objc
@@ -469,7 +469,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 - (())setScreen:(id)_screen {
     log_dbg!(
-        "[UIWindow setScreen:] ignored; RadekHLE only emulates the main screen."
+        "[UIWindow setScreen:] ignored; touchHLE only emulates the main screen."
     );
 }
 
@@ -521,4 +521,3 @@ pub const CONSTANTS: ConstantExports = &[
     // _UIKeyboardBoundsUserInfoKey are exported from
     // uikit::ui_keyboard::CONSTANTS; not duplicated here.
 ];
-

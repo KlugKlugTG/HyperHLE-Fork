@@ -239,7 +239,7 @@ fn thread_policy_set(
 ) -> kern_return_t {
     // Читаем из памяти переданные приложением параметры политики,
     // чтобы эмуляция доступа к памяти была корректной.
-    // Фактически применять приоритеты в RadekHLE пока не нужно,
+    // Фактически применять приоритеты в touchHLE пока не нужно,
     // поэтому мы просто поглощаем запрос и рапортуем об успехе.
     match flavor {
         THREAD_EXTENDED_POLICY => {
@@ -278,7 +278,7 @@ fn thread_policy_set(
 /// suspended via `pthread_create_suspended_np`.
 ///
 /// `target_act` is the value returned by `pthread_mach_thread_np()`,
-/// i.e. `thread_id + 1` in RadekHLE's port-numbering convention.
+/// i.e. `thread_id + 1` in touchHLE's port-numbering convention.
 fn thread_resume(env: &mut Environment, target_act: thread_inspect_t) -> kern_return_t {
     if target_act == MACH_PORT_NULL || target_act == MACH_PORT_DEAD {
         return KERN_INVALID_ARGUMENT;
@@ -322,4 +322,3 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(thread_resume(_)),
     export_c_func!(thread_suspend(_)),
 ];
-

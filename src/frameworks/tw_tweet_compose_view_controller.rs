@@ -47,7 +47,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // `+ (BOOL)canSendTweet` — Apple: "Returns whether the user has access to
 // Twitter on the device." Real iPhone OS gates this on the user having
-// added a Twitter account in Settings → Twitter (iOS 5+). RadekHLE has
+// added a Twitter account in Settings → Twitter (iOS 5+). touchHLE has
 // no Accounts framework backing and no system Twitter login, so we
 // report `NO`; apps then take their documented "Twitter is not
 // configured" branch instead of crashing inside `+[TWTweetComposeViewController alloc]`.
@@ -133,7 +133,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         // из Rust нужно использовать
         // внутреннее FFI эмулятора (вызов указателя функции).
         // Чтобы избежать паник компилятора из-за
-        // разницы в версиях RadekHLE, мы оставляем логирование.
+        // разницы в версиях touchHLE, мы оставляем логирование.
         // Игра не зависнет, так как
         // окно будет считаться "закрытым" через базовый UIViewController.
         log!("TWTweetComposeViewController: Completion handler is present. Simulating result 'Done'.");
@@ -155,4 +155,3 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
-

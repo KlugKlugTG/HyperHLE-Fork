@@ -290,13 +290,13 @@ fn NSHomeDirectory(env: &mut Environment) -> id {
 
 fn NSUserName(_env: &mut Environment) -> id {
     // Return a default username
-    let username = ns_string::from_rust_string(_env, String::from("RadekHLE_user"));
+    let username = ns_string::from_rust_string(_env, String::from("touchHLE_user"));
     autorelease(_env, username)
 }
 
 fn NSFullUserName(_env: &mut Environment) -> id {
     // Return a default full user name
-    let full_name = ns_string::from_rust_string(_env, String::from("RadekHLE User"));
+    let full_name = ns_string::from_rust_string(_env, String::from("touchHLE User"));
     autorelease(_env, full_name)
 }
 
@@ -348,7 +348,7 @@ pub const FUNCTIONS: FunctionExports = &[
 
 /// Copy a file, or a directory and its contents recursively, like
 /// `-[NSFileManager copyItemAtPath:toPath:error:]` does on real iOS.
-/// (Previously RadekHLE only handled plain files here, so apps that copy a
+/// (Previously touchHLE only handled plain files here, so apps that copy a
 /// whole directory — e.g. BioShock copying its `Config` directory from the
 /// bundle into Documents on first launch — would get a spurious error.)
 fn copy_item_recursive(env: &mut Environment, src: &GuestPath, dst: &GuestPath) -> Result<(), ()> {
@@ -776,7 +776,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         return nil;
     }
 
-    // 2. В виртуальной ФС RadekHLE реальных симлинков нет (они либо резолвятся
+    // 2. В виртуальной ФС touchHLE реальных симлинков нет (они либо резолвятся
     // при распаковке,
     // либо не поддерживаются). По документации Apple, если файл существует,
     // но НЕ является симлинком, метод возвращает nil и ошибку (обычно код 256 -
@@ -1298,4 +1298,3 @@ pub fn move_item(env: &mut Environment, src: id, dst: id) -> bool {
 
     msg![env; manager moveItemAtPath:src toPath:dst error:error]
 }
-

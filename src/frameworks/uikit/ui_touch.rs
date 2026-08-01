@@ -50,13 +50,13 @@ pub(super) struct UITouchHostObject {
 }
 impl HostObject for UITouchHostObject {}
 
-fn RadekHLE_cocos_view_class_name(env: &mut Environment, view: id) -> String {
+fn touchhle_cocos_view_class_name(env: &mut Environment, view: id) -> String {
     if view == nil { return String::new(); }
     let view_class: crate::objc::Class = msg![env; view class];
     env.objc.get_class_name(view_class).to_owned()
 }
 
-fn RadekHLE_cocos_is_gl_or_game_view_name(class_name: &str) -> bool {
+fn touchhle_cocos_is_gl_or_game_view_name(class_name: &str) -> bool {
     matches!(
         class_name,
         "CCGLView" | "EAGLView" | "CCEAGLView" | "GLKView" |
@@ -74,7 +74,7 @@ fn RadekHLE_cocos_is_gl_or_game_view_name(class_name: &str) -> bool {
         || class_name.contains("RootView")
 }
 
-fn RadekHLE_should_use_landscape_touch_remap(env: &Environment) -> bool {
+fn touchhle_should_use_landscape_touch_remap(env: &Environment) -> bool {
     match env.bundle.bundle_identifier() {
         // Confirmed landscape Source/Cocos games.
         "at.source.veggie1" | "at.source.potato3D" | "at.source.potpan" | "com.robtop.geometryjump" => true,
@@ -83,25 +83,25 @@ fn RadekHLE_should_use_landscape_touch_remap(env: &Environment) -> bool {
         "at.source.tomzom" => false,
 
         // Manual override for testing.
-        _ => std::env::var_os("RadekHLE_TOUCH_LOCATION_PORTRAIT_TO_LANDSCAPE").is_some()
-            || std::env::var_os("RadekHLE_COCOS_TOUCH_REMAP").is_some()
-            || std::env::var_os("RadekHLE_UNITY_TOUCH_REMAP").is_some()
-            || std::env::var_os("RadekHLE_ENGINE_TOUCH_REMAP").is_some(),
+        _ => std::env::var_os("TOUCHHLE_TOUCH_LOCATION_PORTRAIT_TO_LANDSCAPE").is_some()
+            || std::env::var_os("TOUCHHLE_COCOS_TOUCH_REMAP").is_some()
+            || std::env::var_os("TOUCHHLE_UNITY_TOUCH_REMAP").is_some()
+            || std::env::var_os("TOUCHHLE_ENGINE_TOUCH_REMAP").is_some(),
     }
 }
 
 fn should_remap_touch_location_for_view(env: &mut Environment, view: id) -> bool {
-    if !RadekHLE_should_use_landscape_touch_remap(env) {
+    if !touchhle_should_use_landscape_touch_remap(env) {
         return false;
     }
 
     if view == nil { return false; }
-    let class_name = RadekHLE_cocos_view_class_name(env, view);
-    RadekHLE_cocos_is_gl_or_game_view_name(&class_name)
+    let class_name = touchhle_cocos_view_class_name(env, view);
+    touchhle_cocos_is_gl_or_game_view_name(&class_name)
 }
 
-fn RadekHLE_cocos_target_size() -> (f32, f32) {
-    std::env::var("RadekHLE_COCOS_TOUCH_SIZE").or_else(|_| std::env::var("RadekHLE_UNITY_TOUCH_SIZE")).or_else(|_| std::env::var("RadekHLE_ENGINE_TOUCH_SIZE"))
+fn touchhle_cocos_target_size() -> (f32, f32) {
+    std::env::var("TOUCHHLE_COCOS_TOUCH_SIZE").or_else(|_| std::env::var("TOUCHHLE_UNITY_TOUCH_SIZE")).or_else(|_| std::env::var("TOUCHHLE_ENGINE_TOUCH_SIZE"))
         .ok()
         .and_then(|v| {
             let mut parts = v.split(|c| c == 'x' || c == 'X' || c == ',');
@@ -112,16 +112,16 @@ fn RadekHLE_cocos_target_size() -> (f32, f32) {
         .unwrap_or((480.0, 320.0))
 }
 
-fn RadekHLE_cocos_remap_point(env: &mut Environment, view: id, point: CGPoint) -> CGPoint {
+fn touchhle_cocos_remap_point(env: &mut Environment, view: id, point: CGPoint) -> CGPoint {
     let old_x = point.x;
     let old_y = point.y;
-    let (target_w, target_h) = RadekHLE_cocos_target_size();
-    let mode = std::env::var("RadekHLE_TOUCH_MODE").unwrap_or_else(|_| {
+    let (target_w, target_h) = touchhle_cocos_target_size();
+    let mode = std::env::var("TOUCHHLE_TOUCH_MODE").unwrap_or_else(|_| {
         match env.bundle.bundle_identifier() {
             "at.source.veggie1" | "at.source.potato3D" | "at.source.potpan" | "com.robtop.geometryjump" => "scale".to_string(),
-            _ => std::env::var("RadekHLE_COCOS_TOUCH_MODE")
-                .or_else(|_| std::env::var("RadekHLE_UNITY_TOUCH_MODE"))
-                .or_else(|_| std::env::var("RadekHLE_ENGINE_TOUCH_MODE"))
+            _ => std::env::var("TOUCHHLE_COCOS_TOUCH_MODE")
+                .or_else(|_| std::env::var("TOUCHHLE_UNITY_TOUCH_MODE"))
+                .or_else(|_| std::env::var("TOUCHHLE_ENGINE_TOUCH_MODE"))
                 .unwrap_or_else(|_| "scale".to_string()),
         }
     });
@@ -146,14 +146,14 @@ fn RadekHLE_cocos_remap_point(env: &mut Environment, view: id, point: CGPoint) -
         "scale-480x320" | "scale" | _ => (old_x * (target_w / source_w), old_y * (target_h / source_h)),
     };
 
-    if let Ok(offset) = std::env::var("RadekHLE_TOUCH_LOCATION_X_OFFSET") {
+    if let Ok(offset) = std::env::var("TOUCHHLE_TOUCH_LOCATION_X_OFFSET") {
         if let Ok(offset) = offset.parse::<f32>() { new_x += offset; }
     }
-    if let Ok(offset) = std::env::var("RadekHLE_TOUCH_LOCATION_Y_OFFSET") {
+    if let Ok(offset) = std::env::var("TOUCHHLE_TOUCH_LOCATION_Y_OFFSET") {
         if let Ok(offset) = offset.parse::<f32>() { new_y += offset; }
     }
 
-    if std::env::var_os("RadekHLE_COCOS_NO_TOUCH_CLAMP").is_none() {
+    if std::env::var_os("TOUCHHLE_COCOS_NO_TOUCH_CLAMP").is_none() {
         new_x = new_x.clamp(0.0, (target_w - 1.0).max(0.0));
         new_y = new_y.clamp(0.0, (target_h - 1.0).max(0.0));
     }
@@ -166,21 +166,21 @@ fn RadekHLE_cocos_remap_point(env: &mut Environment, view: id, point: CGPoint) -
     CGPoint { x: new_x, y: new_y }
 }
 
-fn RadekHLE_cocos_should_allow_multitouch(env: &mut Environment, view: id) -> bool {
-    if std::env::var_os("RadekHLE_COCOS_FORCE_SINGLE_TOUCH").is_some()
-        || std::env::var_os("RadekHLE_UNITY_FORCE_SINGLE_TOUCH").is_some()
-        || std::env::var_os("RadekHLE_ENGINE_FORCE_SINGLE_TOUCH").is_some()
+fn touchhle_cocos_should_allow_multitouch(env: &mut Environment, view: id) -> bool {
+    if std::env::var_os("TOUCHHLE_COCOS_FORCE_SINGLE_TOUCH").is_some()
+        || std::env::var_os("TOUCHHLE_UNITY_FORCE_SINGLE_TOUCH").is_some()
+        || std::env::var_os("TOUCHHLE_ENGINE_FORCE_SINGLE_TOUCH").is_some()
     {
         return false;
     }
-    if std::env::var_os("RadekHLE_COCOS_FORCE_MULTITOUCH").is_some()
-        || std::env::var_os("RadekHLE_UNITY_FORCE_MULTITOUCH").is_some()
-        || std::env::var_os("RadekHLE_ENGINE_FORCE_MULTITOUCH").is_some()
+    if std::env::var_os("TOUCHHLE_COCOS_FORCE_MULTITOUCH").is_some()
+        || std::env::var_os("TOUCHHLE_UNITY_FORCE_MULTITOUCH").is_some()
+        || std::env::var_os("TOUCHHLE_ENGINE_FORCE_MULTITOUCH").is_some()
     {
         return true;
     }
-    let class_name = RadekHLE_cocos_view_class_name(env, view);
-    RadekHLE_cocos_is_gl_or_game_view_name(&class_name)
+    let class_name = touchhle_cocos_view_class_name(env, view);
+    touchhle_cocos_is_gl_or_game_view_name(&class_name)
 }
 
 pub const CLASSES: ClassExports = objc_classes! {
@@ -221,11 +221,11 @@ pub const CLASSES: ClassExports = objc_classes! {
     };
 
     let remap_view = if that_view != nil { that_view } else { view };
-    if RadekHLE_should_use_landscape_touch_remap(env) || should_remap_touch_location_for_view(env, remap_view) {
+    if touchhle_should_use_landscape_touch_remap(env) || should_remap_touch_location_for_view(env, remap_view) {
         // Important: this happens AFTER UIKit hit-testing. The touch can still
         // hit a portrait-sized EAGL/CCGL view, but the game can receive the
         // Cocos/OpenGL coordinate system it expects.
-        result = RadekHLE_cocos_remap_point(env, remap_view, result);
+        result = touchhle_cocos_remap_point(env, remap_view, result);
     }
 
     result
@@ -243,8 +243,8 @@ pub const CLASSES: ClassExports = objc_classes! {
     };
 
     let remap_view = if that_view != nil { that_view } else { view };
-    if RadekHLE_should_use_landscape_touch_remap(env) || should_remap_touch_location_for_view(env, remap_view) {
-        result = RadekHLE_cocos_remap_point(env, remap_view, result);
+    if touchhle_should_use_landscape_touch_remap(env) || should_remap_touch_location_for_view(env, remap_view) {
+        result = touchhle_cocos_remap_point(env, remap_view, result);
     }
 
     result
@@ -303,19 +303,19 @@ pub fn handle_event(env: &mut Environment, event: Event) {
 }
 
 
-fn RadekHLE_cocos_touch_aliases_enabled(env: &mut Environment, view: id) -> bool {
-    if std::env::var_os("RadekHLE_DISABLE_COCOS_TOUCH_ALIASES").is_some() { return false; }
-    if std::env::var_os("RadekHLE_COCOS_TOUCH_ALIASES").is_some() { return true; }
-    let class_name = RadekHLE_cocos_view_class_name(env, view);
-    RadekHLE_cocos_is_gl_or_game_view_name(&class_name)
+fn touchhle_cocos_touch_aliases_enabled(env: &mut Environment, view: id) -> bool {
+    if std::env::var_os("TOUCHHLE_DISABLE_COCOS_TOUCH_ALIASES").is_some() { return false; }
+    if std::env::var_os("TOUCHHLE_COCOS_TOUCH_ALIASES").is_some() { return true; }
+    let class_name = touchhle_cocos_view_class_name(env, view);
+    touchhle_cocos_is_gl_or_game_view_name(&class_name)
         || class_name.starts_with("CC")
         || class_name.contains("Layer")
         || class_name.contains("Scene")
         || class_name.contains("Menu")
 }
 
-fn RadekHLE_send_cocos_touch_aliases(env: &mut Environment, view: id, phase: &str, touches: id, event: id) {
-    if view == nil || !RadekHLE_cocos_touch_aliases_enabled(env, view) { return; }
+fn touchhle_send_cocos_touch_aliases(env: &mut Environment, view: id, phase: &str, touches: id, event: id) {
+    if view == nil || !touchhle_cocos_touch_aliases_enabled(env, view) { return; }
 
     let all_sel_name = match phase {
         "began" => "ccTouchesBegan:withEvent:",
@@ -354,29 +354,29 @@ fn RadekHLE_send_cocos_touch_aliases(env: &mut Environment, view: id, phase: &st
     }
 }
 
-fn RadekHLE_send_cocos_touch_aliases_to_chain(env: &mut Environment, view: id, phase: &str, touches: id, event: id) {
+fn touchhle_send_cocos_touch_aliases_to_chain(env: &mut Environment, view: id, phase: &str, touches: id, event: id) {
     let mut current = view;
     let mut depth = 0;
     while current != nil && depth < 32 {
-        RadekHLE_send_cocos_touch_aliases(env, current, phase, touches, event);
+        touchhle_send_cocos_touch_aliases(env, current, phase, touches, event);
         current = msg![env; current superview];
         depth += 1;
     }
 }
 
-fn RadekHLE_find_cocos_touch_target(env: &mut Environment, root: id) -> id {
+fn touchhle_find_cocos_touch_target(env: &mut Environment, root: id) -> id {
     if root == nil { return nil; }
     let subviews: id = msg![env; root subviews];
     if subviews != nil {
         let count: NSUInteger = msg![env; subviews count];
         for i in (0..count).rev() {
             let child: id = msg![env; subviews objectAtIndex:i];
-            let found = RadekHLE_find_cocos_touch_target(env, child);
+            let found = touchhle_find_cocos_touch_target(env, child);
             if found != nil { return found; }
         }
     }
-    let class_name = RadekHLE_cocos_view_class_name(env, root);
-    if RadekHLE_cocos_is_gl_or_game_view_name(&class_name) { root } else { nil }
+    let class_name = touchhle_cocos_view_class_name(env, root);
+    if touchhle_cocos_is_gl_or_game_view_name(&class_name) { root } else { nil }
 }
 
 fn handle_touches_down(env: &mut Environment, map: HashMap<FingerId, Coords>) {
@@ -513,10 +513,10 @@ fn handle_touches_down(env: &mut Environment, map: HashMap<FingerId, Coords>) {
 
         if view == nil {
             log_dbg!("SUPER HACK: hitTest failed, looking for Cocos/GL target before using window");
-            let cocos_target = RadekHLE_find_cocos_touch_target(env, window);
+            let cocos_target = touchhle_find_cocos_touch_target(env, window);
             view = if cocos_target != nil { cocos_target } else { window };
         } else if view == window {
-            let cocos_target = RadekHLE_find_cocos_touch_target(env, window);
+            let cocos_target = touchhle_find_cocos_touch_target(env, window);
             if cocos_target != nil { view = cocos_target; }
         } else {
             let f: CGRect = msg![env;
@@ -536,7 +536,7 @@ fn handle_touches_down(env: &mut Environment, map: HashMap<FingerId, Coords>) {
         }
 
         let is_multi_touch_enabled: bool = msg![env; view isMultipleTouchEnabled];
-        if !is_multi_touch_enabled && !RadekHLE_cocos_should_allow_multitouch(env, view)
+        if !is_multi_touch_enabled && !touchhle_cocos_should_allow_multitouch(env, view)
             && (view_touches.contains_key(&view) || views_with_existing_touches.contains(&view))
         {
             let stuck: Vec<FingerId> = env
@@ -589,7 +589,7 @@ fn handle_touches_down(env: &mut Environment, map: HashMap<FingerId, Coords>) {
         let _: () = msg![env;
             view touchesBegan:v_set withEvent:event];
         super::ui_gesture_recognizer::touches_began(env, view, v_set);
-        RadekHLE_send_cocos_touch_aliases_to_chain(env, view, "began", v_set, event);
+        touchhle_send_cocos_touch_aliases_to_chain(env, view, "began", v_set, event);
     }
     release(env, pool);
 }
@@ -657,7 +657,7 @@ fn handle_touches_move(env: &mut Environment, map: HashMap<FingerId, Coords>) {
         let _: () = msg![env;
             view touchesMoved:v_set withEvent:event];
         super::ui_gesture_recognizer::touches_moved(env, view, v_set);
-        RadekHLE_send_cocos_touch_aliases_to_chain(env, view, "moved", v_set, event);
+        touchhle_send_cocos_touch_aliases_to_chain(env, view, "moved", v_set, event);
     }
     release(env, pool);
 }
@@ -808,7 +808,7 @@ fn handle_touches_up(env: &mut Environment, map: HashMap<FingerId, Coords>) {
         let _: () = msg![env;
             view touchesEnded:v_set withEvent:event];
         super::ui_gesture_recognizer::touches_ended(env, view, v_set);
-        RadekHLE_send_cocos_touch_aliases_to_chain(env, view, "ended", v_set, event);
+        touchhle_send_cocos_touch_aliases_to_chain(env, view, "ended", v_set, event);
     }
 
     // ULTRAHLE_MINIONJUMP_DRAIN_SELECT_BEGIN
@@ -820,4 +820,3 @@ fn handle_touches_up(env: &mut Environment, map: HashMap<FingerId, Coords>) {
 
     release(env, pool);
 }
-

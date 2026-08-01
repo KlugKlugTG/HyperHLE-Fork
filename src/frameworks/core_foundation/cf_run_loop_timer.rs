@@ -68,7 +68,7 @@ fn CFRunLoopTimerCreate(
         MutVoidPtr::null()
     };
 
-    let target: id = msg_class![env; _RadekHLE_CFTimerTarget alloc];
+    let target: id = msg_class![env; _touchHLE_CFTimerTarget alloc];
     let target: id = msg![env; target initWithCallout:callout info:info];
 
     let selector = env.objc.lookup_selector("timerFireMethod:").unwrap();
@@ -105,7 +105,7 @@ pub const FUNCTIONS: FunctionExports = &[
     // are exported from cf_run_loop; not duplicated here.
 ];
 
-/// Belongs to _RadekHLE_CFTimerTarget
+/// Belongs to _touchHLE_CFTimerTarget
 #[derive(Default)]
 struct CFTimerTargetHostObject {
     callout: GuestFunction,
@@ -113,13 +113,13 @@ struct CFTimerTargetHostObject {
 }
 impl HostObject for CFTimerTargetHostObject {}
 
-/// _RadekHLE_CFTimerTarget serves as a convenience
+/// _touchHLE_CFTimerTarget serves as a convenience
 /// object for performing a callout from a timer.
 pub const CLASSES: ClassExports = objc_classes! {
 
 (env, this, _cmd);
 
-@implementation _RadekHLE_CFTimerTarget: NSObject
+@implementation _touchHLE_CFTimerTarget: NSObject
 
 + (id)allocWithZone:(NSZonePtr)_zone {
     let host_object = Box::new(CFTimerTargetHostObject {
@@ -147,4 +147,3 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
-

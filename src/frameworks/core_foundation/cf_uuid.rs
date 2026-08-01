@@ -50,7 +50,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 (env, this, _cmd);
 
-@implementation _RadekHLE_CFUUID: NSObject
+@implementation _touchHLE_CFUUID: NSObject
 - (())dealloc {
     env.objc.dealloc_object(this, &mut env.mem)
 }
@@ -61,7 +61,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // MARK: - Internal helpers
 
 fn alloc_uuid(env: &mut Environment, bytes: CFUUIDBytes) -> CFUUIDRef {
-    let class = env.objc.get_known_class("_RadekHLE_CFUUID", &mut env.mem);
+    let class = env.objc.get_known_class("_touchHLE_CFUUID", &mut env.mem);
     env.objc
         .alloc_object(class, Box::new(CFUUIDHostObject { bytes }), &mut env.mem)
 }
@@ -329,4 +329,3 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CFUUIDGetUUIDBytes(_)),
     export_c_func!(CFUUIDGetConstantUUIDWithBytes(_, _)),
 ];
-

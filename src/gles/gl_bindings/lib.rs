@@ -6,7 +6,7 @@
 //! This package contains OpenGL bindings generated with the `gl_generator`
 //! crate.
 
-// Allow the crate to have a non-snake-case name (RadekHLE).
+// Allow the crate to have a non-snake-case name (touchHLE).
 // This also allows items in the crate to have non-snake-case names.
 #![allow(non_snake_case)]
 
@@ -30,4 +30,3 @@ pub mod gles30 {
 pub mod gl33core {
     include!(concat!(env!("OUT_DIR"), "/gl33core.rs"));
 }
-

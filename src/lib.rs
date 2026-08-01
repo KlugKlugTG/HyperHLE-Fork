@@ -3,7 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
-//! RadekHLE is a high-level emulator (HLE) for iPhone OS applications.
+//! touchHLE is a high-level emulator (HLE) for iPhone OS applications.
 //!
 //! In various places, the terms "guest" and "host" are used to distinguish
 //! between the emulated application (the "guest") and the emulator itself (the
@@ -15,7 +15,7 @@
 //! - The host can access both "guest memory" and "host memory".
 //! - A "guest function" is emulated Arm code, usually from the app binary.
 //! - A "host function" is a Rust function that is part of this emulator.
-// Allow the crate to have a non-snake-case name (RadekHLE).
+// Allow the crate to have a non-snake-case name (touchHLE).
 // This also allows items in the crate to have non-snake-case names.
 #![allow(non_snake_case)]
 // The documentation for this crate is intended to include private items.
@@ -59,7 +59,7 @@ use environment::{Environment, MutexId, MutexType, ThreadId, PTHREAD_MUTEX_DEFAU
 
 use std::path::PathBuf;
 
-pub use RadekHLE_version::*;
+pub use touchHLE_version::*;
 /// This is the true entry point on Android (SDLActivity calls it after
 /// initialization). On other platforms the true entry point is in src/bin.rs.
 #[cfg(target_os = "android")]
@@ -86,15 +86,15 @@ pub extern "C" fn SDL_main(
     }));
     // Empty args: brings up app picker.
     match main([String::new()].into_iter()) {
-        Ok(_) => echo!("RadekHLE finished"),
-        Err(e) => echo!("RadekHLE errored: {e:?}"),
+        Ok(_) => echo!("touchHLE finished"),
+        Err(e) => echo!("touchHLE errored: {e:?}"),
     }
     0
 }
 
 const USAGE: &str = "\
 Usage:
-    RadekHLE [PATH] [OPTIONS]
+    touchHLE [PATH] [OPTIONS]
 
 PATH should be a path to a .app bundle or .ipa file.
 
@@ -112,7 +112,7 @@ Special options:
 ";
 pub fn main<T: Iterator<Item = String>>(mut args: T) -> Result<(), String> {
     echo!(
-        "RadekHLE {}{}{} — https://RadekHLE.org/",
+        "touchHLE {}{}{} — https://touchhle.org/",
         branding(),
         if branding().is_empty() { "" } else { " " },
         VERSION,
@@ -131,7 +131,7 @@ pub fn main<T: Iterator<Item = String>>(mut args: T) -> Result<(), String> {
 
     {
         let base_path = paths::user_data_base_path();
-        log!("Base path for RadekHLE files: {}", base_path.display());
+        log!("Base path for touchHLE files: {}", base_path.display());
         paths::prepopulate_user_data_dir();
     }
 
@@ -222,8 +222,8 @@ pub fn main<T: Iterator<Item = String>>(mut args: T) -> Result<(), String> {
     // ULTRAHLE_MINIONJUMP_SCREEN_BEGIN
     // Minion Jump / SheepEscape needs the iPad landscape identity/profile.
     unsafe {
-        std::env::remove_var("RadekHLE_FORCE_IPAD_DEVICE_IDENTITY");
-        std::env::remove_var("RadekHLE_FORCE_IPAD_LANDSCAPE_SCREEN");
+        std::env::remove_var("TOUCHHLE_FORCE_IPAD_DEVICE_IDENTITY");
+        std::env::remove_var("TOUCHHLE_FORCE_IPAD_LANDSCAPE_SCREEN");
     }
 
     if matches!(
@@ -231,8 +231,8 @@ pub fn main<T: Iterator<Item = String>>(mut args: T) -> Result<(), String> {
         "com.apprisetec9.minionjump" | "com.risinghighapps.kingdomprincepro"
     ) {
         unsafe {
-            std::env::set_var("RadekHLE_FORCE_IPAD_DEVICE_IDENTITY", "1");
-            std::env::set_var("RadekHLE_FORCE_IPAD_LANDSCAPE_SCREEN", "1");
+            std::env::set_var("TOUCHHLE_FORCE_IPAD_DEVICE_IDENTITY", "1");
+            std::env::set_var("TOUCHHLE_FORCE_IPAD_LANDSCAPE_SCREEN", "1");
         }
     }
     // ULTRAHLE_MINIONJUMP_SCREEN_END
@@ -240,34 +240,34 @@ pub fn main<T: Iterator<Item = String>>(mut args: T) -> Result<(), String> {
     // ULTRAHLE_POTATO_LANDSCAPE_BEGIN
     // Potato Panic / Potato Story: use normal PC-style present rotation/composition; remap touch coordinates as landscape-right.
     unsafe {
-        std::env::remove_var("RadekHLE_FORCE_LANDSCAPE_VIEWPORT");
-        std::env::remove_var("RadekHLE_FORCE_LANDSCAPE_RENDERBUFFER");
-        std::env::remove_var("RadekHLE_FORCE_LANDSCAPE_VIEW_BOUNDS");
-        std::env::remove_var("RadekHLE_TOUCH_LOCATION_PORTRAIT_TO_LANDSCAPE");
-        std::env::remove_var("RadekHLE_TOUCH_MODE");
+        std::env::remove_var("TOUCHHLE_FORCE_LANDSCAPE_VIEWPORT");
+        std::env::remove_var("TOUCHHLE_FORCE_LANDSCAPE_RENDERBUFFER");
+        std::env::remove_var("TOUCHHLE_FORCE_LANDSCAPE_VIEW_BOUNDS");
+        std::env::remove_var("TOUCHHLE_TOUCH_LOCATION_PORTRAIT_TO_LANDSCAPE");
+        std::env::remove_var("TOUCHHLE_TOUCH_MODE");
         if app_id == "com.robtop.geometryjump" {
-            std::env::set_var("RadekHLE_TOUCH_LOCATION_PORTRAIT_TO_LANDSCAPE", "1");
-            std::env::set_var("RadekHLE_TOUCH_MODE", "right");
+            std::env::set_var("TOUCHHLE_TOUCH_LOCATION_PORTRAIT_TO_LANDSCAPE", "1");
+            std::env::set_var("TOUCHHLE_TOUCH_MODE", "right");
         }
-        std::env::remove_var("RadekHLE_TOUCH_LOCATION_X_OFFSET");
-        std::env::remove_var("RadekHLE_TOUCH_LOCATION_Y_OFFSET");
-        std::env::remove_var("RadekHLE_PRESENT_STRETCH_TO_VIEWPORT");
-        std::env::remove_var("RadekHLE_POTATO_ANDROID_THUMB2_COMPAT");
+        std::env::remove_var("TOUCHHLE_TOUCH_LOCATION_X_OFFSET");
+        std::env::remove_var("TOUCHHLE_TOUCH_LOCATION_Y_OFFSET");
+        std::env::remove_var("TOUCHHLE_PRESENT_STRETCH_TO_VIEWPORT");
+        std::env::remove_var("TOUCHHLE_POTATO_ANDROID_THUMB2_COMPAT");
     }
 
     if matches!(app_id, "at.source.potpan" | "at.source.potato3D") {
         unsafe {
-            std::env::set_var("RadekHLE_TOUCH_LOCATION_PORTRAIT_TO_LANDSCAPE", "1");
-            std::env::set_var("RadekHLE_TOUCH_MODE", "right-flip-x");
+            std::env::set_var("TOUCHHLE_TOUCH_LOCATION_PORTRAIT_TO_LANDSCAPE", "1");
+            std::env::set_var("TOUCHHLE_TOUCH_MODE", "right-flip-x");
 
             if cfg!(target_os = "android") {
                 // Potato Story/Panic must use the same logical GL shape as desktop:
                 // 480x320 landscape, not Android's current 320x480 Cocos viewport.
-                std::env::set_var("RadekHLE_POTATO_ANDROID_THUMB2_COMPAT", "1");
-                std::env::set_var("RadekHLE_FORCE_LANDSCAPE_VIEWPORT", "1");
-                std::env::set_var("RadekHLE_FORCE_LANDSCAPE_RENDERBUFFER", "1");
-                std::env::set_var("RadekHLE_FORCE_LANDSCAPE_VIEW_BOUNDS", "1");
-                std::env::set_var("RadekHLE_PRESENT_STRETCH_TO_VIEWPORT", "1");
+                std::env::set_var("TOUCHHLE_POTATO_ANDROID_THUMB2_COMPAT", "1");
+                std::env::set_var("TOUCHHLE_FORCE_LANDSCAPE_VIEWPORT", "1");
+                std::env::set_var("TOUCHHLE_FORCE_LANDSCAPE_RENDERBUFFER", "1");
+                std::env::set_var("TOUCHHLE_FORCE_LANDSCAPE_VIEW_BOUNDS", "1");
+                std::env::set_var("TOUCHHLE_PRESENT_STRETCH_TO_VIEWPORT", "1");
             }
         }
     }
@@ -338,7 +338,7 @@ pub fn main<T: Iterator<Item = String>>(mut args: T) -> Result<(), String> {
         // missing post-iOS-9 APIs becomes the rule rather than the exception.
         if major > 9 || (major == 9 && minor > 0) {
             echo!(
-                "Warning: app requires OS version {}. RadekHLE currently aims \
+                "Warning: app requires OS version {}. touchHLE currently aims \
                  for iOS 2.x–9.0; newer APIs may be missing.",
                 version
             );
@@ -347,7 +347,7 @@ pub fn main<T: Iterator<Item = String>>(mut args: T) -> Result<(), String> {
 
     if required_device_capabilities.contains(&"opengles-3") {
         echo!(
-            "Warning: app requires OpenGL ES 3.0+ support. RadekHLE now routes EAGL OpenGL ES 3 contexts to its GLES 3 backend."
+            "Warning: app requires OpenGL ES 3.0+ support. HyperHLE now routes EAGL OpenGL ES 3 contexts to its GLES 3 backend."
         );
     }
 
@@ -437,4 +437,3 @@ pub fn main<T: Iterator<Item = String>>(mut args: T) -> Result<(), String> {
     env.run();
     Ok(())
 }
-

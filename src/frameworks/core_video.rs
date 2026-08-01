@@ -75,7 +75,7 @@ pub const CONSTANTS: ConstantExports = &[
     ),
     // Apple `CVPixelBuffer.h` — `kCVPixelBufferMemoryAllocatorKey` is a
     // CFStringRef key for a `CFAllocatorRef` value. Apps thread their
-    // own allocator through CVPixelBufferCreate; RadekHLE's CVPixelBuffer
+    // own allocator through CVPixelBufferCreate; touchHLE's CVPixelBuffer
     // implementation always allocates via the default allocator, so the
     // key participates only in dictionary-equality comparisons.
     (
@@ -639,4 +639,3 @@ pub const DYLIB: HostDylib = HostDylib {
     class_exports: &[],
     constant_exports: &[CONSTANTS],
 };
-

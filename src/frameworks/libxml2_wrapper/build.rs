@@ -152,7 +152,7 @@ fn main() {
     }
     cc_build.define("LIBXML_STATIC", Some("1"));
     cc_build.warnings(false);
-    cc_build.compile("RadekHLE_libxml2_shim");
+    cc_build.compile("touchHLE_libxml2_shim");
 
     println!(
         "cargo:rerun-if-changed={}",
@@ -163,4 +163,3 @@ fn main() {
         package_root.join("build.rs").to_str().unwrap()
     );
 }
-

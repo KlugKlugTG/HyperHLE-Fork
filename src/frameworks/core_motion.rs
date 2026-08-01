@@ -528,7 +528,7 @@ const CLASSES: ClassExports = objc_classes! {
 
 // `-[CMMotionManager isMagnetometerActive]` — per
 // <https://developer.apple.com/documentation/coremotion/cmmotionmanager/1616080-magnetometeractive>.
-// RadekHLE never enables the magnetometer (we report `isMagnetometerAvailable`
+// touchHLE never enables the magnetometer (we report `isMagnetometerAvailable`
 // as `NO`), so this always returns `NO`. Apple's documentation requires
 // the property be queryable even when the hardware is absent.
 - (bool)isMagnetometerActive {
@@ -642,4 +642,3 @@ const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
-

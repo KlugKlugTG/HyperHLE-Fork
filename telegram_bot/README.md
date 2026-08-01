@@ -1,6 +1,6 @@
-# RadekHLE app-fix Telegram bot
+# HyperHLE app-fix Telegram bot
 
-A Telegram bot that lets people **request an app be fixed in RadekHLE** without
+A Telegram bot that lets people **request an app be fixed in HyperHLE** without
 touching GitHub. It walks the user through the three things a fix actually needs:
 
 1. the **IPA link(s)** (a direct download for the `.ipa` / zipped `.app`) —
@@ -15,7 +15,7 @@ When the request is complete the bot:
   the log header and compares it with the latest commit on the branch the log
   was built from, warning the user (and flagging the issue) if their build is
   outdated relative to
-  [Actions](https://github.com/RadekHLE/RadekHLE/actions),
+  [Actions](https://github.com/HyperHLE/HyperHLE/actions),
 - opens a GitHub issue using the same fields as the
   [`Request an app fix (IPA + logs)`](../.github/ISSUE_TEMPLATE/app_fix_request.yml)
   issue template, **uploading the log file(s) and any screenshots/video** to
@@ -34,7 +34,7 @@ Input is validated and sanitized as it comes in:
 - app/game names are capped at **6 words**; versions must be numbers with an
   optional leading `v` (e.g. `v1.0`);
 - logs must be plain-text `.txt`/`.log`, non-empty, not binary, and must begin
-  with a genuine RadekHLE/RadekHLE header line; per-log, per-message and total
+  with a genuine HyperHLE/touchHLE header line; per-log, per-message and total
   sizes are all capped;
 - the number of IPA files, logs and screenshots/videos is capped, as is the
   total stored size (so the saved-state pickle can't be bloated by multi-MB
@@ -88,7 +88,7 @@ python -m bot.main
 | `FORWARD_CHAT_ID` | for forwarding | Numeric chat id to forward requests to (Tog991). |
 | `FORWARD_USERNAME` | no | Display handle, defaults to `@Tog991`. |
 | `GITHUB_TOKEN` | for auto-filing | Token with `repo` / `issues:write` + `contents:write` scope (the last is needed to upload log/media attachments). |
-| `GITHUB_OWNER` / `GITHUB_REPO` | no | Defaults to `RadekHLE` / `RadekHLE`. |
+| `GITHUB_OWNER` / `GITHUB_REPO` | no | Defaults to `HyperHLE` / `HyperHLE`. |
 | `GITHUB_ISSUE_LABELS` | no | Comma-separated labels, default `app fix request`. |
 | `UPLOAD_ATTACHMENTS` | no | Upload logs + screenshots/video to the issue. Default `true`; set `false` to disable. |
 | `GITHUB_ATTACHMENTS_BRANCH` | no | Branch attachments are committed to, default `telegram-bot-attachments` (created on first use). |
@@ -111,11 +111,11 @@ token also lifts the anonymous API rate limit on the latest-commit check.
 
 ## How the "latest version" check works
 
-RadekHLE logs identify their own build in the first two lines:
+HyperHLE logs identify their own build in the first two lines:
 
 ```
-RadekHLE UNOFFICIAL 8d65eca — https://RadekHLE.org/
-Built from branch "trunk" of "RadekHLE/RadekHLE" by GitHub Actions workflow run https://github.com/RadekHLE/RadekHLE/actions/runs/27085497648.
+touchHLE UNOFFICIAL 8d65eca — https://touchhle.org/
+Built from branch "trunk" of "HyperHLE/HyperHLE" by GitHub Actions workflow run https://github.com/HyperHLE/HyperHLE/actions/runs/27085497648.
 ```
 
 At submit time `bot/request.py` parses the commit hash, branch and workflow-run
@@ -143,4 +143,3 @@ telegram_bot/
     ├── conversation.py    # the /start ConversationHandler
     └── main.py            # entry point (run_polling)
 ```
-

@@ -5,7 +5,7 @@
 ### Overview
 
 This repo contains two products:
-1. **RadekHLE emulator** (Rust) — an HLE iPhone OS app emulator
+1. **touchHLE emulator** (Rust) — an HLE iPhone OS app emulator
 2. **AppDB** (Python/FastAPI) — a compatibility report web app at `appdb/`
 
 ### Building the Rust emulator
@@ -29,4 +29,3 @@ This repo contains two products:
 - The SQLite DB is auto-created and seeded with demo data on first startup.
 - Submitting reports requires GitHub OAuth (`GITHUB_OAUTH_CLIENT_ID` / `GITHUB_OAUTH_CLIENT_SECRET` env vars); without these, the app works in read-only mode.
 - The triage JSON API requires `APPDB_TRIAGE_TOKEN` env var.
-

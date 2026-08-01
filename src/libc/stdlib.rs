@@ -95,7 +95,7 @@ fn malloc(env: &mut Environment, mut size: GuestUSize) -> MutVoidPtr {
     // =========================================================================
     if size > 0xF000_0000 {
         let actual_size = (-(size as i32)) as GuestUSize;
-        log!("RadekHLE::libc::stdlib: Hack! malloc passed negative size {:#x} ({}). Allocating {} bytes instead.", size, size as i32, actual_size);
+        log!("TouchHLE::libc::stdlib: Hack! malloc passed negative size {:#x} ({}). Allocating {} bytes instead.", size, size as i32, actual_size);
         size = actual_size;
     }
 
@@ -117,7 +117,7 @@ fn malloc(env: &mut Environment, mut size: GuestUSize) -> MutVoidPtr {
     // arithmetic when upstream issues cause initialization failures).
     if size > 0x2000_0000 {
         log!(
-            "RadekHLE::libc::stdlib: malloc({:#x}) refused as out of range — returning NULL",
+            "TouchHLE::libc::stdlib: malloc({:#x}) refused as out of range — returning NULL",
             size
         );
         set_errno(env, crate::libc::errno::ENOMEM);
@@ -146,7 +146,7 @@ fn calloc(env: &mut Environment, count: GuestUSize, size: GuestUSize) -> MutVoid
         Some(v) => v,
         None => {
             log!(
-                "RadekHLE::libc::stdlib: calloc({:#x}, {:#x}) overflowed — returning NULL",
+                "TouchHLE::libc::stdlib: calloc({:#x}, {:#x}) overflowed — returning NULL",
                 count,
                 size
             );
@@ -159,7 +159,7 @@ fn calloc(env: &mut Environment, count: GuestUSize, size: GuestUSize) -> MutVoid
     // instead of exhausting the guest heap.
     if total > 0x2000_0000 {
         log!(
-            "RadekHLE::libc::stdlib: calloc total {:#x} refused as out of range — returning NULL",
+            "TouchHLE::libc::stdlib: calloc total {:#x} refused as out of range — returning NULL",
             total
         );
         set_errno(env, crate::libc::errno::ENOMEM);
@@ -215,7 +215,7 @@ fn NSZoneFree(env: &mut Environment, _zone: MutVoidPtr, ptr: MutVoidPtr) {
 /// >            large as `sizeof(void *)`.
 /// > `[ENOMEM]` Memory allocation error.
 ///
-/// The RadekHLE heap (see `src/mem/allocator.rs`) already returns 16-byte
+/// The touchHLE heap (see `src/mem/allocator.rs`) already returns 16-byte
 /// aligned chunks. Apple's libmalloc also guarantees that on iOS. So for the
 /// common alignments (≤16) this is just `malloc`. For larger alignments
 /// (e.g. page-sized buffers requested by some crypto libraries) we
@@ -235,7 +235,7 @@ fn posix_memalign(
     if alignment < ptr_align || !alignment.is_power_of_two() {
         return EINVAL;
     }
-    // RadekHLE's allocator naturally aligns to at least 16 bytes.
+    // touchHLE's allocator naturally aligns to at least 16 bytes.
     const NATURAL_ALIGN: GuestUSize = 16;
     if alignment <= NATURAL_ALIGN {
         let p = malloc(env, size);
@@ -270,7 +270,7 @@ fn posix_memalign(
 /// `void *valloc(size_t size);` — page-size aligned allocation. Equivalent
 /// to `posix_memalign(&p, getpagesize(), size)`.
 fn valloc(env: &mut Environment, size: GuestUSize) -> MutVoidPtr {
-    // Same page size RadekHLE reports via `_NSGetExecutablePath` etc.
+    // Same page size touchHLE reports via `_NSGetExecutablePath` etc.
     const PAGE_SIZE: GuestUSize = 4096;
     let out: MutPtr<MutVoidPtr> = env.mem.alloc(4).cast();
     let rc = posix_memalign(env, out, PAGE_SIZE, size);
@@ -598,7 +598,7 @@ fn seed48(env: &mut Environment, xsubi: MutPtr<u16>) -> MutPtr<u16> {
     // Reuse a static guest-side buffer for the returned `unsigned short[3]`.
     // POSIX guarantees the returned pointer is valid until the next call to
     // `seed48`/`srand48`/`lcong48`. We mirror that contract by reallocating
-    // here — RadekHLE's guest allocator keeps the pointer alive until the
+    // here — touchHLE's guest allocator keeps the pointer alive until the
     // application explicitly frees it (which it must not, per POSIX).
     let buf: MutPtr<u16> = env.mem.alloc(6).cast();
     write_xsubi(env, buf, previous);
@@ -651,7 +651,7 @@ fn mkstemp(env: &mut Environment, template: MutPtr<u8>) -> i32 {
 
     // Try a handful of randomisations before giving up, mirroring BSD libc's
     // `_gettemp` (TMP_MAX is documented as at least 308,915,776 on real
-    // systems but games never need that many — RadekHLE only needs to keep
+    // systems but games never need that many — touchHLE only needs to keep
     // making progress in the rare case of a collision).
     for _ in 0..128 {
         if fill_template_xxxxxx(env, template).is_none() {
@@ -811,7 +811,7 @@ fn exit(env: &mut Environment, exit_code: i32) {
     // Log the exit so it's clear in CI/run logs why the process stopped;
     // previously this exited silently, which made the logs end abruptly with no
     // explanation.
-    echo!("App called exit({}); RadekHLE will now quit.", exit_code);
+    echo!("App called exit({}); touchHLE will now quit.", exit_code);
     std::process::exit(exit_code);
 }
 
@@ -1383,7 +1383,7 @@ fn putenv(env: &mut Environment, string: MutPtr<u8>) -> i32 {
         }
     };
     log_dbg!("putenv({:?})", s);
-    // putenv is a no-op in RadekHLE — we have no real environment block.
+    // putenv is a no-op in touchHLE — we have no real environment block.
     // Return 0 (success) so apps that call it to set e.g. timezone or locale
     // hints don't abort on the return code.
     0
@@ -1452,7 +1452,7 @@ fn setxattr(
         position,
         options
     );
-    // Return 0 (success). RadekHLE has no extended attribute storage;
+    // Return 0 (success). touchHLE has no extended attribute storage;
     // returning success prevents apps from treating missing xattr support
     // as a fatal error.
     0
@@ -1938,4 +1938,3 @@ where
     };
     Ok((res, whitespace_len + len))
 }
-

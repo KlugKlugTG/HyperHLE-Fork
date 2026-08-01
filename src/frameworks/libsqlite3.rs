@@ -97,7 +97,7 @@ pub fn sqlite3_open(env: &mut Environment, filename_ptr: u32, pp_db: u32) -> u32
             .replace('\\', "_")
             .replace(':', "_");
 
-        let app_ns = std::env::var("RadekHLE_SQLITE_NAMESPACE")
+        let app_ns = std::env::var("TOUCHHLE_SQLITE_NAMESPACE")
             .ok()
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| env.bundle.bundle_identifier().to_string())
@@ -106,7 +106,7 @@ pub fn sqlite3_open(env: &mut Environment, filename_ptr: u32, pp_db: u32) -> u32
             .replace(':', "_")
             .replace(' ', "_");
 
-        let dir = crate::paths::user_data_base_path().join("RadekHLE_sqlite");
+        let dir = crate::paths::user_data_base_path().join("touchHLE_sqlite");
         if let Err(e) = std::fs::create_dir_all(&dir) {
             log!("libsqlite3: failed to create sqlite dir {:?}: {}", dir, e);
         }
@@ -914,4 +914,3 @@ pub const DYLIB: HostDylib = HostDylib {
     constant_exports: &[],
     function_exports: &[FUNCTIONS],
 };
-

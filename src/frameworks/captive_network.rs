@@ -8,7 +8,7 @@
 //! `CNCopyCurrentNetworkInfo()` (and friends) live inside SystemConfiguration
 //! on iOS but are typically reached through their dedicated `kCNNetworkInfo*`
 //! key constants. Apps that include them defensively (e.g. analytics SDKs
-//! reading the SSID) just need the symbols to be non-NULL. RadekHLE has no
+//! reading the SSID) just need the symbols to be non-NULL. touchHLE has no
 //! Wi-Fi telemetry, so we expose the names as plain NSString constants whose
 //! identity matches the canonical Apple value.
 
@@ -30,4 +30,3 @@ pub const CONSTANTS: ConstantExports = &[
 ];
 
 pub const FUNCTIONS: FunctionExports = &[];
-

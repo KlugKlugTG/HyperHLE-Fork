@@ -153,7 +153,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     env.objc.borrow::<NSMethodSignatureHostObject>(this).argument_types.len() as NSUInteger
 }
 
-- (())_RadekHLE_setNumberOfArguments:(NSUInteger)count {
+- (())_touchHLE_setNumberOfArguments:(NSUInteger)count {
     let host = env.objc.borrow_mut::<NSMethodSignatureHostObject>(this);
     let count_usize = count as usize;
     host.argument_types.resize(count_usize, String::from("@"));
@@ -652,4 +652,3 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
-

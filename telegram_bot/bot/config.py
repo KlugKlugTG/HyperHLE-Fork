@@ -93,8 +93,8 @@ def load_config() -> Config:
         forward_chat_id=forward_chat_id,
         forward_username=os.environ.get("FORWARD_USERNAME", "@Tog991").strip(),
         github_token=os.environ.get("GITHUB_TOKEN", "").strip() or None,
-        github_owner=os.environ.get("GITHUB_OWNER", "RadekHLE").strip(),
-        github_repo=os.environ.get("GITHUB_REPO", "RadekHLE").strip(),
+        github_owner=os.environ.get("GITHUB_OWNER", "HyperHLE").strip(),
+        github_repo=os.environ.get("GITHUB_REPO", "HyperHLE").strip(),
         issue_labels=labels,
         persistence_file=persistence_file,
         upload_attachments=upload_attachments,
@@ -105,4 +105,3 @@ def load_config() -> Config:
         default_branch=os.environ.get("GITHUB_DEFAULT_BRANCH", "trunk").strip()
         or "trunk",
     )
-

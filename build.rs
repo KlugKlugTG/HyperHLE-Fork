@@ -36,7 +36,7 @@ pub fn main() {
     for dep in deps {
         // Exclude internal packages, they all use the same license and are
         // handled specially.
-        if dep.name.starts_with("RadekHLE") {
+        if dep.name.starts_with("touchHLE") {
             continue;
         }
 
@@ -107,4 +107,3 @@ pub fn main() {
         println!("cargo::rustc-link-lib=advapi32")
     }
 }
-

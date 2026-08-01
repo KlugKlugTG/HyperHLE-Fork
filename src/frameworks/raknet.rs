@@ -1,5 +1,5 @@
 /*
- * RakNet memory allocation support for RadekHLE.
+ * RakNet memory allocation support for touchHLE.
  */
 
 use crate::dyld::{export_c_func, FunctionExports};
@@ -30,8 +30,7 @@ fn __ZN6RakNet6OP_NEWINS_7RakPeerEEEPT_PKcj(
     ptr
 }
 
-// Экспортируем функцию в стиле RadekHLE
+// Экспортируем функцию в стиле touchHLE
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(__ZN6RakNet6OP_NEWINS_7RakPeerEEEPT_PKcj(_, _, _)),
 ];
-

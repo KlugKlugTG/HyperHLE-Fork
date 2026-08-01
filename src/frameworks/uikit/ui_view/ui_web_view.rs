@@ -546,7 +546,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // MARK: - Chromium/CDP bridge: render a URL into the view's layer.contents
 // =========================================================================
 //
-// RadekHLE has no HTML rendering engine. As an opportunistic fallback (see
+// touchHLE has no HTML rendering engine. As an opportunistic fallback (see
 // PR description) we shell out to the host's headless Chromium to rasterise
 // the target URL into a PNG, then install that PNG as the CALayer contents
 // for the UIWebView. This gives apps like Google Mobile a visible web page
@@ -559,7 +559,7 @@ static SNAP_COUNTER: AtomicUsize = AtomicUsize::new(0);
 /// no suitable browser is available — in that case we leave the layer blank.
 fn find_chromium_binary() -> Option<PathBuf> {
     // Allow env var override for advanced users / CI.
-    if let Ok(path) = std::env::var("RadekHLE_CHROMIUM") {
+    if let Ok(path) = std::env::var("TOUCHHLE_CHROMIUM") {
         let p = PathBuf::from(path);
         if p.exists() {
             return Some(p);
@@ -590,7 +590,7 @@ fn snapshot_url_with_chromium(url: &str, width: u32, height: u32) -> Option<Vec<
         return None;
     };
     let idx = SNAP_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let tmp = std::env::temp_dir().join(format!("RadekHLE_uiwebview_{}.png", idx));
+    let tmp = std::env::temp_dir().join(format!("touchhle_uiwebview_{}.png", idx));
     // Chromium refuses to run as root unless given --no-sandbox.
     let status = Command::new(&chrome)
         .arg("--headless=new")
@@ -640,4 +640,3 @@ fn render_url_to_layer(env: &mut Environment, this: id, url: &str, frame: CGRect
     let _: () = msg![env; this setNeedsDisplay];
     cg_image::CGImageRelease(env, cg_image);
 }
-

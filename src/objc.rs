@@ -180,7 +180,7 @@ pub struct ObjC {
     /// In Apple's runtime a `Method` is a stable pointer to the `method_t`
     /// entry inside a class's method list, and `class_getInstanceMethod` /
     /// `class_getClassMethod` return the same pointer for the same
-    /// class+selector every time. RadekHLE stores methods in a Rust
+    /// class+selector every time. touchHLE stores methods in a Rust
     /// `HashMap` instead, so we synthesise a small guest allocation per
     /// (defining class, selector) pair and hand out its pointer as the
     /// opaque `Method`. Caching keeps that pointer stable, which real code
@@ -462,4 +462,3 @@ const FUNCTIONS: FunctionExports = &[
     export_c_func!(objc_getAssociatedObject(_, _)),
     export_c_func!(objc_removeAssociatedObjects(_)),
 ];
-

@@ -6,7 +6,7 @@
  */
 //! `MPMoviePlayerController` and `MPMoviePlayerViewController`.
 //!
-//! RadekHLE does not yet ship an H.264 decoder, so we cannot actually render
+//! touchHLE does not yet ship an H.264 decoder, so we cannot actually render
 //! the movie's video frames. We do however reproduce the asynchronous lifecycle
 //! that Apple's MediaPlayer framework guarantees, so that guest code which
 //! waits for the documented notifications proceeds correctly. The lifecycle is
@@ -894,7 +894,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     let player: id = msg![env; player initWithContentURL:url];
     // Store as associated value via a dynamic property slot.
     // We use setValue:forKey: with a special key.
-    let key = ns_string::get_static_str(env, "_RadekHLE_moviePlayer");
+    let key = ns_string::get_static_str(env, "_touchHLE_moviePlayer");
     () = msg![env; this setValue:player forKey:key];
     release(env, player); // setValue:forKey: retains
 
@@ -905,7 +905,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // @property(nonatomic, readonly) MPMoviePlayerController *moviePlayer
 // https://developer.apple.com/documentation/mediaplayer/mpmovieplayerviewcontroller/1619165-movieplayer
 - (id)moviePlayer {
-    let key = ns_string::get_static_str(env, "_RadekHLE_moviePlayer");
+    let key = ns_string::get_static_str(env, "_touchHLE_moviePlayer");
     msg![env; this valueForKey:key]
 }
 
@@ -968,4 +968,3 @@ pub(super) fn handle_players(env: &mut Environment) {
         release(env, player);
     }
 }
-

@@ -9,7 +9,7 @@
 //!
 //! This is a stub implementation that does not perform real networking, in
 //! keeping with the existing `NSURLConnection` stub (see `ns_url_connection`).
-//! RadekHLE has no live network stack, so requests are completed with the
+//! touchHLE has no live network stack, so requests are completed with the
 //! standard `NSURLErrorNotConnectedToInternet` (-1009) error in the
 //! `NSURLErrorDomain`, exactly as Apple documents for the offline case.
 //!
@@ -125,7 +125,7 @@ fn make_network_error(env: &mut crate::Environment) -> id {
     let desc_val = from_rust_string(
         env,
         "The Internet connection appears to be offline. \
-         (RadekHLE: networking not supported)"
+         (touchHLE: networking not supported)"
             .to_string(),
     );
     autorelease(env, desc_val);
@@ -520,7 +520,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         .state = NS_URL_SESSION_TASK_STATE_RUNNING;
     log!(
         "NSURLSessionTask resume: delivering NSURLErrorNotConnectedToInternet \
-         (RadekHLE has no network)"
+         (touchHLE has no network)"
     );
     deliver_task_failure(env, this);
 }
@@ -593,4 +593,3 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
-

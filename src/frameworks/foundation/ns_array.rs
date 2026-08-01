@@ -32,7 +32,7 @@ struct ObjectEnumeratorHostObject {
 }
 impl HostObject for ObjectEnumeratorHostObject {}
 
-/// Belongs to _RadekHLE_NSArray
+/// Belongs to _touchHLE_NSArray
 #[derive(Debug, Default)]
 pub(super) struct ArrayHostObject {
     pub(super) array: Vec<id>,
@@ -47,7 +47,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // - (NSUInteger)count;
 // - (id)objectAtIndex:(NSUInteger)index;
 // We can pick whichever subclass we want for the various alloc methods.
-// For the time being, that will always be _RadekHLE_NSArray.
+// For the time being, that will always be _touchHLE_NSArray.
 @implementation NSArray: NSObject
 
 + (id)allocWithZone:(NSZonePtr)zone {
@@ -62,7 +62,7 @@ pub const CLASSES: ClassExports = objc_classes! {
             this
         );
     }
-    msg_class![env; _RadekHLE_NSArray allocWithZone:zone]
+    msg_class![env; _touchHLE_NSArray allocWithZone:zone]
 }
 
 + (id)array {
@@ -244,7 +244,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // receiving array's elements in ascending order, as determined by the
 // comparator block." Defined on the abstract NSArray class so that
 // NSMutableArray (a different branch of the class cluster) inherits it
-// too — previously it lived only on _RadekHLE_NSArray, so calling it on
+// too — previously it lived only on _touchHLE_NSArray, so calling it on
 // a mutable array hit the unrecognized-selector path (GeometryDash logs).
 - (id)sortedArrayUsingComparator:(id)comparator {
     let array = msg![env; this mutableCopy];
@@ -547,7 +547,7 @@ pub const CLASSES: ClassExports = objc_classes! {
             this
         );
     }
-    msg_class![env; _RadekHLE_NSMutableArray allocWithZone:zone]
+    msg_class![env; _touchHLE_NSMutableArray allocWithZone:zone]
 }
 
 + (id)arrayWithCapacity:(NSUInteger)capacity {
@@ -721,7 +721,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // Our private subclass that is the single implementation of NSArray for the
 // time being.
-@implementation _RadekHLE_NSArray: NSArray
+@implementation _touchHLE_NSArray: NSArray
 
 + (id)allocWithZone:(NSZonePtr)_zone {
     let host_object = Box::new(ArrayHostObject {
@@ -734,7 +734,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (id)initWithCoder:(id)coder {
     let class: Class = msg![env; coder class];
     let keyed_unarch_class: Class = msg_class![env; NSKeyedUnarchiver class];
-    let nib_archive_class: Class = msg_class![env; _RadekHLE_NIBArchiveDecoder class];
+    let nib_archive_class: Class = msg_class![env; _touchHLE_NIBArchiveDecoder class];
     let objects = if env.objc.class_is_subclass_of(class, keyed_unarch_class) {
     // It seems that every NSArray item in an NSKeyedArchiver plist looks like:
     // {
@@ -753,7 +753,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         _nib_archive_decoder::decode_current_array(env, coder)
     } else {
         log!(
-            "Warning: -[_RadekHLE_NSArray initWithCoder:] unsupported coder class {:?}; \
+            "Warning: -[_touchHLE_NSArray initWithCoder:] unsupported coder class {:?}; \
              returning empty array.",
             class
         );
@@ -762,7 +762,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     let host_object: &mut ArrayHostObject = env.objc.borrow_mut(this);
     if !host_object.array.is_empty() {
         log!(
-            "Warning: -[_RadekHLE_NSArray initWithCoder:] called on an already-populated array; \
+            "Warning: -[_touchHLE_NSArray initWithCoder:] called on an already-populated array; \
              releasing existing contents first."
         );
         let prev = std::mem::take(&mut host_object.array);
@@ -902,7 +902,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // Special variant for use by CFArray with NULL callbacks: objects aren't
 // necessarily Objective-C objects and won't be retained/released.
-@implementation _RadekHLE_NSArray_non_retaining: _RadekHLE_NSArray
+@implementation _touchHLE_NSArray_non_retaining: _touchHLE_NSArray
 
 - (())dealloc {
     env.objc.dealloc_object(this, &mut env.mem)
@@ -910,7 +910,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 @end
 
-@implementation _RadekHLE_NSArray_ObjectEnumerator: NSEnumerator
+@implementation _touchHLE_NSArray_ObjectEnumerator: NSEnumerator
 
 - (id)nextObject {
     let host_obj = env.objc.borrow_mut::<ObjectEnumeratorHostObject>(this);
@@ -927,7 +927,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // Our private subclass that is the single implementation of NSMutableArray for
 // the time being.
-@implementation _RadekHLE_NSMutableArray: NSMutableArray
+@implementation _touchHLE_NSMutableArray: NSMutableArray
 
 + (id)allocWithZone:(NSZonePtr)_zone {
     let host_object = Box::new(ArrayHostObject {
@@ -987,7 +987,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (id)initWithCoder:(id)coder {
     let class: Class = msg![env; coder class];
     let keyed_unarch_class: Class = msg_class![env; NSKeyedUnarchiver class];
-    let nib_archive_class: Class = msg_class![env; _RadekHLE_NIBArchiveDecoder class];
+    let nib_archive_class: Class = msg_class![env; _touchHLE_NIBArchiveDecoder class];
 
     let objects = if env.objc.class_is_subclass_of(class, keyed_unarch_class) {
         ns_keyed_unarchiver::decode_current_array(env, coder)
@@ -995,7 +995,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         _nib_archive_decoder::decode_current_array(env, coder)
     } else {
         log!(
-            "Warning: -[_RadekHLE_NSMutableArray initWithCoder:] unsupported coder class {:?}; \
+            "Warning: -[_touchHLE_NSMutableArray initWithCoder:] unsupported coder class {:?}; \
              returning empty array.",
             class
         );
@@ -1004,7 +1004,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     let host_object: &mut ArrayHostObject = env.objc.borrow_mut(this);
     if !host_object.array.is_empty() {
         log!(
-            "Warning: -[_RadekHLE_NSMutableArray initWithCoder:] called on an already-populated array; \
+            "Warning: -[_touchHLE_NSMutableArray initWithCoder:] called on an already-populated array; \
              releasing existing contents first."
         );
         let prev = std::mem::take(&mut host_object.array);
@@ -1119,7 +1119,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // We therefore invoke the block by calling `block->invoke(block, obj1,
 // obj2)` with the standard ARM AAPCS calling convention. A nil block is
 // treated as "leave the array in its current order", mirroring how
-// Apple's runtime aborts with a NULL block call — RadekHLE just logs
+// Apple's runtime aborts with a NULL block call — touchHLE just logs
 // and returns to keep the guest alive.
 - (())sortUsingComparator:(id)block {
     if block == nil {
@@ -1320,8 +1320,8 @@ pub const CLASSES: ClassExports = objc_classes! {
 // per Apple's [NSArray Reference](https://developer.apple.com/documentation/foundation/nsarray/1411124-sortedarrayusingcomparator):
 // returns a new sorted array using the given NSComparator block. As with the
 // other `sortedArray…` variants on NSMutableArray, this is inherited
-// behaviour from NSArray; because `_RadekHLE_NSMutableArray` descends from
-// `NSMutableArray` (not the concrete `_RadekHLE_NSArray`), the method must be
+// behaviour from NSArray; because `_touchHLE_NSMutableArray` descends from
+// `NSMutableArray` (not the concrete `_touchHLE_NSArray`), the method must be
 // provided here too, otherwise the receiver does not respond to the selector.
 - (id)sortedArrayUsingComparator:(id)comparator {
     let new = msg![env; this mutableCopy];
@@ -1333,7 +1333,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // Special variant for use by CFArray with NULL callbacks: objects aren't
 // necessarily Objective-C objects and won't be retained/released.
-@implementation _RadekHLE_NSMutableArray_non_retaining: _RadekHLE_NSMutableArray
+@implementation _touchHLE_NSMutableArray_non_retaining: _touchHLE_NSMutableArray
 
 - (())dealloc {
     env.objc.dealloc_object(this, &mut env.mem)
@@ -1434,7 +1434,7 @@ fn object_enumerator_inner_helper(env: &mut Environment, arr: id, vec: Vec<id>) 
     retain(env, arr);
     let class = env
         .objc
-        .get_known_class("_RadekHLE_NSArray_ObjectEnumerator", &mut env.mem);
+        .get_known_class("_touchHLE_NSArray_ObjectEnumerator", &mut env.mem);
     let enumerator = env.objc.alloc_object(class, host_object, &mut env.mem);
     autorelease(env, enumerator)
 }
@@ -1448,4 +1448,3 @@ fn mutable_copy_inner(env: &mut Environment, arr: id) -> id {
     env.objc.borrow_mut::<ArrayHostObject>(mut_arr).array = array;
     mut_arr
 }
-

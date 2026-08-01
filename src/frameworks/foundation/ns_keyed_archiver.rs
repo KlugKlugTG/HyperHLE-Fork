@@ -395,7 +395,7 @@ fn encode_object(env: &mut Environment, archiver: id, object: id) -> Uid {
         // NSString (and its subclasses) are stored *inline* as plist string
         // values in the `$objects` array, exactly like the decode side
         // (`unarchive_key`) expects (`Value::String`). We must NOT route them
-        // through the generic `encodeWithCoder:` path: `_RadekHLE_NSString`'s
+        // through the generic `encodeWithCoder:` path: `_touchHLE_NSString`'s
         // `encodeWithCoder:` allocates a fresh NSString for its contents and
         // re-encodes that via `encodeObject:forKey:`, which is itself an
         // NSString, which allocates another string, ... — infinite recursion
@@ -504,7 +504,7 @@ fn encode_object_for_key(env: &mut Environment, archiver: id, object: id, normal
 /// `NS.keys`/`NS.objects`), and it's exactly what the decode side
 /// (`ns_keyed_unarchiver::keys_for_key`, used by `decode_current_array` and
 /// `decode_current_dict`) expects. `NSArray`/`NSDictionary`'s `encodeWithCoder:`
-/// use this so that RadekHLE-produced archives round-trip correctly; the
+/// use this so that touchHLE-produced archives round-trip correctly; the
 /// previous bespoke layouts (`NS.objects.0`, `NS.objects.1`, … for arrays and a
 /// single object reference for dictionaries) could not be read back by the
 /// decoder, which produced empty collections on unarchive.
@@ -522,4 +522,3 @@ pub fn encode_objects_as_uid_array(env: &mut Environment, archiver: id, key: &st
     }
     scope.insert(key.to_string(), Value::Array(uids));
 }
-

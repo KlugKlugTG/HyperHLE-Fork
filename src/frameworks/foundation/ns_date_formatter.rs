@@ -30,7 +30,7 @@ const NSDateFormatterFullStyle: NSDateFormatterStyle = 4;
 /// to whichever behaviour is currently set as the class-wide default; in real
 /// Cocoa that resolves to `NSDateFormatterBehavior10_4` on iOS.
 ///
-/// RadekHLE implements the modern (10.4) behaviour, but we still need to
+/// touchHLE implements the modern (10.4) behaviour, but we still need to
 /// store and report the requested behaviour so apps that round-trip the value
 /// see the expected result.
 pub type NSDateFormatterBehavior = NSUInteger;
@@ -109,19 +109,19 @@ pub const CLASSES: ClassExports = objc_classes! {
 // MARK: - Class-wide default behavior
 
 + (NSDateFormatterBehavior)defaultFormatterBehavior {
-    // RadekHLE implements modern (Unicode CLDR) behaviour, matching iOS.
+    // touchHLE implements modern (Unicode CLDR) behaviour, matching iOS.
     DEFAULT_FORMATTER_BEHAVIOR
 }
 
 + (())setDefaultFormatterBehavior:(NSDateFormatterBehavior)behavior {
     // Apple lets the process pick between the legacy 10.0 NeXT-style
-    // formatter and the modern 10.4 CLDR formatter. RadekHLE only implements
+    // formatter and the modern 10.4 CLDR formatter. touchHLE only implements
     // the modern one, so we accept the setter but warn (rather than crash)
     // if anyone explicitly asks for the legacy path.
     if behavior == NSDateFormatterBehavior10_0 {
         log!(
             "Warning: +[NSDateFormatter setDefaultFormatterBehavior:NSDateFormatterBehavior10_0] \
-             requested; RadekHLE only implements NSDateFormatterBehavior10_4 (Unicode CLDR), \
+             requested; touchHLE only implements NSDateFormatterBehavior10_4 (Unicode CLDR), \
              ignoring."
         );
     } else if behavior != NSDateFormatterBehavior10_4 && behavior != NSDateFormatterBehaviorDefault
@@ -223,7 +223,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         NSDateFormatterBehavior10_0 => {
             log!(
                 "Warning: [(NSDateFormatter*){:?} setFormatterBehavior:NSDateFormatterBehavior10_0]: \
-                 RadekHLE only implements the modern (10.4) Unicode behaviour; the value will be \
+                 touchHLE only implements the modern (10.4) Unicode behaviour; the value will be \
                  stored as requested but formatting still uses Unicode CLDR tokens.",
                 this
             );
@@ -817,4 +817,3 @@ fn parse_date(fmt: &str, s: &str) -> Option<f64> {
         + seconds as f64;
     Some(ti)
 }
-

@@ -79,7 +79,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // Returns YES if the backing store should be retained after presentation.
 // Corresponds to kEAGLDrawablePropertyRetainedBacking.
-- (bool)_RadekHLE_retainedBacking {
+- (bool)_touchHLE_retainedBacking {
     let props = env.objc.borrow::<CALayerHostObject>(this).drawable_properties;
     if props == nil { return false; }
     let key: id = ns_string::get_static_str(env, kEAGLDrawablePropertyRetainedBacking);
@@ -90,7 +90,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // Returns the requested color format string, or "kEAGLColorFormatRGBA8"
 // as the default if not specified.
-- (id)_RadekHLE_colorFormat { // NSString*
+- (id)_touchHLE_colorFormat { // NSString*
     let props = env.objc.borrow::<CALayerHostObject>(this).drawable_properties;
     if props != nil {
         let key: id = ns_string::get_static_str(env, kEAGLDrawablePropertyColorFormat);
@@ -274,7 +274,7 @@ pub fn present_pixels(env: &mut Environment, layer: id, pixels: Vec<u8>, width: 
 /// presentation (i.e. `kEAGLDrawablePropertyRetainedBacking` is YES).
 /// Convenience wrapper for use by `EAGLContext`.
 pub fn is_retained_backing(env: &mut Environment, layer: id) -> bool {
-    msg![env; layer _RadekHLE_retainedBacking]
+    msg![env; layer _touchHLE_retainedBacking]
 }
 
 /// Returns the drawable's pixel width (from the presented pixel buffer if
@@ -295,4 +295,3 @@ pub fn drawable_height(env: &mut Environment, layer: id) -> u32 {
     }
     host.bounds.size.height as u32
 }
-

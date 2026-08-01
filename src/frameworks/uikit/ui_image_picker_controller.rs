@@ -256,7 +256,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 };
 
 /// `UIVideoAtPathIsCompatibleWithSavedPhotosAlbum(NSString*)` — Apple's API
-/// to ask whether a movie file can be saved to the Camera Roll. RadekHLE
+/// to ask whether a movie file can be saved to the Camera Roll. touchHLE
 /// has no Photos library, so the honest answer is "no". Returning `false`
 /// also matches the documented behaviour for files with unsupported
 /// codecs/containers.
@@ -274,7 +274,7 @@ fn UIVideoAtPathIsCompatibleWithSavedPhotosAlbum(env: &mut Environment, video_pa
 }
 
 /// `UISaveVideoAtPathToSavedPhotosAlbum(NSString*, id, SEL, void*)` — Apple's
-/// API to copy a movie to the Camera Roll. RadekHLE has no Photos library
+/// API to copy a movie to the Camera Roll. touchHLE has no Photos library
 /// so we simply log and do nothing; the optional completion selector is
 /// not invoked because the documented contract on real iOS is that the
 /// callback signals "saved", not "ignored", and we'd rather have a quiet
@@ -292,7 +292,7 @@ fn UISaveVideoAtPathToSavedPhotosAlbum(
         to_rust_string(env, video_path).into_owned()
     };
     log!(
-        "UISaveVideoAtPathToSavedPhotosAlbum({:?}): stubbed (no Photos library in RadekHLE)",
+        "UISaveVideoAtPathToSavedPhotosAlbum({:?}): stubbed (no Photos library in touchHLE)",
         path_str
     );
 }
@@ -301,4 +301,3 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(UIVideoAtPathIsCompatibleWithSavedPhotosAlbum(_)),
     export_c_func!(UISaveVideoAtPathToSavedPhotosAlbum(_, _, _, _)),
 ];
-

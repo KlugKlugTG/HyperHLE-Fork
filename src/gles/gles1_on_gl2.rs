@@ -515,7 +515,7 @@ fn new_gles1_on_gl2_state() -> GLES1OnGL2State {
 
 impl GLESContext for GLES1OnGL2Context {
     fn description() -> &'static str {
-        "OpenGL ES 1.1 via RadekHLE GLES1-on-GL2 layer"
+        "OpenGL ES 1.1 via touchHLE GLES1-on-GL2 layer"
     }
 
     fn new(window: &mut Window) -> Result<Self, String> {
@@ -3838,4 +3838,3 @@ mod matrix_palette_tests {
         assert_eq!(blended, [5.0, 0.0, 0.0, 1.0]);
     }
 }
-

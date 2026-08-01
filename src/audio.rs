@@ -143,7 +143,7 @@ impl AudioFile {
     fn parse_inner(bytes: Vec<u8>) -> Result<AudioFileInner, AudioFileOpenError> {
         // Only accept WAV files that the rest of the pipeline (`audio_description`
         // and the integer-sample `read_bytes` branch) can losslessly serve.
-        // RadekHLE's downstream WAVE consumers (Audio Queue / OpenAL decode in
+        // touchHLE's downstream WAVE consumers (Audio Queue / OpenAL decode in
         // `audio_toolbox::audio_queue::decode_buffer`) emit 8-bit or 16-bit LPCM
         // only, so anything else (24-bit Int, 32-bit Int, 32-bit Float per
         // Microsoft WAVE / IEEE-Float specification — see Apple's Core Audio
@@ -867,4 +867,3 @@ fn alaw_to_linear_wav(a_val: u8) -> i16 {
         -(t as i16)
     }
 }
-

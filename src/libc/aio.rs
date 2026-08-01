@@ -16,7 +16,7 @@
 //! screen followed by a crash (an empty buffer led to a bogus
 //! `malloc((size_t)-1)`).
 //!
-//! RadekHLE runs the guest's main thread synchronously and there is no real
+//! HyperHLE runs the guest's main thread synchronously and there is no real
 //! kernel AIO queue to talk to, so we implement these operations
 //! synchronously: `aio_read`/`aio_write` perform the transfer immediately
 //! (reusing the regular positional `pread`/`pwrite` paths) and stash the
@@ -54,7 +54,7 @@ pub struct State {
 ///
 /// On the iOS armv7 ABI 64-bit scalars such as `off_t` are only 4-byte
 /// aligned, so `aio_offset` sits immediately after the leading `int` with no
-/// padding — hence `#[repr(C, packed)]`, matching how the rest of RadekHLE
+/// padding — hence `#[repr(C, packed)]`, matching how the rest of HyperHLE
 /// models guest structs (`flock`, `iovec`, …). The resulting field offsets are:
 /// `aio_fildes` 0, `aio_offset` 4, `aio_buf` 12, `aio_nbytes` 16,
 /// `aio_reqprio` 20, `aio_sigevent.sigev_notify` 24.
@@ -205,4 +205,3 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(aio_cancel(_, _)),
     export_c_func!(aio_fsync(_, _)),
 ];
-

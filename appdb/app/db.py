@@ -1,4 +1,4 @@
-"""SQLAlchemy models and DB init for the RadekHLE app compatibility database."""
+"""SQLAlchemy models and DB init for the HyperHLE app compatibility database."""
 from __future__ import annotations
 
 import os
@@ -112,7 +112,7 @@ class Report(Base):
     minimum_ios_version: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     # Report-level info.
-    RadekHLE_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    touchhle_version: Mapped[str] = mapped_column(String(80), nullable=False)
     operating_system: Mapped[str] = mapped_column(String(120), nullable=False)
     gpu: Mapped[str | None] = mapped_column(String(120), nullable=True)
     scale_hack: Mapped[str | None] = mapped_column(String(40), nullable=True)
@@ -256,4 +256,3 @@ __all__ = [
     "get_db",
     "init_db",
 ]
-

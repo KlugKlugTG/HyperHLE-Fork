@@ -30,7 +30,7 @@ impl FpsCounter {
         if duration >= Duration::from_secs(1) {
             self.time = now;
             echo!(
-                "RadekHLE: {} FPS: {:.2}",
+                "touchHLE: {} FPS: {:.2}",
                 label,
                 std::mem::take(&mut self.frames) as f32 / duration.as_secs_f32()
             );
@@ -73,9 +73,9 @@ pub unsafe fn present_frame(
     // sampled from normal 0..1 texture coordinates and mapped to a full-screen
     // quad. This is the correct "fill the current window" behavior for
     // PotatoGold-style landscape tests.
-    if std::env::var_os("RadekHLE_PRESENT_STRETCH_TO_VIEWPORT").is_some() {
+    if std::env::var_os("TOUCHHLE_PRESENT_STRETCH_TO_VIEWPORT").is_some() {
         log_once!(
-            "RadekHLE_PRESENT_STRETCH_TO_VIEWPORT=1: stretching full rendered frame to the active viewport [this log will only be shown once]"
+            "TOUCHHLE_PRESENT_STRETCH_TO_VIEWPORT=1: stretching full rendered frame to the active viewport [this log will only be shown once]"
         );
     }
 
@@ -146,4 +146,3 @@ pub unsafe fn present_frame(
         gles.DrawArrays(gles11::TRIANGLES, 0, 6);
     }
 }
-

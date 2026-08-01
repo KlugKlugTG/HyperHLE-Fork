@@ -11,7 +11,7 @@
 //! They are documented in the
 //! [Blocks ABI](https://clang.llvm.org/docs/Block-ABI-Apple.html#imported-variables-1).
 //!
-//! For RadekHLE we provide working implementations of `_Block_copy`,
+//! For touchHLE we provide working implementations of `_Block_copy`,
 //! `_Block_release`, and `_Block_object_assign` / `_Block_object_dispose`
 //! that perform the appropriate ARC retains/releases. Block copying itself
 //! is not implemented — a captured-block "copy" returns the same pointer
@@ -96,4 +96,3 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(_Block_object_assign(_, _, _)),
     export_c_func!(_Block_object_dispose(_, _)),
 ];
-

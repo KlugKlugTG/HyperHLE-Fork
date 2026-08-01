@@ -2,7 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 [package]
-name = "RadekHLE_version"
+name = "touchHLE_version"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
@@ -10,10 +10,9 @@ authors = { workspace = true }
 homepage = { workspace = true }
 
 [lib]
-name = "RadekHLE_version"
+name = "touchHLE_version"
 path = "lib.rs"
 
 [[bin]]
-name = "RadekHLE_version_bin"
+name = "touchHLE_version_bin"
 path = "bin.rs"
-

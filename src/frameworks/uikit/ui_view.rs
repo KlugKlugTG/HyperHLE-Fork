@@ -200,13 +200,13 @@ fn init_common(env: &mut Environment, this: id) -> id {
 }
 
 
-fn RadekHLE_cocos_view_class_name(env: &mut Environment, view: id) -> String {
+fn touchhle_cocos_view_class_name(env: &mut Environment, view: id) -> String {
     if view == nil { return String::new(); }
     let cls: crate::objc::Class = msg![env; view class];
     env.objc.get_class_name(cls).to_owned()
 }
 
-fn RadekHLE_cocos_is_gl_or_game_view_name(class_name: &str) -> bool {
+fn touchhle_cocos_is_gl_or_game_view_name(class_name: &str) -> bool {
     matches!(
         class_name,
         "CCGLView" | "CCEAGLView" | "EAGLView" | "GLKView" |
@@ -224,8 +224,8 @@ fn RadekHLE_cocos_is_gl_or_game_view_name(class_name: &str) -> bool {
         || class_name.contains("GameView")
 }
 
-fn RadekHLE_cocos_landscape_rect(env: &Environment) -> CGRect {
-    let size = std::env::var("RadekHLE_COCOS_LANDSCAPE_SIZE").or_else(|_| std::env::var("RadekHLE_UNITY_LANDSCAPE_SIZE")).or_else(|_| std::env::var("RadekHLE_ENGINE_LANDSCAPE_SIZE"))
+fn touchhle_cocos_landscape_rect(env: &Environment) -> CGRect {
+    let size = std::env::var("TOUCHHLE_COCOS_LANDSCAPE_SIZE").or_else(|_| std::env::var("TOUCHHLE_UNITY_LANDSCAPE_SIZE")).or_else(|_| std::env::var("TOUCHHLE_ENGINE_LANDSCAPE_SIZE"))
         .ok()
         .and_then(|v| {
             let mut parts = v.split(|c| c == 'x' || c == 'X' || c == ',');
@@ -246,19 +246,19 @@ fn RadekHLE_cocos_landscape_rect(env: &Environment) -> CGRect {
     }
 }
 
-fn RadekHLE_cocos_should_force_landscape_view(env: &mut Environment, view: id) -> bool {
+fn touchhle_cocos_should_force_landscape_view(env: &mut Environment, view: id) -> bool {
     if view == nil { return false; }
 
-    let class_name = RadekHLE_cocos_view_class_name(env, view);
-    if !RadekHLE_cocos_is_gl_or_game_view_name(&class_name) && class_name != "UIWindow" {
+    let class_name = touchhle_cocos_view_class_name(env, view);
+    if !touchhle_cocos_is_gl_or_game_view_name(&class_name) && class_name != "UIWindow" {
         return false;
     }
 
-    if std::env::var_os("RadekHLE_COCOS_FORCE_LANDSCAPE_VIEW").is_some()
-        || std::env::var_os("RadekHLE_UNITY_FORCE_LANDSCAPE_VIEW").is_some()
-        || std::env::var_os("RadekHLE_ENGINE_FORCE_LANDSCAPE_VIEW").is_some()
+    if std::env::var_os("TOUCHHLE_COCOS_FORCE_LANDSCAPE_VIEW").is_some()
+        || std::env::var_os("TOUCHHLE_UNITY_FORCE_LANDSCAPE_VIEW").is_some()
+        || std::env::var_os("TOUCHHLE_ENGINE_FORCE_LANDSCAPE_VIEW").is_some()
         || env.bundle.bundle_identifier() == "com.disney.SwampyGame"
-        || std::env::var_os("RadekHLE_FORCE_LANDSCAPE_VIEW_BOUNDS").is_some()
+        || std::env::var_os("TOUCHHLE_FORCE_LANDSCAPE_VIEW_BOUNDS").is_some()
     {
         return true;
     }
@@ -269,7 +269,7 @@ fn RadekHLE_cocos_should_force_landscape_view(env: &mut Environment, view: id) -
     ) && class_name == "CCGLView"
 }
 
-fn RadekHLE_cocos_sanitize_rect(rect: CGRect) -> CGRect {
+fn touchhle_cocos_sanitize_rect(rect: CGRect) -> CGRect {
     let mut r = rect;
     if !r.origin.x.is_finite() { r.origin.x = 0.0; }
     if !r.origin.y.is_finite() { r.origin.y = 0.0; }
@@ -278,16 +278,16 @@ fn RadekHLE_cocos_sanitize_rect(rect: CGRect) -> CGRect {
     r
 }
 
-fn RadekHLE_cocos_should_fuzz_hit_testing(env: &mut Environment, view: id) -> bool {
-    if std::env::var_os("RadekHLE_COCOS_STRICT_HITTEST").is_some() {
+fn touchhle_cocos_should_fuzz_hit_testing(env: &mut Environment, view: id) -> bool {
+    if std::env::var_os("TOUCHHLE_COCOS_STRICT_HITTEST").is_some() {
         return false;
     }
-    let class_name = RadekHLE_cocos_view_class_name(env, view);
-    RadekHLE_cocos_is_gl_or_game_view_name(&class_name)
+    let class_name = touchhle_cocos_view_class_name(env, view);
+    touchhle_cocos_is_gl_or_game_view_name(&class_name)
 }
 
 fn ultrahle_minionjump_force_landscape_ccglview(env: &mut Environment, this: id) -> bool {
-    RadekHLE_cocos_should_force_landscape_view(env, this)
+    touchhle_cocos_should_force_landscape_view(env, this)
 }
 
 fn ultrahle_minionjump_landscape_rect() -> CGRect {
@@ -311,7 +311,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // MARK: - Class-level animation block API
 //
-// RadekHLE does not currently animate the visual side of these UIView
+// touchHLE does not currently animate the visual side of these UIView
 // animation blocks (positions/opacity/transforms snap immediately to their
 // final value). However, a correct implementation **must** still call the
 // configured `setAnimationDidStopSelector:` on the configured
@@ -380,7 +380,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     if !block.in_block { return; }
 
     // Fire `setAnimationWillStartSelector:` synchronously. This is good enough
-    // for the apps that RadekHLE supports; iOS would normally fire it at the
+    // for the apps that touchHLE supports; iOS would normally fire it at the
     // start of the next display frame.
     if block.delegate != nil {
         if let Some(sel) = block.will_start_selector {
@@ -411,10 +411,10 @@ pub const CLASSES: ClassExports = objc_classes! {
     let context_bits = block.context.to_bits();
     let context_num: id = msg_class![env; NSNumber numberWithUnsignedInt:context_bits];
 
-    let key_delegate: id = get_static_str(env, "_RadekHLE_uiview_anim_delegate");
-    let key_sel: id = get_static_str(env, "_RadekHLE_uiview_anim_sel");
-    let key_anim_id: id = get_static_str(env, "_RadekHLE_uiview_anim_id");
-    let key_context: id = get_static_str(env, "_RadekHLE_uiview_anim_context");
+    let key_delegate: id = get_static_str(env, "_touchHLE_uiview_anim_delegate");
+    let key_sel: id = get_static_str(env, "_touchHLE_uiview_anim_sel");
+    let key_anim_id: id = get_static_str(env, "_touchHLE_uiview_anim_id");
+    let key_context: id = get_static_str(env, "_touchHLE_uiview_anim_context");
 
     // NSDictionary cannot store nil values; substitute NSNull for a missing
     // animationID.
@@ -434,8 +434,8 @@ pub const CLASSES: ClassExports = objc_classes! {
         ],
     );
 
-    let fire_sel = env.objc.lookup_selector("_RadekHLE_animationDidStopFireMethod:")
-        .expect("UIView _RadekHLE_animationDidStopFireMethod: not registered");
+    let fire_sel = env.objc.lookup_selector("_touchHLE_animationDidStopFireMethod:")
+        .expect("UIView _touchHLE_animationDidStopFireMethod: not registered");
     let ui_view_class: Class = env.objc.get_known_class("UIView", &mut env.mem);
     let _: id = msg_class![env;
         NSTimer scheduledTimerWithTimeInterval:total_delay
@@ -451,12 +451,12 @@ pub const CLASSES: ClassExports = objc_classes! {
     if block.animation_id != nil { release(env, block.animation_id); }
 }
 
-+ (())_RadekHLE_animationDidStopFireMethod:(id)which_timer {
++ (())_touchHLE_animationDidStopFireMethod:(id)which_timer {
     let dict: id = msg![env; which_timer userInfo];
-    let key_delegate: id = get_static_str(env, "_RadekHLE_uiview_anim_delegate");
-    let key_sel: id = get_static_str(env, "_RadekHLE_uiview_anim_sel");
-    let key_anim_id: id = get_static_str(env, "_RadekHLE_uiview_anim_id");
-    let key_context: id = get_static_str(env, "_RadekHLE_uiview_anim_context");
+    let key_delegate: id = get_static_str(env, "_touchHLE_uiview_anim_delegate");
+    let key_sel: id = get_static_str(env, "_touchHLE_uiview_anim_sel");
+    let key_anim_id: id = get_static_str(env, "_touchHLE_uiview_anim_id");
+    let key_context: id = get_static_str(env, "_touchHLE_uiview_anim_context");
 
     let delegate: id = msg![env; dict objectForKey:key_delegate];
     let sel_str_id: id = msg![env; dict objectForKey:key_sel];
@@ -488,7 +488,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     let _: () = msg_send_no_type_checking(env, (delegate, sel, animation_id, finished, context));
 }
 
-// Visual properties of animation blocks that RadekHLE does not animate.
+// Visual properties of animation blocks that touchHLE does not animate.
 // These are intentionally no-ops, but they must remain present so that the
 // app's calls don't fall through to the dynamic dispatcher's "unimplemented
 // selector" path.
@@ -504,7 +504,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // MARK: - Block-based animation API (iOS 4+)
 //
-// RadekHLE doesn't actually animate property changes — assignments inside
+// touchHLE doesn't actually animate property changes — assignments inside
 // the `animations` block snap to their final value immediately. The
 // important contract that *must* be honoured is:
 //
@@ -581,13 +581,13 @@ pub const CLASSES: ClassExports = objc_classes! {
     let bits = completion.to_bits();
     let context_num: id = msg_class![env; NSNumber numberWithUnsignedInt:bits];
 
-    let key_block: id = get_static_str(env, "_RadekHLE_uiview_block_anim_block");
+    let key_block: id = get_static_str(env, "_touchHLE_uiview_block_anim_block");
     let dict: id = dict_from_keys_and_objects(env, &[(key_block, context_num)]);
 
     let fire_sel = env
         .objc
-        .lookup_selector("_RadekHLE_blockAnimationDidFinish:")
-        .expect("UIView _RadekHLE_blockAnimationDidFinish: not registered");
+        .lookup_selector("_touchHLE_blockAnimationDidFinish:")
+        .expect("UIView _touchHLE_blockAnimationDidFinish: not registered");
     let ui_view_class: Class = env.objc.get_known_class("UIView", &mut env.mem);
     let _: id = msg_class![env;
         NSTimer scheduledTimerWithTimeInterval:total_delay
@@ -598,9 +598,9 @@ pub const CLASSES: ClassExports = objc_classes! {
     ];
 }
 
-+ (())_RadekHLE_blockAnimationDidFinish:(id)which_timer {
++ (())_touchHLE_blockAnimationDidFinish:(id)which_timer {
     let dict: id = msg![env; which_timer userInfo];
-    let key_block: id = get_static_str(env, "_RadekHLE_uiview_block_anim_block");
+    let key_block: id = get_static_str(env, "_touchHLE_uiview_block_anim_block");
     let context_num: id = msg![env; dict objectForKey:key_block];
     if context_num == nil { return; }
 
@@ -617,7 +617,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // `+transitionWithView:duration:options:animations:completion:` and
 // `+transitionFromView:toView:duration:options:completion:` ship in
 // iOS 4 too. Real iOS swaps the view hierarchy with a flip / cross-
-// fade transition; RadekHLE has no animator, so we do the swap
+// fade transition; touchHLE has no animator, so we do the swap
 // instantaneously and still fire the completion block — that keeps
 // games whose state machine waits on the completion (e.g. Bubble
 // Witch's level transition) from deadlocking.
@@ -775,7 +775,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         let view_class: Class = msg![env; this class];
         let class_name = env.objc.get_class_name(view_class).to_owned();
 
-        if std::env::var_os("RadekHLE_FORCE_LANDSCAPE_VIEW_BOUNDS").is_some()
+        if std::env::var_os("TOUCHHLE_FORCE_LANDSCAPE_VIEW_BOUNDS").is_some()
             && (class_name == "UIWindow" || class_name.contains("EAGLView"))
         {
             let forced_bounds = CGRect {
@@ -788,7 +788,7 @@ pub const CLASSES: ClassExports = objc_classes! {
             let forced_center = CGPoint { x: 240.0, y: 160.0 };
 
             log!(
-                "RadekHLE_FORCE_LANDSCAPE_VIEW_BOUNDS=1: forcing {} {:?} frame/bounds to 480x320",
+                "TOUCHHLE_FORCE_LANDSCAPE_VIEW_BOUNDS=1: forcing {} {:?} frame/bounds to 480x320",
                 class_name,
                 this
             );
@@ -1575,9 +1575,9 @@ pub const CLASSES: ClassExports = objc_classes! {
     msg![env; layer bounds]
 }
 - (())setBounds:(CGRect)bounds {
-    let mut bounds = RadekHLE_cocos_sanitize_rect(bounds);
+    let mut bounds = touchhle_cocos_sanitize_rect(bounds);
 
-    if std::env::var_os("RadekHLE_FORCE_LANDSCAPE_VIEW_BOUNDS").is_some() {
+    if std::env::var_os("TOUCHHLE_FORCE_LANDSCAPE_VIEW_BOUNDS").is_some() {
         let view_class: Class = msg![env; this class];
         let class_name = env.objc.get_class_name(view_class).to_owned();
         if class_name == "UIWindow" || class_name.contains("EAGLView") {
@@ -1585,7 +1585,7 @@ pub const CLASSES: ClassExports = objc_classes! {
             let h = bounds.size.height.round() as i32;
             if (w == 320 && (h == 460 || h == 480)) || (w == 0 && h == 0) {
                 log!(
-                    "RadekHLE_FORCE_LANDSCAPE_VIEW_BOUNDS=1: coercing setBounds for {} {:?} from {:?} to 480x320",
+                    "TOUCHHLE_FORCE_LANDSCAPE_VIEW_BOUNDS=1: coercing setBounds for {} {:?} from {:?} to 480x320",
                     class_name,
                     this,
                     bounds
@@ -1615,7 +1615,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (CGRect)frame {
     // ULTRAHLE_MINIONJUMP_FRAME_BEGIN
     if ultrahle_minionjump_force_landscape_ccglview(env, this) {
-        return RadekHLE_cocos_landscape_rect(env);
+        return touchhle_cocos_landscape_rect(env);
     }
     // ULTRAHLE_MINIONJUMP_FRAME_END
 
@@ -1625,15 +1625,15 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (())setFrame:(CGRect)frame {
     // ULTRAHLE_MINIONJUMP_SETFRAME_BEGIN
     let frame = if ultrahle_minionjump_force_landscape_ccglview(env, this) {
-        RadekHLE_cocos_landscape_rect(env)
+        touchhle_cocos_landscape_rect(env)
     } else {
         frame
     };
     // ULTRAHLE_MINIONJUMP_SETFRAME_END
 
-    let mut frame = RadekHLE_cocos_sanitize_rect(frame);
+    let mut frame = touchhle_cocos_sanitize_rect(frame);
 
-    if std::env::var_os("RadekHLE_FORCE_LANDSCAPE_VIEW_BOUNDS").is_some() {
+    if std::env::var_os("TOUCHHLE_FORCE_LANDSCAPE_VIEW_BOUNDS").is_some() {
         let view_class: Class = msg![env; this class];
         let class_name = env.objc.get_class_name(view_class).to_owned();
         if class_name == "UIWindow" || class_name.contains("EAGLView") {
@@ -1641,7 +1641,7 @@ pub const CLASSES: ClassExports = objc_classes! {
             let h = frame.size.height.round() as i32;
             if (w == 320 && (h == 460 || h == 480)) || (w == 0 && h == 0) {
                 log!(
-                    "RadekHLE_FORCE_LANDSCAPE_VIEW_BOUNDS=1: coercing setFrame for {} {:?} from {:?} to 480x320",
+                    "TOUCHHLE_FORCE_LANDSCAPE_VIEW_BOUNDS=1: coercing setFrame for {} {:?} from {:?} to 480x320",
                     class_name,
                     this,
                     frame
@@ -1691,9 +1691,9 @@ pub const CLASSES: ClassExports = objc_classes! {
     let inside: bool = msg![env; layer containsPoint:point];
     if inside { return true; }
 
-    if RadekHLE_cocos_should_fuzz_hit_testing(env, this) {
+    if touchhle_cocos_should_fuzz_hit_testing(env, this) {
         let bounds: CGRect = msg![env; this bounds];
-        let inset = std::env::var("RadekHLE_COCOS_HITTEST_SLOP")
+        let inset = std::env::var("TOUCHHLE_COCOS_HITTEST_SLOP")
             .ok()
             .and_then(|v| v.parse::<f32>().ok())
             .unwrap_or(12.0);
@@ -1924,4 +1924,3 @@ fn invoke_bool_block(env: &mut Environment, block: MutPtr<()>, arg: bool) {
         &func, env, (block_arg, arg),
     );
 }
-

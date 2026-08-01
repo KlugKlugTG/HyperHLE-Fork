@@ -6,7 +6,7 @@
 //! This is separated out into its own package so that we can avoid rebuilding
 //! stb_image more often than necessary, and to improve build-time parallelism.
 
-// Allow the crate to have a non-snake-case name (RadekHLE).
+// Allow the crate to have a non-snake-case name (touchHLE).
 // This also allows items in the crate to have non-snake-case names.
 #![allow(non_snake_case)]
 
@@ -38,4 +38,3 @@ extern "C" {
         stride_in_bytes: c_int,
     ) -> c_int;
 }
-

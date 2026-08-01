@@ -6,7 +6,7 @@
 //! Stub for `AddressBookUI.framework/AddressBookUI`.
 //!
 //! On iOS, AddressBookUI provides `ABPeoplePickerNavigationController`,
-//! `ABPersonViewController`, etc. The vast majority of RadekHLE's target
+//! `ABPersonViewController`, etc. The vast majority of touchHLE's target
 //! apps don't actually open a contacts picker — they just list
 //! AddressBookUI as a Mach-O dependency, often pulled in transitively by
 //! a "Recommend to a friend" or "Send a tell-a-friend email" feature
@@ -14,9 +14,9 @@
 //!
 //! Without a [crate::dyld::HostDylib] entry for the path
 //! `/System/Library/Frameworks/AddressBookUI.framework/AddressBookUI`,
-//! RadekHLE prints a `Warning: app binary depends on unimplemented or
+//! touchHLE prints a `Warning: app binary depends on unimplemented or
 //! missing dylib …` at startup, which can spook users into reporting
-//! otherwise-fine apps as broken (e.g. RadekHLE appdb report #64,
+//! otherwise-fine apps as broken (e.g. HyperHLE appdb report #64,
 //! Super Yum Yum Fruit Snatch).
 //!
 //! This stub exists so the dependency is recognized and the warning is
@@ -27,4 +27,3 @@
 use crate::dyld::FunctionExports;
 
 pub const FUNCTIONS: FunctionExports = &[];
-

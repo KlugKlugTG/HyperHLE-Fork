@@ -13,13 +13,13 @@ STRINGS: dict[str, dict[str, str]] = {
     "en": {
         "choose_language": "🌐 Choose your language / Выберите язык / اختر لغتك:",
         "intro": (
-            "🛠️ *RadekHLE app-fix request*\n\n"
+            "🛠️ *HyperHLE app-fix request*\n\n"
             "I'll collect everything needed to get an app fixed:\n"
             "1️⃣ the *IPA link(s)*\n"
             "2️⃣ a *log file*\n"
             "3️⃣ a description of the *bug/crash*\n\n"
             "Your request will be filed as a GitHub issue against the *latest "
-            "RadekHLE build from Actions*.\n\n"
+            "HyperHLE build from Actions*.\n\n"
             "Send /cancel any time to stop.\n\n"
             "First: what's the *app / game name*?"
         ),
@@ -113,7 +113,7 @@ STRINGS: dict[str, dict[str, str]] = {
             "submitted.)"
         ),
         "build_unknown": (
-            "\n🧪 I couldn't find a RadekHLE build hash in your log, so I "
+            "\n🧪 I couldn't find a HyperHLE build hash in your log, so I "
             "couldn't verify it's the latest build."
         ),
         "issue_line_ok": "\n📌 GitHub issue: {url}",
@@ -126,7 +126,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "cancelled": "Cancelled. Send /start whenever you're ready.",
         "language_set": "✅ Language set to English.",
         "help": (
-            "I file *app fix requests* for RadekHLE.\n\n"
+            "I file *app fix requests* for HyperHLE.\n\n"
             "/start: start a new request (IPA link, log file, bug description)\n"
             "/language: change the language (English / Русский / العربية)\n"
             "/cancel: abort the current request\n"
@@ -169,8 +169,8 @@ STRINGS: dict[str, dict[str, str]] = {
             "plain-text `.txt`/`.log`, or paste the log text."
         ),
         "log_no_header": (
-            "That doesn't look like a RadekHLE/RadekHLE log. A real log starts "
-            "with a line like `RadekHLE UNOFFICIAL <hash> — https://RadekHLE.org/`. "
+            "That doesn't look like a HyperHLE/touchHLE log. A real log starts "
+            "with a line like `touchHLE UNOFFICIAL <hash> — https://touchhle.org/`. "
             "Please attach or paste the actual log."
         ),
         "issue_line_no_token_short": (
@@ -181,13 +181,13 @@ STRINGS: dict[str, dict[str, str]] = {
     "ru": {
         "choose_language": "🌐 Choose your language / Выберите язык / اختر لغتك:",
         "intro": (
-            "🛠️ *Запрос на исправление приложения в RadekHLE*\n\n"
+            "🛠️ *Запрос на исправление приложения в HyperHLE*\n\n"
             "Я соберу всё, что нужно, чтобы приложение исправили:\n"
             "1️⃣ *ссылку (ссылки) на IPA*\n"
             "2️⃣ *файл лога*\n"
             "3️⃣ описание *бага/вылета*\n\n"
             "Запрос будет создан как issue на GitHub и привязан к *последней "
-            "сборке RadekHLE из Actions*.\n\n"
+            "сборке HyperHLE из Actions*.\n\n"
             "Отправьте /cancel в любой момент, чтобы прервать.\n\n"
             "Для начала: как называется *приложение / игра*?"
         ),
@@ -283,7 +283,7 @@ STRINGS: dict[str, dict[str, str]] = {
             "раз; баг, возможно, уже исправлен. (Запрос всё равно отправлен.)"
         ),
         "build_unknown": (
-            "\n🧪 Я не нашёл хеш сборки RadekHLE в вашем логе, поэтому не "
+            "\n🧪 Я не нашёл хеш сборки HyperHLE в вашем логе, поэтому не "
             "смог проверить, последняя ли это версия."
         ),
         "issue_line_ok": "\n📌 Issue на GitHub: {url}",
@@ -297,7 +297,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "cancelled": "Отменено. Отправьте /start, когда будете готовы.",
         "language_set": "✅ Язык переключён на русский.",
         "help": (
-            "Я создаю *запросы на исправление приложений* для RadekHLE.\n\n"
+            "Я создаю *запросы на исправление приложений* для HyperHLE.\n\n"
             "/start: новый запрос (ссылка на IPA, файл лога, описание бага)\n"
             "/language: сменить язык (English / Русский / العربية)\n"
             "/cancel: прервать текущий запрос\n"
@@ -345,8 +345,8 @@ STRINGS: dict[str, dict[str, str]] = {
             "Прикрепите текстовый `.txt`/`.log` или вставьте текст лога."
         ),
         "log_no_header": (
-            "Это не похоже на лог RadekHLE/RadekHLE. Настоящий лог начинается "
-            "со строки вида `RadekHLE UNOFFICIAL <hash> — https://RadekHLE.org/`. "
+            "Это не похоже на лог HyperHLE/touchHLE. Настоящий лог начинается "
+            "со строки вида `touchHLE UNOFFICIAL <hash> — https://touchhle.org/`. "
             "Прикрепите или вставьте настоящий лог."
         ),
         "issue_line_no_token_short": (
@@ -357,13 +357,13 @@ STRINGS: dict[str, dict[str, str]] = {
     "ar": {
         "choose_language": "🌐 Choose your language / Выберите язык / اختر لغتك:",
         "intro": (
-            "🛠️ *طلب إصلاح تطبيق في RadekHLE*\n\n"
+            "🛠️ *طلب إصلاح تطبيق في HyperHLE*\n\n"
             "سأجمع كل ما يلزم لإصلاح التطبيق:\n"
             "1️⃣ *رابط (روابط) ملف IPA*\n"
             "2️⃣ *ملف السجل*\n"
             "3️⃣ وصف *الخطأ/الانهيار*\n\n"
             "سيُسجَّل طلبك كمشكلة (issue) على GitHub ويُربط بأحدث نسخة من "
-            "RadekHLE من Actions.\n\n"
+            "HyperHLE من Actions.\n\n"
             "أرسل /cancel في أي وقت للإلغاء.\n\n"
             "أولاً: ما اسم *التطبيق / اللعبة*؟"
         ),
@@ -469,7 +469,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "cancelled": "تم الإلغاء. أرسل /start عندما تكون جاهزاً.",
         "language_set": "✅ تم تغيير اللغة إلى العربية.",
         "help": (
-            "أنا أُنشئ *طلبات إصلاح التطبيقات* لـ RadekHLE.\n\n"
+            "أنا أُنشئ *طلبات إصلاح التطبيقات* لـ HyperHLE.\n\n"
             "/start: طلب جديد (رابط IPA، ملف السجل، وصف الخطأ)\n"
             "/language: تغيير اللغة (English / Русский / العربية)\n"
             "/cancel: إلغاء الطلب الحالي\n"
@@ -507,8 +507,8 @@ STRINGS: dict[str, dict[str, str]] = {
             "نصي `.txt`/`.log` أو لصق نص السجل."
         ),
         "log_no_header": (
-            "هذا لا يبدو سجل RadekHLE/RadekHLE. يبدأ السجل الحقيقي بسطر مثل "
-            "`RadekHLE UNOFFICIAL <hash> — https://RadekHLE.org/`. الرجاء إرفاق "
+            "هذا لا يبدو سجل HyperHLE/touchHLE. يبدأ السجل الحقيقي بسطر مثل "
+            "`touchHLE UNOFFICIAL <hash> — https://touchhle.org/`. الرجاء إرفاق "
             "أو لصق السجل الفعلي."
         ),
         "issue_line_no_token_short": (
@@ -527,4 +527,3 @@ def t(context: ContextTypes.DEFAULT_TYPE, key: str, **kwargs: object) -> str:
     table = STRINGS.get(get_lang(context), STRINGS[DEFAULT_LANG])
     text = table.get(key) or STRINGS[DEFAULT_LANG][key]
     return text.format(**kwargs) if kwargs else text
-

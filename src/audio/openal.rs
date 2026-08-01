@@ -24,8 +24,8 @@
 
 use al_sys::alc_types::{ALCcontext, ALCdevice};
 use std::marker::PhantomData;
-use RadekHLE_openal_soft_wrapper as al_sys;
-use RadekHLE_openal_soft_wrapper::alc_types::ALCint;
+use touchHLE_openal_soft_wrapper as al_sys;
+use touchHLE_openal_soft_wrapper::alc_types::ALCint;
 
 pub use al_sys::al_defines::*;
 pub use al_sys::al_types;
@@ -54,7 +54,7 @@ impl OpenALManager {
         // `alcOpenDevice(NULL)` call then fails, and crucially OpenAL Soft has
         // no fallback: subsequent attempts (including `alcOpenDevice("No
         // Output")`) all go through the already-committed ALSA factory and
-        // also fail, leaving RadekHLE with no usable audio context. That used
+        // also fail, leaving touchHLE with no usable audio context. That used
         // to manifest as a black-screen crash because AudioToolbox would
         // unwind the main thread when its lazy OpenAL context could not be
         // created.
@@ -85,7 +85,7 @@ fn ensure_openal_backend_available() {
         Set ALSOFT_DRIVERS to override this fallback."
     );
     // SAFETY: `OpenALManager::new` runs once, very early in startup, before
-    // RadekHLE creates any worker thread, and before any OpenAL call has been
+    // touchHLE creates any worker thread, and before any OpenAL call has been
     // made. No other thread can be reading the environment concurrently.
     unsafe {
         std::env::set_var("ALSOFT_DRIVERS", "null");
@@ -174,7 +174,7 @@ impl OpenALContext {
                 unsafe {
                     al_sys::alcCloseDevice(device);
                     // SAFETY: This is a last-chance fallback during audio context creation.
-                    // RadekHLE is still on the main startup/audio path here, and this is only
+                    // touchHLE is still on the main startup/audio path here, and this is only
                     // used after the selected OpenAL device failed to create a context.
                     std::env::set_var("ALSOFT_DRIVERS", "null");
                 }
@@ -474,5 +474,4 @@ impl OpenAL<'_> {
         al_sys::alSpeedOfSound(speed)
     }
 }
-
 

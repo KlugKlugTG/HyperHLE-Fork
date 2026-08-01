@@ -9,7 +9,7 @@
 //! Per Apple's documentation:
 //! https://developer.apple.com/documentation/foundation/nshttpcookiestorage
 //!
-//! In RadekHLE we don't actually do any networking. Games that touch the
+//! In touchHLE we don't actually do any networking. Games that touch the
 //! shared cookie storage during boot (for example, to opportunistically clear
 //! stale cookies, query the accept policy, or persist a logout) would crash
 //! before this class existed. We expose a real Objective-C object whose
@@ -136,4 +136,3 @@ pub const CLASSES: crate::objc::ClassExports = objc_classes! {
 @end
 
 };
-

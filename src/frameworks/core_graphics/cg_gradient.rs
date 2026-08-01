@@ -43,7 +43,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 (env, this, _cmd);
 
-@implementation _RadekHLE_CGGradient: NSObject
+@implementation _touchHLE_CGGradient: NSObject
 
 - (())dealloc {
     env.objc.dealloc_object(this, &mut env.mem)
@@ -58,7 +58,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 fn alloc_gradient(env: &mut Environment, stops: Vec<ColorStop>) -> CGGradientRef {
     let class = env
         .objc
-        .get_known_class("_RadekHLE_CGGradient", &mut env.mem);
+        .get_known_class("_touchHLE_CGGradient", &mut env.mem);
     env.objc.alloc_object(
         class,
         Box::new(CGGradientHostObject { stops }),
@@ -202,7 +202,7 @@ fn CGGradientCreateWithColorComponents(
 }
 
 /// Create from an array of `CGColorRef` (which in our impl are just
-/// `_RadekHLE_CGColor` objects carrying RGBA floats).
+/// `_touchHLE_CGColor` objects carrying RGBA floats).
 fn CGGradientCreateWithColors(
     env: &mut Environment,
     _color_space: CGColorSpaceRef,
@@ -263,4 +263,3 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CGGradientCreateWithColorComponents(_, _, _, _)),
     export_c_func!(CGGradientCreateWithColors(_, _, _)),
 ];
-

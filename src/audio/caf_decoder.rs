@@ -75,8 +75,8 @@ use std::panic::AssertUnwindSafe;
 /// Anything else (MPEG-4 AAC, MP3, ALAC, …) is returned as `Err(())` so the
 /// caller can fall through to a different decoder.
 pub fn decode_caf_to_pcm(file: Cursor<Vec<u8>>) -> Result<SymphoniaDecodedToPcm, ()> {
-    if std::env::var_os("RadekHLE_DISABLE_CAF_DECODER").is_some() {
-        log!("caf_decoder: RadekHLE_DISABLE_CAF_DECODER=1, skipping CAF decode so AudioFile can fall back/dummy instead of preloading hundreds of PCM buffers");
+    if std::env::var_os("TOUCHHLE_DISABLE_CAF_DECODER").is_some() {
+        log!("caf_decoder: TOUCHHLE_DISABLE_CAF_DECODER=1, skipping CAF decode so AudioFile can fall back/dummy instead of preloading hundreds of PCM buffers");
         return Err(());
     }
     // The `caf` crate `panic!`s in a few corner cases that show up in real
@@ -426,5 +426,4 @@ fn alaw_to_linear(a_val: u8) -> i16 {
         -(t as i16)
     }
 }
-
 

@@ -1,7 +1,7 @@
 [project]
-name = "RadekHLE-fix-bot"
+name = "hyperhle-fix-bot"
 version = "0.1.0"
-description = "Telegram bot for requesting app fixes in RadekHLE — collects IPA links, log files and a bug description, opens a GitHub issue, and forwards the request to a maintainer."
+description = "Telegram bot for requesting app fixes in HyperHLE — collects IPA links, log files and a bug description, opens a GitHub issue, and forwards the request to a maintainer."
 requires-python = ">=3.10"
 dependencies = [
     # job-queue extra (APScheduler) powers the 15-minute conversation timeout.
@@ -25,4 +25,3 @@ packages = ["bot"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-

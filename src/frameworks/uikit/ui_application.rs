@@ -36,7 +36,7 @@ struct UIApplicationHostObject {
     /// The most recent value set via `-setApplicationIconBadgeNumber:`.
     /// Per Apple's UIApplication docs the property is read/write and
     /// defaults to 0; we honour both the getter and the setter even
-    /// though RadekHLE has no springboard to actually render the badge.
+    /// though touchHLE has no springboard to actually render the badge.
     application_icon_badge_number: NSInteger,
 }
 impl HostObject for UIApplicationHostObject {}
@@ -82,7 +82,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setNetworkActivityIndicatorVisible:(bool)visible {
-    // RadekHLE doesn't render the iOS status bar, so we just stub this
+    // touchHLE doesn't render the iOS status bar, so we just stub this
     // and ignore the request to show/hide the spinner.
     log_dbg!("Stubbed setNetworkActivityIndicatorVisible: {}", visible);
 }
@@ -216,7 +216,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     // `LSApplicationQueriesSchemes`, otherwise the call always returns
     // NO.
     //
-    // RadekHLE has no app launcher, but legitimately reports YES for
+    // touchHLE has no app launcher, but legitimately reports YES for
     // the URL schemes that the host environment (Android) routes to
     // its own Intent handlers — `http`/`https`/`tel`/`mailto`/`sms`
     // are universally handled, and we permit them here so apps that
@@ -371,7 +371,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (NSUInteger)beginBackgroundTaskWithExpirationHandler:(id)_handler {
     log_dbg!("UIApplication beginBackgroundTaskWithExpirationHandler");
     // Per Apple docs, this returns a UIBackgroundTaskIdentifier (NSUInteger).
-    // A non-zero value indicates a valid task. RadekHLE does not implement
+    // A non-zero value indicates a valid task. touchHLE does not implement
     // background execution, so we return a fixed sentinel identifier.
     1
 }
@@ -510,7 +510,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // `- (UIRemoteNotificationType)enabledRemoteNotificationTypes` —
 // per Apple's [UIApplication Reference](https://developer.apple.com/documentation/uikit/uiapplication/1623060-enabledremotenotificationtypes):
 // the bitmask of remote notification types the user has explicitly
-// enabled in Settings. RadekHLE has no system Settings UI and no real
+// enabled in Settings. touchHLE has no system Settings UI and no real
 // push notification subsystem, so no notification types are enabled —
 // the documented value for this state is `UIRemoteNotificationTypeNone`
 // (0). Returning this lets apps using the iOS 3.0–7.x API path skip
@@ -520,7 +520,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 // `applicationIconBadgeNumber` is the integer shown on the SpringBoard
-// app icon badge. RadekHLE has no SpringBoard, but games (e.g.
+// app icon badge. touchHLE has no SpringBoard, but games (e.g.
 // notification-driven trial flows) often *read* the value back after
 // setting it to gate logic, so we store it for round-trip fidelity per
 // Apple's [UIApplication Reference](https://developer.apple.com/documentation/uikit/uiapplication/1622918-applicationiconbadgenumber).
@@ -548,7 +548,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // UIUserNotificationSettings — holds notification permission settings.
 // https://developer.apple.com/documentation/uikit/uiusernotificationsettings
 // On iOS 8+, apps call [UIApplication registerUserNotificationSettings:settings]
-// with an instance of this class. Since RadekHLE does not deliver notifications,
+// with an instance of this class. Since touchHLE does not deliver notifications,
 // we expose a minimal stub that satisfies alloc/init and settingsForTypes:categories:.
 @implementation UIUserNotificationSettings: NSObject
 
@@ -1060,4 +1060,3 @@ pub const CONSTANTS: ConstantExports = &[
     ),
 ];
 pub const FUNCTIONS: FunctionExports = &[export_c_func!(UIApplicationMain(_, _, _, _))];
-

@@ -449,10 +449,10 @@ pub enum TextInputEvent {
 pub enum Event {
     /// User requested quit.
     Quit,
-    /// OS has informed RadekHLE it will soon become inactive.
+    /// OS has informed touchHLE it will soon become inactive.
     /// (iOS `applicationWillResignActive:`, Android `onPause()`)
     AppWillResignActive,
-    /// OS has informed RadekHLE it will soon terminate.
+    /// OS has informed touchHLE it will soon terminate.
     /// (iOS `applicationWillTerminate:`, Android `onDestroy()`)
     AppWillTerminate,
     TouchesDown(HashMap<FingerId, Coords>),
@@ -579,7 +579,7 @@ pub struct Window {
 }
 
 impl Window {
-    /// Returns [true] if RadekHLE is running on a device where we should always
+    /// Returns [true] if touchHLE is running on a device where we should always
     /// display fullscreen, but SDL2 will let us control the orientation, i.e.
     /// Android devices.
     pub fn rotatable_fullscreen() -> bool {
@@ -628,7 +628,7 @@ impl Window {
         // is available, but we don't want to enable SDL's HIDAPI controller
         // drivers because they cause duplicated controllers on macOS
         // (https://github.com/libsdl-org/SDL/issues/7479). Once that's fixed,
-        // remove this (https://github.com/RadekHLE/RadekHLE/issues/85).
+        // remove this (https://github.com/touchHLE/touchHLE/issues/85).
         sdl2::hint::set("SDL_JOYSTICK_HIDAPI", "0");
 
         if env::consts::OS == "android" {
@@ -801,7 +801,7 @@ impl Window {
     }
 
     /// Poll for events from the OS. This needs to be done reasonably often
-    /// (60Hz is probably fine) so that the host OS doesn't consider RadekHLE
+    /// (60Hz is probably fine) so that the host OS doesn't consider touchHLE
     /// to be unresponsive. Note that events are not returned by this function,
     /// since we often need to defer actually handling them.
     ///
@@ -858,11 +858,11 @@ impl Window {
             // 320x480 UIKit space so EAGLView still receives the event; a
             // separate UITouch locationInView compatibility path can remap
             // the coordinates returned to the game.
-            let [x, y] = if std::env::var_os("RadekHLE_DISABLE_PRESENT_ROTATION").is_some()
-                || std::env::var_os("RadekHLE_DISABLE_TOUCH_ROTATION").is_some()
+            let [x, y] = if std::env::var_os("TOUCHHLE_DISABLE_PRESENT_ROTATION").is_some()
+                || std::env::var_os("TOUCHHLE_DISABLE_TOUCH_ROTATION").is_some()
             {
                 log_once!(
-                    "RadekHLE_DISABLE_TOUCH_ROTATION: not rotating touch hit-test coordinates [this log will only be shown once]"
+                    "TOUCHHLE_DISABLE_TOUCH_ROTATION: not rotating touch hit-test coordinates [this log will only be shown once]"
                 );
                 [x, y]
             } else {
@@ -877,12 +877,12 @@ impl Window {
 
             // Optional hit-test tuning only. Do not use these unless you are
             // deliberately testing the UIKit hit-test position.
-            if let Ok(offset) = std::env::var("RadekHLE_HITTEST_X_OFFSET") {
+            if let Ok(offset) = std::env::var("TOUCHHLE_HITTEST_X_OFFSET") {
                 if let Ok(offset) = offset.parse::<f32>() {
                     out_x += offset;
                 }
             }
-            if let Ok(offset) = std::env::var("RadekHLE_HITTEST_Y_OFFSET") {
+            if let Ok(offset) = std::env::var("TOUCHHLE_HITTEST_Y_OFFSET") {
                 if let Ok(offset) = offset.parse::<f32>() {
                     out_y += offset;
                 }
@@ -1184,7 +1184,7 @@ impl Window {
                     // For some reason, if we don't pause event polling, we will
                     // never finish handling the event.
                     // TODO: Add a mechanism for re-enabling polling, if at some
-                    // point we support returning RadekHLE to the foreground.
+                    // point we support returning touchHLE to the foreground.
                     self.enable_event_polling = false;
                     continue;
                 }
@@ -1321,7 +1321,7 @@ impl Window {
                     keycode: Some(sdl2::keyboard::Keycode::F12),
                     ..
                 } => {
-                    // Log this so you can tell when RadekHLE has received
+                    // Log this so you can tell when touchHLE has received
                     // the event but it's stuck in the queue.
                     echo!("F12 pressed, EnterDebugger event queued.");
                     Event::EnterDebugger
@@ -2046,7 +2046,7 @@ pub fn show_error_messagebox(window: Option<&Window>, error_message: &str) {
         messagebox::ButtonData {
             flags: messagebox::MessageBoxButtonFlag::NOTHING,
             button_id: 0,
-            text: "Open RadekHLE directory",
+            text: "Open touchHLE directory",
         },
         messagebox::ButtonData {
             flags: messagebox::MessageBoxButtonFlag::NOTHING,
@@ -2058,13 +2058,13 @@ pub fn show_error_messagebox(window: Option<&Window>, error_message: &str) {
     let Ok(clicked_button) = messagebox::show_message_box(
         messagebox::MessageBoxFlag::ERROR,
         &mbox,
-        "RadekHLE crashed!",
-        &format!("RadekHLE crashed with the following error: {error_message}"),
+        "touchHLE crashed!",
+        &format!("touchHLE crashed with the following error: {error_message}"),
         window.map(|win| &win.window),
         None,
     ) else {
         log!("Warning: Failed to show error message box; falling back to stderr only.");
-        eprintln!("RadekHLE crashed: {}", error_message);
+        eprintln!("touchHLE crashed: {}", error_message);
         return;
     };
 
@@ -2186,4 +2186,3 @@ pub fn show_alert_dialog(
         }
     })
 }
-

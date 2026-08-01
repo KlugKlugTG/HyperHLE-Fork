@@ -7,7 +7,7 @@
 //!
 //! Stub implementation of the GameKit achievement class. Games use this
 //! to report achievement progress to Game Center. Since there is no
-//! Game Center backend in RadekHLE, all methods are stubs that succeed
+//! Game Center backend in touchHLE, all methods are stubs that succeed
 //! silently.
 //!
 //! Reference: <https://developer.apple.com/documentation/gamekit/gkachievement>
@@ -151,4 +151,3 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
-

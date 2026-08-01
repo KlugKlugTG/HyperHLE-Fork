@@ -271,9 +271,9 @@ impl Environment {
             // are created. These env vars are read by compatibility shims inside this
             // same process.
             unsafe {
-                std::env::set_var("RadekHLE_DISABLE_PRESENT_ROTATION", "1");
-                std::env::set_var("RadekHLE_TOUCH_LOCATION_PORTRAIT_TO_LANDSCAPE", "1");
-                std::env::set_var("RadekHLE_FAKE_NETWORK_SUCCESS", "1");
+                std::env::set_var("TOUCHHLE_DISABLE_PRESENT_ROTATION", "1");
+                std::env::set_var("TOUCHHLE_TOUCH_LOCATION_PORTRAIT_TO_LANDSCAPE", "1");
+                std::env::set_var("TOUCHHLE_FAKE_NETWORK_SUCCESS", "1");
 
                 // PotatoGold's audio path was crashing on some Linux setups unless
                 // OpenAL Soft used the null backend. This keeps the app playable even
@@ -383,7 +383,7 @@ impl Environment {
         let bundle_supports_ipad = device_family_array.iter().any(|f| f.is_ipad());
         let bundle_supports_phone = device_family_array.iter().any(|f| !f.is_ipad());
         // Default model picked for each class when the user hasn't chosen one.
-        // iPhone 3GS (iPhone2,1) is the historical RadekHLE phone default
+        // iPhone 3GS (iPhone2,1) is the historical touchHLE phone default
         // (320x480, GLES2-capable); iPad 2 (iPad2,1) is the tablet default.
         let default_phone = DeviceFamily::iPhone3GS;
         let default_ipad = DeviceFamily::iPad2;
@@ -450,7 +450,7 @@ impl Environment {
             };
             Some(Box::new(window::Window::new(
                 &format!(
-                    "{} (RadekHLE {}{}{})",
+                    "{} (touchHLE {}{}{})",
                     bundle.display_name(),
                     super::branding(),
                     if super::branding().is_empty() {
@@ -495,7 +495,7 @@ impl Environment {
 
         let mut dylibs = Vec::new();
         for dylib in &executable.dynamic_libraries {
-            // There are some Free Software libraries bundled with RadekHLE and
+            // There are some Free Software libraries bundled with touchHLE and
             // exposed via the guest file system (see Fs::new()).
             let dylib_path = fs::GuestPath::new(dylib);
             if fs.is_file(dylib_path) {
@@ -846,7 +846,7 @@ impl Environment {
         assert!(!options.headless);
         let window = Some(Box::new(window::Window::new(
             &format!(
-                "RadekHLE {}{}{}",
+                "touchHLE {}{}{}",
                 super::branding(),
                 if super::branding().is_empty() {
                     ""
@@ -1019,19 +1019,19 @@ impl Environment {
         }
     }
 
-    /// Get a shared reference to the window. Panics if RadekHLE is running in
+    /// Get a shared reference to the window. Panics if touchHLE is running in
     /// headless mode.
     pub fn window(&self) -> &window::Window {
         self.window.as_ref().expect(
-            "Tried to do something that needs a window, but RadekHLE is running in headless mode!",
+            "Tried to do something that needs a window, but touchHLE is running in headless mode!",
         )
     }
 
-    /// Get a mutable reference to the window. Panics if RadekHLE is running
+    /// Get a mutable reference to the window. Panics if touchHLE is running
     /// in headless mode.
     pub fn window_mut(&mut self) -> &mut window::Window {
         self.window.as_mut().expect(
-            "Tried to do something that needs a window, but RadekHLE is running in headless mode!",
+            "Tried to do something that needs a window, but touchHLE is running in headless mode!",
         )
     }
 
@@ -1819,7 +1819,7 @@ impl Environment {
                         // after the constant-load clusters. Do not fake-return
                         // from the whole function; advance past the trapped
                         // 32-bit instruction and let scene setup continue.
-                        if std::env::var_os("RadekHLE_POTATO_ANDROID_THUMB2_COMPAT").is_some()
+                        if std::env::var_os("TOUCHHLE_POTATO_ANDROID_THUMB2_COMPAT").is_some()
                             && matches!(hw1 & 0xfe00, 0xec00 | 0xee00)
                         {
                             log_no_panic!(
@@ -2637,4 +2637,3 @@ mod dylib_sorting_tests {
         );
     }
 }
-

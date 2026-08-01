@@ -4,7 +4,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 //! `ChipmunkHastySpace` — a subclass of `ChipmunkSpace` that uses multiple
-//! threads for simulation. Since RadekHLE is single-threaded we just treat it
+//! threads for simulation. Since touchHLE is single-threaded we just treat it
 //! identically to `ChipmunkSpace`.
 
 use crate::frameworks::foundation::NSInteger;
@@ -446,4 +446,3 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
-

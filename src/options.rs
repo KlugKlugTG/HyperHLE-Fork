@@ -56,7 +56,7 @@ pub struct Options {
     pub stabilize_virtual_cursor: Option<(f32, f32)>,
     pub gles1_implementation: Option<GLESImplementation>,
     /// Allow selected early OpenGL ES 2.0 apps to use the GLES2 subset exposed
-    /// through RadekHLE's desktop OpenGL 2.1 compatibility backend.
+    /// through touchHLE's desktop OpenGL 2.1 compatibility backend.
     pub gles2_compat: bool,
     pub direct_memory_access: bool,
     pub gdb_listen_addrs: Option<Vec<SocketAddr>>,
@@ -411,7 +411,7 @@ fn parse_dump_options(options: &str) -> Result<DumpingOptions, String> {
             // Dumps linked symbols, classes and selectors for the given app
             dumping_options.linking_info = true;
         } else if opt == "symbols" {
-            // Dumps RadekHLE provided symbols and exits
+            // Dumps touchHLE provided symbols and exits
             dumping_options.symbols = true;
         } else {
             return Err(format!("Unrecognized option {opt} for --dump=..."));
@@ -419,4 +419,3 @@ fn parse_dump_options(options: &str) -> Result<DumpingOptions, String> {
     }
     Ok(dumping_options)
 }
-

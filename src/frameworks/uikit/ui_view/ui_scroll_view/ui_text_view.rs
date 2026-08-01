@@ -37,7 +37,7 @@ pub struct UITextViewHostObject {
     text_color: id,
     text_alignment: UITextAlignment,
     /// Per UITextInputTraits — these properties are read/write on every
-    /// concrete UITextView. RadekHLE doesn't yet route keystrokes through
+    /// concrete UITextView. touchHLE doesn't yet route keystrokes through
     /// the iOS keyboard subsystem, but storing the values is sufficient
     /// for round-trip get/set fidelity per Apple's reference docs.
     return_key_type: NSInteger,
@@ -349,4 +349,3 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
-

@@ -42,7 +42,7 @@ def test_looks_binary_true_for_replacement_heavy_text():
 
 
 def test_looks_binary_false_for_real_log():
-    assert not s.looks_binary("RadekHLE UNOFFICIAL abc123 — https://RadekHLE.org/\n" * 50)
+    assert not s.looks_binary("touchHLE UNOFFICIAL abc123 — https://touchhle.org/\n" * 50)
 
 
 def test_looks_binary_false_for_a_couple_of_replacements():
@@ -95,4 +95,3 @@ def test_clamp_and_fits():
     assert s.clamp("abcdef", 3) == "abc"
     assert s.fits_telegram("x" * s.TELEGRAM_MAX_MESSAGE)
     assert not s.fits_telegram("x" * (s.TELEGRAM_MAX_MESSAGE + 1))
-

@@ -165,7 +165,7 @@ fn mprotect(env: &mut Environment, addr: MutVoidPtr, len: GuestUSize, prot: i32)
     // POSIX `int mprotect(void *addr, size_t len, int prot)`: returns 0
     // on success, -1 on failure with errno set.
     //
-    // RadekHLE doesn't enforce per-page memory protections — the entire
+    // touchHLE doesn't enforce per-page memory protections — the entire
     // guest address space is treated as RW (and code pages as RX through
     // the JIT). However, returning -1 + ENOTSUP for every mprotect call
     // is wrong: it makes Mono/Boehm GC and Unity's runtime think the
@@ -179,7 +179,7 @@ fn mprotect(env: &mut Environment, addr: MutVoidPtr, len: GuestUSize, prot: i32)
     // address ranges, which our guest mmap allocator handles by always
     // returning a valid range.
     log_dbg!(
-        "mprotect({:?}, {}, {:#x}) -> 0 (no-op; RadekHLE does not enforce per-page protections)",
+        "mprotect({:?}, {}, {:#x}) -> 0 (no-op; touchHLE does not enforce per-page protections)",
         addr,
         len,
         prot
@@ -189,7 +189,7 @@ fn mprotect(env: &mut Environment, addr: MutVoidPtr, len: GuestUSize, prot: i32)
 }
 
 /// `int mlock(const void *addr, size_t len)` — lock a region of memory
-/// so it stays resident in physical RAM. RadekHLE keeps the entire
+/// so it stays resident in physical RAM. touchHLE keeps the entire
 /// guest address space resident in the host process at all times, so
 /// there is nothing to pin: the memory is already non-pageable from the
 /// guest's perspective. Real Darwin returns 0 on success, so we report
@@ -233,4 +233,3 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(mlock(_, _)),
     export_c_func!(munlock(_, _)),
 ];
-

@@ -12,7 +12,7 @@
 //! iPhone OS's system frameworks and other dynamically-linked libraries, but
 //! instead of actually loading and linking the original framework binaries,
 //! this "dynamic linker" will generate appropriate stubs for calling into
-//! RadekHLE's own implementations of the frameworks, which are "host code"
+//! touchHLE's own implementations of the frameworks, which are "host code"
 //! (i.e. not themselves running under emulation).
 //!
 //! This also does normal dynamic linking for libgcc, libstdc++, etc.
@@ -267,7 +267,7 @@ fn link_cxxabi_typeinfo(
 /// short: the char specialisation of libstdc++'s
 /// `basic_string::_S_construct<const char*>(beg, end, alloc,
 /// forward_iterator_tag)` handles a NULL `beg` by branching to a block that
-/// calls `std::__throw_logic_error`. Because RadekHLE neuters that helper to a
+/// calls `std::__throw_logic_error`. Because touchHLE neuters that helper to a
 /// bare `BX LR`, control falls through into the normal copy path with
 /// `beg == NULL` and `end - beg == npos`, producing a `memcpy(dest, NULL,
 /// npos)` and a string whose length is `npos`.
@@ -298,7 +298,7 @@ fn patch_string_s_construct_null(dylib: &MachO, mem: &mut Mem) {
     let Some(&entry_with_thumb_bit) = dylib.exported_symbols.get(SYM) else {
         return;
     };
-    // This patch only understands the Thumb encoding shipped with RadekHLE.
+    // This patch only understands the Thumb encoding shipped with touchHLE.
     if entry_with_thumb_bit & 1 == 0 {
         return;
     }
@@ -471,7 +471,7 @@ impl Dyld {
         ns_string::register_constant_strings(&bins[0], mem, objc);
 
         // The `std::__throw_*` helpers in the bundled libstdc++ dylib are
-        // `noreturn` — they construct and throw a C++ exception. RadekHLE
+        // `noreturn` — they construct and throw a C++ exception. touchHLE
         // has no real unwinder, so a thrown exception inside libstdc++
         // calls `__cxa_terminate()`, which aborts the host process. The
         // user-visible message is something like:
@@ -557,7 +557,7 @@ impl Dyld {
             // resulting corrupt (length == npos) string sends some apps into an
             // effectively infinite loop (e.g. Turbo Dismount's startup builds
             // std::strings from a table that contains a NULL entry under
-            // RadekHLE).
+            // touchHLE).
             //
             // The documented intent of the throw-neutering is for `std::
             // string(NULL)` to behave like an *empty* string. We make that
@@ -629,7 +629,7 @@ impl Dyld {
         writeln!(file, "    ]\n}}")
     }
 
-    /// Dumps all non-objc symbols provided by RadekHLE.
+    /// Dumps all non-objc symbols provided by touchHLE.
     ///
     /// The dump format is Objective-C code (with meaningless types) that can be
     /// compiled to generate stub libraries that can be linked against, with
@@ -829,7 +829,7 @@ impl Dyld {
                 val_ptr.cast().cast_const()
             } else if name == "dyld_stub_binder" || name == "_dyld_stub_binder" {
                 // In iOS, dyld_stub_binder handles lazy symbol binding.
-                // However, RadekHLE resolves lazy symbols entirely via SVC
+                // However, touchHLE resolves lazy symbols entirely via SVC
                 // traps,
                 // bypassing the need for a guest-side binder.
                 // We create a minimal ARM32 function (BX LR) so if it's somehow
@@ -884,7 +884,7 @@ impl Dyld {
             } else if name == "___gxx_personality_sj0" {
                 // C++ SjLj exception personality routine. Called by the
                 // unwinder for every frame; returning 0 (_URC_NO_REASON)
-                // tells it "no handler here, keep going". RadekHLE never
+                // tells it "no handler here, keep going". touchHLE never
                 // actually invokes the unwinder, but other code may store
                 // this pointer in an LSDA and read it back.
                 let fn_ptr: MutPtr<u32> = mem.alloc(8).cast();
@@ -907,7 +907,7 @@ impl Dyld {
                 //      the given class — whether we start from superclass or
                 //      from (class whose super we look up) the result is
                 //      identical in practice for apps.
-                //   2. All RadekHLE-implemented classes use the `2` variant
+                //   2. All touchHLE-implemented classes use the `2` variant
                 //      internally anyway.
                 //
                 // Create a trampoline that calls our existing host
@@ -1015,7 +1015,7 @@ impl Dyld {
                 || name == "__dispatch_queue_main"
             {
                 // GCD dispatch_source_type_t / queue-attribute / data-marker
-                // pointers are opaque "type tag" identifiers; RadekHLE's
+                // pointers are opaque "type tag" identifiers; touchHLE's
                 // libdispatch implementation never inspects their contents,
                 // only their identity. A small non-NULL allocation satisfies
                 // that contract and prevents NULL-page reads when an app
@@ -1039,7 +1039,7 @@ impl Dyld {
                 // Apple libobjc (objc4) ships `objc_ehtype_vtable` as the
                 // Itanium-ABI C++ typeinfo vtable shared by every
                 // per-class `__objc_ehtype` struct used in Objective-C++
-                // `@catch (ObjCClass *)` blocks. RadekHLE's `__cxa_throw`
+                // `@catch (ObjCClass *)` blocks. touchHLE's `__cxa_throw`
                 // is a no-op (we never actually unwind), so the vtable is
                 // not consulted for type matching — but t
                 let p: MutPtr<u32> = mem.alloc(4).cast();
@@ -1047,7 +1047,7 @@ impl Dyld {
                 p.cast().cast_const()
             } else if name == "_NDR_record" {
                 // MIG `NDR_record` is a 12-byte transfer-syntax descriptor
-                // that's part of the (unused-by-RadekHLE) Mach IPC stack.
+                // that's part of the (unused-by-touchHLE) Mach IPC stack.
                 // Apps reference the symbol from auto-generated MIG stubs but
                 // never actually transmit the bytes. Provide a zero-filled
                 // slot so the linker doesn't leave a NULL pointer behind.
@@ -1730,4 +1730,3 @@ fn dyld_stub_binder(_env: &mut Environment, _arg: u32) {
 fn unimplemented_function_stub(_env: &mut Environment) -> i32 {
     0
 }
-

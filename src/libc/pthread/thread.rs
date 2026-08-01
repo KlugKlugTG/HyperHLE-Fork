@@ -195,7 +195,7 @@ pub fn pthread_attr_setstacksize(
 /// values. Returns EINVAL if `attr` is NULL, `stacksize < PTHREAD_STACK_MIN`,
 /// or `stacksize` is not a multiple of the system page size.
 ///
-/// RadekHLE creates the actual thread stack itself when the thread is
+/// touchHLE creates the actual thread stack itself when the thread is
 /// spawned (see [pthread_create]) so the supplied `stackaddr` is recorded
 /// for introspection but is not honoured as the literal allocation site —
 /// real Apple libpthread also reserves the right to ignore the addr if
@@ -225,7 +225,7 @@ pub fn pthread_attr_setstack(
 /// `int pthread_attr_setstackaddr(pthread_attr_t *attr, void *stackaddr)` —
 /// legacy POSIX function (deprecated by Apple in favour of `pthread_attr_setstack`).
 /// We accept and record the call for completeness; the actual stack is
-/// allocated by RadekHLE when the thread starts.
+/// allocated by touchHLE when the thread starts.
 pub fn pthread_attr_setstackaddr(
     env: &mut Environment,
     attr: MutPtr<pthread_attr_t>,
@@ -427,7 +427,7 @@ pub fn pthread_self(env: &mut Environment) -> pthread_t {
 pub fn pthread_exit(env: &mut Environment, retval: MutVoidPtr) {
     let current_thread = env.current_thread;
     log!(
-        "pthread_exit({:?}) on emulated thread {}; redirecting to RadekHLE thread-exit routine",
+        "pthread_exit({:?}) on emulated thread {}; redirecting to touchHLE thread-exit routine",
         retval,
         current_thread
     );
@@ -435,8 +435,8 @@ pub fn pthread_exit(env: &mut Environment, retval: MutVoidPtr) {
     // pthread_exit is noreturn from the guest's point of view.
     //
     // The old implementation parked the *host* thread forever, which makes the
-    // desktop think RadekHLE is frozen. Instead, branch to the same guest-side
-    // thread-exit SVC that RadekHLE already uses when a pthread start routine
+    // desktop think touchHLE is frozen. Instead, branch to the same guest-side
+    // thread-exit SVC that touchHLE already uses when a pthread start routine
     // returns normally.
     //
     // Note: environment::Thread::return_value is private to environment.rs.
@@ -662,7 +662,7 @@ fn pthread_setschedparam(
 // =========================================================================
 
 /// `pthread_sigmask` — change or examine the signal mask for the calling thread.
-/// In RadekHLE signals are not emulated, so this is a no-op returning success.
+/// In touchHLE signals are not emulated, so this is a no-op returning success.
 fn pthread_sigmask(
     _env: &mut Environment,
     how: i32,
@@ -811,4 +811,3 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(pthread_setname_np(_)),
     export_c_func!(pthread_threadid_np(_, _)),
 ];
-

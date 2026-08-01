@@ -17,7 +17,7 @@ use crate::objc::{
     NSZonePtr, SEL,
 };
 
-/// Belongs to _RadekHLE_NSSet
+/// Belongs to _touchHLE_NSSet
 #[derive(Debug, Default)]
 struct SetHostObject {
     dict: DictionaryHostObject,
@@ -33,7 +33,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // - (id)member:(id)object;
 // - (NSEnumerator*)objectEnumerator;
 // We can pick whichever subclass we want for the various alloc methods.
-// For the time being, that will always be _RadekHLE_NSSet.
+// For the time being, that will always be _touchHLE_NSSet.
 @implementation NSSet: NSObject
 
 + (id)allocWithZone:(NSZonePtr)zone {
@@ -41,12 +41,12 @@ pub const CLASSES: ClassExports = objc_classes! {
     // to have the normal behaviour. Unimplemented: call superclass alloc then.
     if this != env.objc.get_known_class("NSSet", &mut env.mem) {
         log!(
-            "Warning: [+ {:?} allocWithZone:{:?}] called on NSSet subclass; falling back to _RadekHLE_NSSet.",
+            "Warning: [+ {:?} allocWithZone:{:?}] called on NSSet subclass; falling back to _touchHLE_NSSet.",
             this,
             zone
         );
     }
-    msg_class![env; _RadekHLE_NSSet allocWithZone:zone]
+    msg_class![env; _touchHLE_NSSet allocWithZone:zone]
 }
 
 + (id)set {
@@ -90,11 +90,11 @@ pub const CLASSES: ClassExports = objc_classes! {
 + (id)setWithObjects:(id)first_obj, ...args {
     if this != env.objc.get_known_class("NSSet", &mut env.mem) {
         log!(
-            "Warning: +[{:?} setWithObjects:...] called on NSSet subclass; falling back to _RadekHLE_NSSet.",
+            "Warning: +[{:?} setWithObjects:...] called on NSSet subclass; falling back to _touchHLE_NSSet.",
             this
         );
     }
-    let new: id = msg_class![env; _RadekHLE_NSSet alloc];
+    let new: id = msg_class![env; _touchHLE_NSSet alloc];
     env.objc.borrow_mut::<SetHostObject>(new).dict = set_from_objects(env, first_obj, args);
     autorelease(env, new)
 }
@@ -103,7 +103,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // from a given C array of objects."
 // https://developer.apple.com/documentation/foundation/nsset/1574811-setwithobjects
 + (id)setWithObjects:(ConstPtr<id>)objects count:(NSUInteger)count {
-    let new: id = msg_class![env; _RadekHLE_NSSet alloc];
+    let new: id = msg_class![env; _touchHLE_NSSet alloc];
     let new: id = msg![env; new initWithObjects:objects count:count];
     autorelease(env, new)
 }
@@ -175,23 +175,23 @@ pub const CLASSES: ClassExports = objc_classes! {
     // to have the normal behaviour. Unimplemented: call superclass alloc then.
     if this != env.objc.get_known_class("NSMutableSet", &mut env.mem) {
         log!(
-            "Warning: [+ {:?} allocWithZone:{:?}] called on NSMutableSet subclass; falling back to _RadekHLE_NSMutableSet.",
+            "Warning: [+ {:?} allocWithZone:{:?}] called on NSMutableSet subclass; falling back to _touchHLE_NSMutableSet.",
             this,
             zone
         );
     }
-    msg_class![env; _RadekHLE_NSMutableSet allocWithZone:zone]
+    msg_class![env; _touchHLE_NSMutableSet allocWithZone:zone]
 }
 
 + (id)setWithCapacity:(NSUInteger)numItems {
     if this != env.objc.get_known_class("NSMutableSet", &mut env.mem) {
         log!(
-            "Warning: +[{:?} setWithCapacity:{}] called on NSMutableSet subclass; falling back to _RadekHLE_NSMutableSet.",
+            "Warning: +[{:?} setWithCapacity:{}] called on NSMutableSet subclass; falling back to _touchHLE_NSMutableSet.",
             this,
             numItems
         );
     }
-    let new: id = msg_class![env; _RadekHLE_NSMutableSet alloc];
+    let new: id = msg_class![env; _touchHLE_NSMutableSet alloc];
     let new: id = msg![env; new initWithCapacity:numItems];
     autorelease(env, new)
 }
@@ -199,17 +199,17 @@ pub const CLASSES: ClassExports = objc_classes! {
 + (id)setWithObjects:(id)first_obj, ...args {
     if this != env.objc.get_known_class("NSMutableSet", &mut env.mem) {
         log!(
-            "Warning: +[{:?} setWithObjects:...] called on NSMutableSet subclass; falling back to _RadekHLE_NSMutableSet.",
+            "Warning: +[{:?} setWithObjects:...] called on NSMutableSet subclass; falling back to _touchHLE_NSMutableSet.",
             this
         );
     }
-    let new: id = msg_class![env; _RadekHLE_NSMutableSet alloc];
+    let new: id = msg_class![env; _touchHLE_NSMutableSet alloc];
     env.objc.borrow_mut::<SetHostObject>(new).dict = set_from_objects(env, first_obj, args);
     autorelease(env, new)
 }
 
 + (id)setWithObjects:(ConstPtr<id>)objects count:(NSUInteger)count {
-    let new: id = msg_class![env; _RadekHLE_NSMutableSet alloc];
+    let new: id = msg_class![env; _touchHLE_NSMutableSet alloc];
     let new: id = msg![env; new initWithObjects:objects count:count];
     autorelease(env, new)
 }
@@ -228,7 +228,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // Our private subclass that is the single implementation of NSSet for the
 // time being.
-@implementation _RadekHLE_NSSet: NSSet
+@implementation _touchHLE_NSSet: NSSet
 
 + (id)allocWithZone:(NSZonePtr)_zone {
     let host_object = Box::new(SetHostObject {
@@ -339,7 +339,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // Our private subclass that is the single implementation of NSMutableSet for
 // the time being.
-@implementation _RadekHLE_NSMutableSet: NSMutableSet
+@implementation _touchHLE_NSMutableSet: NSMutableSet
 
 + (id)allocWithZone:(NSZonePtr)_zone {
     let host_object = Box::new(SetHostObject {
@@ -551,7 +551,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // that is not already a member." (NSMutableSet addObjectsFromArray:).
 // https://developer.apple.com/documentation/foundation/nsmutableset/1408015-addobjectsfromarray
 //
-// We tolerate `nil` (real Foundation crashes, but every other RadekHLE
+// We tolerate `nil` (real Foundation crashes, but every other touchHLE
 // container path tolerates nil to keep flaky games alive), and use indexed
 // access rather than fast enumeration because some guest array
 // implementations don't implement -objectEnumerator yet.
@@ -572,8 +572,8 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 };
 
-/// Helper method shared between `initWithObjects:` of `_RadekHLE_NSSet` and
-/// `_RadekHLE_NSMutableSet`
+/// Helper method shared between `initWithObjects:` of `_touchHLE_NSSet` and
+/// `_touchHLE_NSMutableSet`
 fn set_from_objects(env: &mut Environment, first_obj: id, args: DotDotDot) -> DictionaryHostObject {
     let null: id = msg_class![env; NSNull null];
 
@@ -590,8 +590,8 @@ fn set_from_objects(env: &mut Environment, first_obj: id, args: DotDotDot) -> Di
     dict
 }
 
-/// Helper method shared between `initWithArray:` of `_RadekHLE_NSSet` and
-/// `_RadekHLE_NSMutableSet`. Iterates the given array (which may be `nil`)
+/// Helper method shared between `initWithArray:` of `_touchHLE_NSSet` and
+/// `_touchHLE_NSMutableSet`. Iterates the given array (which may be `nil`)
 /// and inserts each object into a fresh dictionary, mirroring the semantics
 /// of `-[NSSet initWithArray:]` documented by Apple.
 fn set_from_array(env: &mut Environment, array: id) -> DictionaryHostObject {
@@ -684,4 +684,3 @@ fn set_member(env: &mut Environment, this: id, object: id) -> id {
     }
     nil
 }
-

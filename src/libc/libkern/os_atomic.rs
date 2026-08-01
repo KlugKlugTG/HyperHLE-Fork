@@ -7,7 +7,7 @@
 //!
 //! Atomic operations.
 //!
-//! RadekHLE is a single-host-thread application, so host functions cannot be
+//! touchHLE is a single-host-thread application, so host functions cannot be
 //! interrupted by other threads. All operations are therefore trivially atomic.
 
 use crate::dyld::FunctionExports;
@@ -387,4 +387,3 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(OSSpinLockUnlock(_)),
     export_c_func!(OSSpinLockTry(_)),
 ];
-

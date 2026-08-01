@@ -525,7 +525,7 @@ const KV_IMAGE_INVALID_PARAMETER: i32 = -21767;
 /// "universal" pixel-format converter. See
 /// <https://developer.apple.com/documentation/accelerate/1533487-vimageconvert_anytoany>.
 ///
-/// RadekHLE does not implement `vImageConverter_CreateWithCGImageFormat`
+/// touchHLE does not implement `vImageConverter_CreateWithCGImageFormat`
 /// (the factory that produces non-null converter refs), so any call here
 /// arrives with `converter == NULL`. Apple's documentation says this is
 /// `kvImageNullPointerArgument` (-21772) and apps that build vImage
@@ -1098,4 +1098,3 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(cblas_scopy(_, _, _, _, _)),
     export_c_func!(cblas_sgemv(_, _, _, _, _, _, _, _, _, _, _, _)),
 ];
-

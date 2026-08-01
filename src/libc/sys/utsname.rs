@@ -35,7 +35,7 @@ fn uname(env: &mut Environment, name: MutPtr<utsname>) -> i32 {
     let sysname = b"Darwin\0";
     uts_name.sysname[..sysname.len()].copy_from_slice(sysname);
     // Same as sysctlbyname 'kern.hostname'
-    let nodename = b"RadekHLE\0";
+    let nodename = b"touchHLE\0";
     uts_name.nodename[..nodename.len()].copy_from_slice(nodename);
     // Same as sysctlbyname 'kern.osrelease'
     let release = b"13.0.0\0";
@@ -54,4 +54,3 @@ fn uname(env: &mut Environment, name: MutPtr<utsname>) -> i32 {
 }
 
 pub const FUNCTIONS: FunctionExports = &[export_c_func!(uname(_))];
-

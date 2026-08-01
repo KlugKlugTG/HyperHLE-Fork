@@ -64,7 +64,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 (env, this, _cmd);
 
-@implementation _RadekHLE_CGFont: NSObject
+@implementation _touchHLE_CGFont: NSObject
 @end
 
 };
@@ -75,7 +75,7 @@ pub fn is_data_provider_font(env: &mut Environment, font: CGFontRef) -> bool {
     if font.is_null() {
         return false;
     }
-    let class = env.objc.get_known_class("_RadekHLE_CGFont", &mut env.mem);
+    let class = env.objc.get_known_class("_touchHLE_CGFont", &mut env.mem);
     let obj_class = ObjC::read_isa(font, &env.mem);
     obj_class == class || env.objc.class_is_subclass_of(obj_class, class)
 }
@@ -168,7 +168,7 @@ fn CGFontCreateWithDataProvider(
         }
     };
     let host_obj = Box::new(CGFontHostObject { font });
-    let class = env.objc.get_known_class("_RadekHLE_CGFont", &mut env.mem);
+    let class = env.objc.get_known_class("_touchHLE_CGFont", &mut env.mem);
     env.objc.alloc_object(class, host_obj, &mut env.mem)
 }
 
@@ -931,7 +931,7 @@ fn CGFontCreateWithPlatformFont(
 ///
 /// Returns the Core Foundation type identifier for CGFont objects.
 fn CGFontGetTypeID(env: &mut Environment) -> u32 {
-    let class = env.objc.get_known_class("_RadekHLE_CGFont", &mut env.mem);
+    let class = env.objc.get_known_class("_touchHLE_CGFont", &mut env.mem);
     class.to_bits()
 }
 
@@ -983,4 +983,3 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CGFontCopyVariationAxes(_)),
     export_c_func!(CGFontCopyVariations(_)),
 ];
-

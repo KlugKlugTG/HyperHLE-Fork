@@ -9,7 +9,7 @@ from bot.request import (
 )
 from bot.sanitize import GITHUB_MAX_ISSUE_BODY, TELEGRAM_MAX_MESSAGE
 
-REAL_HEADER = "RadekHLE UNOFFICIAL 8d65eca — https://RadekHLE.org/"
+REAL_HEADER = "touchHLE UNOFFICIAL 8d65eca — https://touchhle.org/"
 
 
 def _basic_request(**overrides):
@@ -23,7 +23,7 @@ def _basic_request(**overrides):
 
 def test_has_log_header():
     assert has_log_header(REAL_HEADER)
-    assert has_log_header("RadekHLE v1.0.2 — https://RadekHLE.org/")
+    assert has_log_header("HyperHLE v1.0.2 — https://touchhle.org/")
     assert not has_log_header("just some text without a header")
     assert not has_log_header("")
 
@@ -98,4 +98,3 @@ def test_forward_text_truncates_long_bug():
 def test_extract_links_method_dedupes():
     req = FixRequest()
     assert req.extract_links("a http://x/y.ipa http://x/y.ipa b") == ["http://x/y.ipa"]
-

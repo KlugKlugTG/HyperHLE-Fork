@@ -6,7 +6,7 @@
 //! AVFoundation video playback classes: `AVAsset` / `AVURLAsset`,
 //! `AVPlayerItem`, `AVPlayer` and `AVPlayerLayer`.
 //!
-//! RadekHLE has no real video pipeline yet. Several games (e.g. Zynga's
+//! touchHLE has no real video pipeline yet. Several games (e.g. Zynga's
 //! *Horn*) build an intro / cut-scene player out of these classes during
 //! launch and dereference the returned objects unconditionally — if the
 //! classes are missing, the very first `+[AVURLAsset URLAssetWithURL:options:]`
@@ -341,4 +341,3 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
-

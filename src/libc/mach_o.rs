@@ -152,7 +152,7 @@ fn _dyld_get_image_name(env: &mut Environment, image_index: u32) -> ConstPtr<u8>
 }
 
 /// `intptr_t _dyld_get_image_vmaddr_slide(uint32_t image_index)`
-/// Returns the virtual memory address slide for the image. Since RadekHLE
+/// Returns the virtual memory address slide for the image. Since touchHLE
 /// loads binaries at their preferred addresses (slide=0 for the main app),
 /// we return 0. Dylibs might have a slide but in practice iOS games don't
 /// query this for anything critical.
@@ -161,7 +161,7 @@ fn _dyld_get_image_vmaddr_slide(env: &mut Environment, image_index: u32) -> u32 
     if idx >= env.bins.len() {
         return 0;
     }
-    // For the main binary (index 0) the slide is always 0 in RadekHLE.
+    // For the main binary (index 0) the slide is always 0 in touchHLE.
     // For dylibs we don't track the slide separately, return 0.
     0
 }
@@ -176,12 +176,12 @@ fn _dyld_get_image_vmaddr_slide(env: &mut Environment, image_index: u32) -> u32 
 /// > function is first called, it is called once for each image that
 /// > is currently part of the program.
 ///
-/// RadekHLE finishes loading every binary and dylib before guest code
+/// touchHLE finishes loading every binary and dylib before guest code
 /// starts executing, and we do not support dynamic image load / unload
 /// at runtime, so the documented contract collapses to: "invoke the
 /// callback exactly once for every already-loaded image". We honour
 /// that here. Each call passes the image's mach_header pointer and a
-/// `vmaddr_slide` of 0 (RadekHLE loads binaries at their preferred
+/// `vmaddr_slide` of 0 (touchHLE loads binaries at their preferred
 /// addresses).
 fn _dyld_register_func_for_add_image(env: &mut Environment, func: GuestFunction) {
     if func.to_ptr().is_null() {
@@ -212,13 +212,13 @@ fn _dyld_register_func_for_add_image(env: &mut Environment, func: GuestFunction)
 /// > are called after any terminators in an image are run and before
 /// > the image is un-memory-mapped.
 ///
-/// RadekHLE never unloads images — `dlclose` is a no-op in our runtime
+/// touchHLE never unloads images — `dlclose` is a no-op in our runtime
 /// — so the callback would never fire. We accept the registration so
 /// that calling code does not treat the call as a failure, but the
 /// callback is intentionally never invoked.
 fn _dyld_register_func_for_remove_image(_env: &mut Environment, func: GuestFunction) {
     log_dbg!(
-        "_dyld_register_func_for_remove_image({:?}): accepted; image removal never fires in RadekHLE",
+        "_dyld_register_func_for_remove_image({:?}): accepted; image removal never fires in touchHLE",
         func
     );
 }
@@ -526,7 +526,7 @@ const NX_ARCH_INFOS: &[NXArchInfoEntry] = &[
         byteorder: NX_BIG_ENDIAN,
         description: "PowerPC 970 64-bit",
     },
-    // ARM family — the one RadekHLE actually emulates.
+    // ARM family — the one touchHLE actually emulates.
     NXArchInfoEntry {
         name: "arm",
         cputype: CPU_TYPE_ARM,
@@ -803,7 +803,7 @@ fn NXGetArchInfoFromName(env: &mut Environment, name: ConstPtr<u8>) -> ConstPtr<
 
 /// `const NXArchInfo *NXGetLocalArchInfo(void);`
 ///
-/// RadekHLE emulates an ARMv7 CPU, so we return the `armv7` entry.
+/// touchHLE emulates an ARMv7 CPU, so we return the `armv7` entry.
 fn NXGetLocalArchInfo(env: &mut Environment) -> ConstPtr<NXArchInfoGuest> {
     NXGetArchInfoFromCpuType(env, CPU_TYPE_ARM, CPU_SUBTYPE_ARM_V7)
 }
@@ -864,4 +864,3 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(NXGetLocalArchInfo()),
     export_c_func!(NXGetAllArchInfos()),
 ];
-

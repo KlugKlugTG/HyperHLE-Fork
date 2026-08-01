@@ -23,7 +23,7 @@
 //! Directories only need a corresponding directory in the host filesystem if
 //! they are writeable (i.e. if new files can be created in them).
 //!
-//! See also [crate::paths], which has paths for host files used by RadekHLE.
+//! See also [crate::paths], which has paths for host files used by touchHLE.
 
 mod bundle;
 
@@ -46,7 +46,7 @@ enum FileLocation {
     Path(PathBuf),
     /// Reference to a file inside a `.ipa` file (ZIP archive). Read only.
     IpaFileRef(IpaFileRef),
-    /// Name of a resource file bundled with RadekHLE. Read only.
+    /// Name of a resource file bundled with touchHLE. Read only.
     ResourceFilePath(String),
 }
 
@@ -202,7 +202,7 @@ impl GuestPath {
     /// It's easier to just use `&str`.
     ///
     /// Warning!
-    /// This function should only be used for internal RadekHLE
+    /// This function should only be used for internal touchHLE
     /// purposes.
     /// For Foundation case, use `[NSString stringByAppendingPathComponent:]`
     pub fn join<P: AsRef<str>>(&self, path: P) -> GuestPathBuf {
@@ -421,7 +421,7 @@ fn handle_open_err<T, E: std::fmt::Display, P: std::fmt::Debug>(
 ) -> T {
     match open_result {
         Ok(ok) => ok,
-        Err(e) => panic!("Unexpected I/O failure when trying to access real path {host_path:?}: {e}. This might indicate that files needed by RadekHLE are missing, or were moved while it was running."),
+        Err(e) => panic!("Unexpected I/O failure when trying to access real path {host_path:?}: {e}. This might indicate that files needed by touchHLE are missing, or were moved while it was running."),
     }
 }
 
@@ -701,7 +701,7 @@ impl Fs {
             }
         }
 
-        // Some Free Software libraries are bundled with RadekHLE.
+        // Some Free Software libraries are bundled with touchHLE.
         use paths::DYLIBS_DIR;
         let usr_lib = FsNode::dir()
             .with_child(
@@ -1509,4 +1509,3 @@ impl Fs {
         Ok(())
     }
 }
-

@@ -1,18 +1,18 @@
 name: Request a fix for a specific game / app
-description: Use this form to request that a specific game or app be fixed in this fork of RadekHLE.
+description: Use this form to request that a specific game or app be fixed in this fork of touchHLE.
 labels: ["game fix request"]
 body:
   - type: markdown
     attributes:
       value: |
         Use this form to request a fix for a specific game or app in this fork of
-        RadekHLE. Unlike upstream, this fork accepts requests to investigate and
+        touchHLE. Unlike upstream, this fork accepts requests to investigate and
         fix specific games (for example: Angry Birds, MM Park, etc.).
 
         Before opening a request, please:
-        - Check the [app compatibility database](https://appdb.RadekHLE.org/) to
+        - Check the [app compatibility database](https://appdb.touchhle.org/) to
           see if the app is already known to work or is being tracked.
-        - Search [existing issues](https://github.com/j92580498-max/RadekHLE/issues)
+        - Search [existing issues](https://github.com/j92580498-max/touchHLE/issues)
           to avoid duplicates.
 
         Filling out as many fields as possible (logs, version, OS) makes it much
@@ -33,13 +33,13 @@ body:
   - type: input
     attributes:
       label: App DB report link (if available)
-      description: Link to the app's entry in the RadekHLE compatibility database, if one exists.
-      placeholder: https://appdb.RadekHLE.org/apps/1
+      description: Link to the app's entry in the touchHLE compatibility database, if one exists.
+      placeholder: https://appdb.touchhle.org/apps/1
     validations:
       required: false
   - type: input
     attributes:
-      label: RadekHLE version (this fork)
+      label: touchHLE version (this fork)
       description: The version or commit hash of this fork that you tested.
       placeholder: 'v0.2.2 / commit abcdef0'
     validations:
@@ -81,7 +81,7 @@ body:
       description: |
         On Android, this is the `log.txt` file. On Windows / macOS / Linux, this
         is the output visible in the Terminal / Command Prompt / PowerShell that
-        ran RadekHLE. Please paste as much as possible, especially around the
+        ran touchHLE. Please paste as much as possible, especially around the
         moment the bug occurs.
       render: 'text'
     validations:
@@ -106,4 +106,3 @@ body:
           required: true
         - label: I understand that fixes are best-effort and there is no guarantee that this specific app will be made to work.
           required: true
-

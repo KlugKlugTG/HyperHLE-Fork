@@ -693,7 +693,7 @@ fn mbsrtowcs(
 ///
 /// Per Apple's `mbsrtowcs_l(3)` man page (iPhoneOS man pages), identical to
 /// `mbsrtowcs()` except the conversion uses the supplied extended locale.
-/// RadekHLE only models the "C" locale, so the locale argument is ignored.
+/// touchHLE only models the "C" locale, so the locale argument is ignored.
 /// This symbol is imported by libstdc++/libc++ (`std::codecvt`), which guest
 /// C++ code hits when widening narrow strings.
 fn mbsrtowcs_l(
@@ -772,4 +772,3 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(mbsrtowcs(_, _, _, _)),
     export_c_func!(mbsrtowcs_l(_, _, _, _, _)),
 ];
-

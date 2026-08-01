@@ -77,7 +77,7 @@ pub const ADDRESS_BOOK_UI: super::HostDylib = super::HostDylib {
 
 // Social — exposes the `SLServiceType*` string identifiers plus a real
 // `SLComposeViewController` whose `+isAvailableForServiceType:` always
-// returns `NO` (RadekHLE has no Accounts framework, so per Apple's docs
+// returns `NO` (touchHLE has no Accounts framework, so per Apple's docs
 // every service is genuinely unavailable).
 pub const SOCIAL: super::HostDylib = super::HostDylib {
     path: "/System/Library/Frameworks/Social.framework/Social",
@@ -97,7 +97,7 @@ pub const TWITTER: super::HostDylib = super::HostDylib {
     function_exports: &[],
 };
 
-// CoreTelephony — RadekHLE has no cellular radio, but we expose real
+// CoreTelephony — touchHLE has no cellular radio, but we expose real
 // `CTTelephonyNetworkInfo` / `CTCarrier` classes plus the
 // `CTRadioAccessTechnology*` string constants and the
 // `CTRadioAccessTechnologyDidChangeNotification` notification name so apps
@@ -329,4 +329,3 @@ mod tests {
         }
     }
 }
-

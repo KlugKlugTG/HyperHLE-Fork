@@ -23,7 +23,7 @@
 //! [[NSRunLoop currentRunLoop] addPort:[NSMachPort port] forMode:NSDefaultRunLoopMode];
 //! ```
 //!
-//! RadekHLE has no Mach kernel, so there is no real Mach port to wrap.
+//! touchHLE has no Mach kernel, so there is no real Mach port to wrap.
 //! What apps actually rely on is:
 //! - `+port`/`+new`/`alloc`+`init` returning a real, retainable object
 //!   (previously this returned nil, and `[NSMachPort new]` logged
@@ -138,7 +138,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     env.objc.borrow_mut::<NSMachPortHostObject>(this).delegate = delegate;
 }
 
-// Run-loop scheduling. RadekHLE's run loop has no port-message sources;
+// Run-loop scheduling. touchHLE's run loop has no port-message sources;
 // these only need to be safely callable. The retain/release pair mirrors
 // the ownership the real run loop would take on the scheduled port.
 - (())scheduleInRunLoop:(id)_run_loop forMode:(id)_mode {
@@ -174,4 +174,3 @@ pub fn release_port(env: &mut crate::Environment, port: id) {
         release(env, port);
     }
 }
-

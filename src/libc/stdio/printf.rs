@@ -968,7 +968,7 @@ fn __vsnprintf_chk(
 /// app is built with hardening. `strlen` is the compiler-known size of the
 /// destination buffer; `maxlen` is the user-supplied `n` parameter. The
 /// real runtime aborts the process with `__chk_fail()` when `maxlen >
-/// strlen`. For RadekHLE we log loudly and clamp `maxlen` so we don't take
+/// strlen`. For touchHLE we log loudly and clamp `maxlen` so we don't take
 /// down the host process, then delegate to the underlying `vsnprintf`.
 fn __snprintf_chk(
     env: &mut Environment,
@@ -1051,7 +1051,7 @@ fn __sprintf_chk(
     sprintf(env, dest, format, args)
 }
 
-// Locale-aware printf variants from `xlocale.h`. RadekHLE only supports a
+// Locale-aware printf variants from `xlocale.h`. touchHLE only supports a
 // single (C / system default) locale, so we ignore the `locale_t` argument
 // and dispatch to the locale-less implementation.
 
@@ -2173,4 +2173,3 @@ pub fn isspace_inner(c: u8) -> bool {
     // Rust's definition of whitespace excludes vertical tab, unlike C's
     c.is_ascii_whitespace() || c == b'\x0b'
 }
-

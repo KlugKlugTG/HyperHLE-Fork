@@ -7,11 +7,11 @@
 version = "0.2.3"
 edition = "2021"
 license = "MPL-2.0"
-authors = ["RadekHLE project contributors"]
-homepage = "https://RadekHLE.org/"
+authors = ["touchHLE project contributors"]
+homepage = "https://touchhle.org/"
 
 [package]
-name = "RadekHLE"
+name = "touchHLE"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
@@ -23,7 +23,7 @@ homepage = { workspace = true }
 crate-type = ["cdylib", "rlib"]
 
 [[bin]]
-name = "RadekHLE"
+name = "touchHLE"
 path = "src/bin.rs"
 
 [features]
@@ -31,8 +31,8 @@ default = ["static"]
 static = [
     "sdl2/bundled",
     "sdl2/static-link",
-    "RadekHLE_openal_soft_wrapper/static",
-    "RadekHLE_libxml2_wrapper/static",
+    "touchHLE_openal_soft_wrapper/static",
+    "touchHLE_libxml2_wrapper/static",
 ]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -69,18 +69,18 @@ encoding_rs = "0.8.35"
 # We currently use a fork of rust-sdl2 because we need a fix for Android builds
 # that's not upstream yet.
 # The HIDAPI feature is enabled because rust-sdl2 hides the SDL2 sensor features
-# behind this, but the actual HIDAPI is not used by RadekHLE (see window.rs).
+# behind this, but the actual HIDAPI is not used by touchHLE (see window.rs).
 # Note that the submodule in vendor/SDL2/ must use exactly the same revision of
 # SDL2 that rust-sdl2 uses, so that the Android JNI interface matches.
-sdl2 = { git = "https://github.com/RadekHLE/rust-sdl2", tag = "RadekHLE-3", features = ["hidapi"] }
-sdl2-sys = { git = "https://github.com/RadekHLE/rust-sdl2", tag = "RadekHLE-3" }
-RadekHLE_dynarmic_wrapper = { path = "src/cpu/dynarmic_wrapper" }
-RadekHLE_gl_bindings = { path = "src/gles/gl_bindings" }
-RadekHLE_libxml2_wrapper = { path = "src/frameworks/libxml2_wrapper" }
-RadekHLE_openal_soft_wrapper = { path = "src/audio/openal_soft_wrapper" }
-RadekHLE_pvrt_decompress_wrapper = { path = "src/image/pvrt_decompress_wrapper" }
-RadekHLE_stb_image_wrapper = { path = "src/image/stb_image_wrapper" }
-RadekHLE_version = { path = "src/version" }
+sdl2 = { git = "https://github.com/touchHLE/rust-sdl2", tag = "touchHLE-3", features = ["hidapi"] }
+sdl2-sys = { git = "https://github.com/touchHLE/rust-sdl2", tag = "touchHLE-3" }
+touchHLE_dynarmic_wrapper = { path = "src/cpu/dynarmic_wrapper" }
+touchHLE_gl_bindings = { path = "src/gles/gl_bindings" }
+touchHLE_libxml2_wrapper = { path = "src/frameworks/libxml2_wrapper" }
+touchHLE_openal_soft_wrapper = { path = "src/audio/openal_soft_wrapper" }
+touchHLE_pvrt_decompress_wrapper = { path = "src/image/pvrt_decompress_wrapper" }
+touchHLE_stb_image_wrapper = { path = "src/image/stb_image_wrapper" }
+touchHLE_version = { path = "src/version" }
 windows-sys = { version = "0.61.0", features = [
     "Win32_Foundation",
     "Win32_System_Memory",
@@ -108,4 +108,3 @@ gl_generator = { workspace = true }
 opt-level = 3
 codegen-units = 1
 lto = "thin"
-

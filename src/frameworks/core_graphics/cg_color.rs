@@ -25,7 +25,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // CGColor seems to be a CFType-based type, but in our implementation
 // those are just Objective-C types, so we need a class for it, but its name is
 // not visible anywhere.
-@implementation _RadekHLE_CGColor: NSObject
+@implementation _touchHLE_CGColor: NSObject
 @end
 
 };
@@ -415,7 +415,7 @@ pub fn from_rgba(env: &mut Environment, rgba: (CGFloat, CGFloat, CGFloat, CGFloa
         b,
         a,
     });
-    let class = env.objc.get_known_class("_RadekHLE_CGColor", &mut env.mem);
+    let class = env.objc.get_known_class("_touchHLE_CGColor", &mut env.mem);
     env.objc.alloc_object(class, host_obj, &mut env.mem)
 }
 
@@ -432,4 +432,3 @@ pub fn to_rgba(objc: &ObjC, color: CGColorRef) -> (CGFloat, CGFloat, CGFloat, CG
     assert_eq!(color_space_name, kCGColorSpaceGenericRGB);
     (r, g, b, a)
 }
-

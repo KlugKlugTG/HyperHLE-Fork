@@ -1301,7 +1301,7 @@ fn CCHmac(
 // =========================================================================
 // MARK: - Security framework stubs (Keychain Services)
 // =========================================================================
-// These are no-ops — RadekHLE has no keychain. Apps that use keychain
+// These are no-ops — touchHLE has no keychain. Apps that use keychain
 // for license checks or settings will gracefully handle errSecItemNotFound.
 
 // OSStatus error codes
@@ -2132,4 +2132,3 @@ mod des_tests {
         assert_eq!(roundtrip, plaintext, "DES decrypt round-trip failed");
     }
 }
-

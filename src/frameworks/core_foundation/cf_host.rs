@@ -41,7 +41,7 @@
 //! which is indistinguishable from an asynchronous resolution that
 //! completed before the caller returned. Apple documents the callout as
 //! running on the scheduled run loop once resolution finishes, and this
-//! keeps the RadekHLE runtime single-threaded and simple.
+//! keeps the touchHLE runtime single-threaded and simple.
 
 use crate::abi::{CallFromHost, GuestFunction};
 use crate::dyld::{export_c_func, FunctionExports};
@@ -148,7 +148,7 @@ impl HostObject for CFHostHostObject {}
 pub const CLASSES: ClassExports = objc_classes! {
 (env, this, _cmd);
 
-@implementation _RadekHLE_CFHost: NSObject
+@implementation _touchHLE_CFHost: NSObject
 - (())dealloc {
     // Release the client context info if the caller gave us a release
     // callback, and unretain any run loops we retained in
@@ -188,7 +188,7 @@ fn alloc_cfhost(
     name: Option<String>,
     address: Option<SocketAddrV4>,
 ) -> CFHostRef {
-    let class = env.objc.get_known_class("_RadekHLE_CFHost", &mut env.mem);
+    let class = env.objc.get_known_class("_touchHLE_CFHost", &mut env.mem);
     env.objc.alloc_object(
         class,
         Box::new(CFHostHostObject {
@@ -232,7 +232,7 @@ pub fn CFHostRelease(env: &mut Environment, host: CFHostRef) {
 }
 
 pub fn CFHostGetTypeID(env: &mut Environment) -> CFTypeID {
-    let class: Class = env.objc.get_known_class("_RadekHLE_CFHost", &mut env.mem);
+    let class: Class = env.objc.get_known_class("_touchHLE_CFHost", &mut env.mem);
     class.to_bits() as CFTypeID
 }
 
@@ -478,7 +478,7 @@ fn start_addresses(env: &mut Environment, host: CFHostRef, error: MutPtr<CFStrea
 }
 
 fn start_names(env: &mut Environment, host: CFHostRef, _error: MutPtr<CFStreamError>) -> bool {
-    // Reverse DNS is rarely useful for RadekHLE; report the name we were
+    // Reverse DNS is rarely useful for touchHLE; report the name we were
     // created with, if any, so callers that inspect names don't see nil.
     let (name_opt, addr_opt) = {
         let h = env.objc.borrow::<CFHostHostObject>(host);
@@ -831,4 +831,3 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CFHostIsInfoResolved(_, _)),
     export_c_func!(CFHostGetTypeID()),
 ];
-

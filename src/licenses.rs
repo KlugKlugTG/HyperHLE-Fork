@@ -6,7 +6,7 @@
 //! Prints copyright, authorship and license information.
 
 const MAIN_COPYRIGHT: &str = "
-RadekHLE © 2023–2026 RadekHLE project contributors.
+touchHLE © 2023–2026 touchHLE project contributors.
 ";
 
 const MAIN_LICENSE: &str = "
@@ -24,17 +24,17 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ";
 
-// See android/app/src/main/java/org/RadekHLE/android/DocumentsProvider.kt
+// See android/app/src/main/java/org/touchhle/android/DocumentsProvider.kt
 #[cfg(target_os = "android")]
 const SKYLINE: &str = "
-RadekHLE for Android incorporates code originally from the Skyline emulator
+touchHLE for Android incorporates code originally from the Skyline emulator
 project, licensed under MPL-2.0:
 
 Copyright © 2022 Skyline Team and Contributors (https://github.com/skyline-emu/)
 ";
 
 const RUST_DESCRIPTION: &str = "
-RadekHLE, and therefore this executable, incorporates the following Rust
+touchHLE, and therefore this executable, incorporates the following Rust
 libraries, which are copyright their respective authors and other contributors,
 and licensed as follows:
 ";
@@ -44,7 +44,7 @@ and licensed as follows:
 const RUST_DEPENDENCIES: &str = include_str!(concat!(env!("OUT_DIR"), "/rust_dependencies.txt"));
 
 const DYNARMIC_DESCRIPTION: &str = "
-RadekHLE, and therefore this executable, incorporates the library Dynarmic:
+touchHLE, and therefore this executable, incorporates the library Dynarmic:
 ";
 
 /// Copyright, authorship and license information for Dynarmic. See `build.rs`
@@ -52,7 +52,7 @@ RadekHLE, and therefore this executable, incorporates the library Dynarmic:
 const DYNARMIC_LICENSE: &str = include_str!(concat!(env!("OUT_DIR"), "/dynarmic_license.txt"));
 
 const DYNARMIC_BOOST_DESCRIPTION: &str = "
-Dynarmic, and therefore RadekHLE, and therefore this executable, incorporates
+Dynarmic, and therefore touchHLE, and therefore this executable, incorporates
 the library Boost, which is available under the following license:
 ";
 
@@ -83,7 +83,7 @@ DEALINGS IN THE SOFTWARE.
 ";
 
 const SDL2_DESCRIPTION: &str = "
-RadekHLE, and therefore this executable, incorporates the library SDL 2, which
+touchHLE, and therefore this executable, incorporates the library SDL 2, which
 is available under the following license:
 ";
 
@@ -106,19 +106,19 @@ freely, subject to the following restrictions:
 ";
 
 const OPENAL_SOFT: &str = "
-RadekHLE, and therefore this executable, incorporates the library OpenAL Soft,
+touchHLE, and therefore this executable, incorporates the library OpenAL Soft,
 which is available under the terms of the GNU Library Public License version 2
 or any later version.
 ";
 
 const STB_IMAGE: &str = "
-RadekHLE, and therefore this executable, incorporates the library stb_image,
+touchHLE, and therefore this executable, incorporates the library stb_image,
 which is available either as Public Domain or under the terms of the MIT
 license.
 ";
 
 const PVRTD_DESCRIPTION: &str = "
-RadekHLE, and therefore this executable, incorporates PVRTC decompression code
+touchHLE, and therefore this executable, incorporates PVRTC decompression code
 from the PowerVR SDK, which is available under the following license:
 ";
 
@@ -127,46 +127,46 @@ const PVRTD_LICENSE: &str = include_str!(concat!(
     "/vendor/PVRTDecompress/LICENSE.md"
 ));
 
-// When resource files are bundled with RadekHLE in such a way that the user can
+// When resource files are bundled with touchHLE in such a way that the user can
 // read their license files directly, use this caveat.
 
 const EXTERNAL_FILES_CAVEAT: &str = "
 The following authorship, copyright and license information relates to this
-RadekHLE executable. Please note that different licensing terms apply to source
-files and to the bundled dynamic libraries (in RadekHLE_dylibs/) and fonts (in
-RadekHLE_fonts/). Please consult the respective files/directories for more
+touchHLE executable. Please note that different licensing terms apply to source
+files and to the bundled dynamic libraries (in touchHLE_dylibs/) and fonts (in
+touchHLE_fonts/). Please consult the respective files/directories for more
 information.
 ";
 
-// When resource files are bundled with RadekHLE in such a way that only
-// RadekHLE can read the license file, use these notices.
+// When resource files are bundled with touchHLE in such a way that only
+// touchHLE can read the license file, use these notices.
 
 // Apple is mentioned because the GPLv2 allows repeating the original source
 // code offer when non-commercially redistributing binaries.
 const INTERNAL_FSF_DYLIBS_DESCRIPTION: &str = "
-This distribution of RadekHLE includes binaries for the libgcc and libstdc++
+This distribution of touchHLE includes binaries for the libgcc and libstdc++
 libraries from the Free Software Foundation, as originally distributed by Apple:
 ";
 
 const INTERNAL_ZLIB_DYLIB_DESCRIPTION: &str = "
-This distribution of RadekHLE includes binaries for zlib (libz), available under
+This distribution of touchHLE includes binaries for zlib (libz), available under
 the following license:
 ";
 
 // We have a COPYING file for SQLite, but as the main source and resulting
 // binary are simply Public Domain, we can save some space here.
 const INTERNAL_SQLITE3_DYLIB_DESCRIPTION: &str = "
-This distribution of RadekHLE includes binaries for SQLite (libsqlite3),
+This distribution of touchHLE includes binaries for SQLite (libsqlite3),
 available under Public Domain.
 ";
 
 const INTERNAL_LIBERATION_FONTS_DESCRIPTION: &str = "
-This distribution of RadekHLE includes Liberation Sans fonts, available under
+This distribution of touchHLE includes Liberation Sans fonts, available under
 the following license:
 ";
 
 const INTERNAL_NOTO_FONTS_DESCRIPTION: &str = "
-This distribution of RadekHLE includes Noto Sans CJK and Noto Sans Arabic fonts,
+This distribution of touchHLE includes Noto Sans CJK and Noto Sans Arabic fonts,
 available under the following license:
 ";
 
@@ -284,4 +284,3 @@ fn test_external_files_license_text() {
     )
     .unwrap();
 }
-

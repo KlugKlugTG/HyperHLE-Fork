@@ -156,7 +156,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (id)textFieldAtIndex:(NSInteger)_index { nil }
 
 - (())addSubview:(id)_view {
-    // UIAlertView doesn't support subviews in RadekHLE (SDL2 dialog
+    // UIAlertView doesn't support subviews in touchHLE (SDL2 dialog
     // implementation)
     log_dbg!("UIAlertView addSubview: ignored");
 }
@@ -177,13 +177,13 @@ pub const CLASSES: ClassExports = objc_classes! {
 // derive from UIView here (SDL2 dialog), so we stub the selectors that
 // guest apps actually invoke on alert views.
 - (())setTransform:(CGAffineTransform)_transform {
-    // UIAlertView in RadekHLE is rendered via SDL2 system dialog,
+    // UIAlertView in touchHLE is rendered via SDL2 system dialog,
     // so geometric transforms are not applicable.
     log_dbg!("UIAlertView setTransform: ignored (SDL2 dialog)");
 }
 
 - (id)viewWithTag:(NSInteger)tag {
-    // Real UIAlertView would search subviews, but RadekHLE doesn't manage
+    // Real UIAlertView would search subviews, but touchHLE doesn't manage
     // a subview hierarchy for alerts.  Return self if the tag matches,
     // otherwise nil (Apple semantics: receiver is searched first).
     let own_tag: NSInteger = msg![env; this tag];
@@ -193,7 +193,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (CGSize)sizeThatFits:(CGSize)size {
     // В iOS этот метод возвращает оптимальный размер на основе содержимого.
-    // Так как RadekHLE выводит SDL2-диалог, размер контролируется самой ОС,
+    // Так как touchHLE выводит SDL2-диалог, размер контролируется самой ОС,
     // поэтому мы пробрасываем текущий запрошенный размер дальше.
     size
 }
@@ -232,7 +232,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         ns_string::to_rust_string(env, message).into_owned()
     } else { String::new() };
 
-    // RadekHLE renders UIAlertView as a *blocking* SDL2 system dialog,
+    // touchHLE renders UIAlertView as a *blocking* SDL2 system dialog,
     // whereas real iOS `-[UIAlertView show]` is asynchronous and returns
     // immediately. Some apps (notably Outfit7 titles like Talking Angela)
     // create a content-less alert — empty/`nil` title *and* message — as a
@@ -313,4 +313,3 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
-

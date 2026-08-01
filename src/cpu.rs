@@ -14,13 +14,13 @@ use crate::abi::GuestFunction;
 use crate::mem::{ConstPtr, GuestUSize, Mem, MutPtr, Ptr, SafeRead, SafeWrite};
 
 // Import functions from C++
-use RadekHLE_dynarmic_wrapper::*;
+use touchHLE_dynarmic_wrapper::*;
 
 type VAddr = u32;
-pub type CpuContext = RadekHLE_DynarmicContext;
+pub type CpuContext = touchHLE_DynarmicContext;
 
-fn RadekHLE_cpu_read_impl<T: SafeRead + Default>(
-    mem: *mut RadekHLE_Mem,
+fn touchHLE_cpu_read_impl<T: SafeRead + Default>(
+    mem: *mut touchHLE_Mem,
     addr: VAddr,
     error: *mut bool,
 ) -> T {
@@ -48,7 +48,7 @@ fn RadekHLE_cpu_read_impl<T: SafeRead + Default>(
     res.unwrap_or_default()
 }
 
-fn RadekHLE_cpu_write_impl<T: SafeWrite>(mem: *mut RadekHLE_Mem, addr: VAddr, value: T) -> bool {
+fn touchHLE_cpu_write_impl<T: SafeWrite>(mem: *mut touchHLE_Mem, addr: VAddr, value: T) -> bool {
     // See comments above about catch_unwind
     let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mem = unsafe { &mut *mem.cast::<Mem>() };
@@ -60,40 +60,40 @@ fn RadekHLE_cpu_write_impl<T: SafeWrite>(mem: *mut RadekHLE_Mem, addr: VAddr, va
 
 // Export functions for use by C++
 #[no_mangle]
-extern "C" fn RadekHLE_cpu_read_u8(mem: *mut RadekHLE_Mem, addr: VAddr, error: *mut bool) -> u8 {
-    RadekHLE_cpu_read_impl(mem, addr, error)
+extern "C" fn touchHLE_cpu_read_u8(mem: *mut touchHLE_Mem, addr: VAddr, error: *mut bool) -> u8 {
+    touchHLE_cpu_read_impl(mem, addr, error)
 }
 #[no_mangle]
-extern "C" fn RadekHLE_cpu_read_u16(mem: *mut RadekHLE_Mem, addr: VAddr, error: *mut bool) -> u16 {
-    RadekHLE_cpu_read_impl(mem, addr, error)
+extern "C" fn touchHLE_cpu_read_u16(mem: *mut touchHLE_Mem, addr: VAddr, error: *mut bool) -> u16 {
+    touchHLE_cpu_read_impl(mem, addr, error)
 }
 #[no_mangle]
-extern "C" fn RadekHLE_cpu_read_u32(mem: *mut RadekHLE_Mem, addr: VAddr, error: *mut bool) -> u32 {
-    RadekHLE_cpu_read_impl(mem, addr, error)
+extern "C" fn touchHLE_cpu_read_u32(mem: *mut touchHLE_Mem, addr: VAddr, error: *mut bool) -> u32 {
+    touchHLE_cpu_read_impl(mem, addr, error)
 }
 #[no_mangle]
-extern "C" fn RadekHLE_cpu_read_u64(mem: *mut RadekHLE_Mem, addr: VAddr, error: *mut bool) -> u64 {
-    RadekHLE_cpu_read_impl(mem, addr, error)
+extern "C" fn touchHLE_cpu_read_u64(mem: *mut touchHLE_Mem, addr: VAddr, error: *mut bool) -> u64 {
+    touchHLE_cpu_read_impl(mem, addr, error)
 }
 #[no_mangle]
-extern "C" fn RadekHLE_cpu_write_u8(mem: *mut RadekHLE_Mem, addr: VAddr, value: u8) -> bool {
-    RadekHLE_cpu_write_impl(mem, addr, value)
+extern "C" fn touchHLE_cpu_write_u8(mem: *mut touchHLE_Mem, addr: VAddr, value: u8) -> bool {
+    touchHLE_cpu_write_impl(mem, addr, value)
 }
 #[no_mangle]
-extern "C" fn RadekHLE_cpu_write_u16(mem: *mut RadekHLE_Mem, addr: VAddr, value: u16) -> bool {
-    RadekHLE_cpu_write_impl(mem, addr, value)
+extern "C" fn touchHLE_cpu_write_u16(mem: *mut touchHLE_Mem, addr: VAddr, value: u16) -> bool {
+    touchHLE_cpu_write_impl(mem, addr, value)
 }
 #[no_mangle]
-extern "C" fn RadekHLE_cpu_write_u32(mem: *mut RadekHLE_Mem, addr: VAddr, value: u32) -> bool {
-    RadekHLE_cpu_write_impl(mem, addr, value)
+extern "C" fn touchHLE_cpu_write_u32(mem: *mut touchHLE_Mem, addr: VAddr, value: u32) -> bool {
+    touchHLE_cpu_write_impl(mem, addr, value)
 }
 #[no_mangle]
-extern "C" fn RadekHLE_cpu_write_u64(mem: *mut RadekHLE_Mem, addr: VAddr, value: u64) -> bool {
-    RadekHLE_cpu_write_impl(mem, addr, value)
+extern "C" fn touchHLE_cpu_write_u64(mem: *mut touchHLE_Mem, addr: VAddr, value: u64) -> bool {
+    touchHLE_cpu_write_impl(mem, addr, value)
 }
 
 pub struct Cpu {
-    dynarmic_wrapper: *mut RadekHLE_DynarmicWrapper,
+    dynarmic_wrapper: *mut touchHLE_DynarmicWrapper,
     /// Copy of the direct memory access pointer used to check it has not
     /// changed. If this is null, direct memory access is not in use.
     direct_memory_access_ptr: *const std::ffi::c_void,
@@ -101,7 +101,7 @@ pub struct Cpu {
 
 impl Drop for Cpu {
     fn drop(&mut self) {
-        unsafe { RadekHLE_DynarmicWrapper_delete(self.dynarmic_wrapper) }
+        unsafe { touchHLE_DynarmicWrapper_delete(self.dynarmic_wrapper) }
     }
 }
 
@@ -164,7 +164,7 @@ impl Cpu {
                 mem.direct_memory_access_ptr()
             });
         let dynarmic_wrapper =
-            unsafe { RadekHLE_DynarmicWrapper_new(direct_memory_access_ptr, null_page_count) };
+            unsafe { touchHLE_DynarmicWrapper_new(direct_memory_access_ptr, null_page_count) };
         Cpu {
             dynarmic_wrapper,
             direct_memory_access_ptr,
@@ -173,13 +173,13 @@ impl Cpu {
 
     pub fn regs(&self) -> &[u32; 16] {
         unsafe {
-            let ptr = RadekHLE_DynarmicWrapper_regs_const(self.dynarmic_wrapper);
+            let ptr = touchHLE_DynarmicWrapper_regs_const(self.dynarmic_wrapper);
             &*(ptr as *const [u32; 16])
         }
     }
     pub fn regs_mut(&mut self) -> &mut [u32; 16] {
         unsafe {
-            let ptr = RadekHLE_DynarmicWrapper_regs_mut(self.dynarmic_wrapper);
+            let ptr = touchHLE_DynarmicWrapper_regs_mut(self.dynarmic_wrapper);
             &mut *(ptr as *mut [u32; 16])
         }
     }
@@ -216,16 +216,16 @@ impl Cpu {
     }
 
     pub fn cpsr(&self) -> u32 {
-        unsafe { RadekHLE_DynarmicWrapper_cpsr(self.dynarmic_wrapper) }
+        unsafe { touchHLE_DynarmicWrapper_cpsr(self.dynarmic_wrapper) }
     }
     pub fn set_cpsr(&mut self, cpsr: u32) {
-        unsafe { RadekHLE_DynarmicWrapper_set_cpsr(self.dynarmic_wrapper, cpsr) }
+        unsafe { touchHLE_DynarmicWrapper_set_cpsr(self.dynarmic_wrapper, cpsr) }
     }
 
     /// Swap the current state of the CPU (registers etc) with the state stored
     /// in the context object.
     pub fn swap_context(&mut self, context: &mut CpuContext) {
-        unsafe { RadekHLE_DynarmicWrapper_swap_context(self.dynarmic_wrapper, context) }
+        unsafe { touchHLE_DynarmicWrapper_swap_context(self.dynarmic_wrapper, context) }
     }
 
     /// Get PC with the Thumb bit appropriately set.
@@ -262,7 +262,7 @@ impl Cpu {
     /// code.
     pub fn invalidate_cache_range(&mut self, base: VAddr, size: GuestUSize) {
         unsafe {
-            RadekHLE_DynarmicWrapper_invalidate_cache_range(self.dynarmic_wrapper, base, size)
+            touchHLE_DynarmicWrapper_invalidate_cache_range(self.dynarmic_wrapper, base, size)
         }
     }
 
@@ -284,9 +284,9 @@ impl Cpu {
         }
 
         let res = unsafe {
-            RadekHLE_DynarmicWrapper_run_or_step(
+            touchHLE_DynarmicWrapper_run_or_step(
                 self.dynarmic_wrapper,
-                mem as *mut Mem as *mut RadekHLE_Mem,
+                mem as *mut Mem as *mut touchHLE_Mem,
                 ticks,
             )
         };
@@ -300,4 +300,3 @@ impl Cpu {
         }
     }
 }
-

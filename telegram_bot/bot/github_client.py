@@ -3,8 +3,8 @@
 Two responsibilities:
 
 * Look up the **latest commit** on a branch, so the build hash found in the
-  user's log can be checked against the newest code (RadekHLE logs start with
-  ``RadekHLE UNOFFICIAL <shortsha> — …`` and name the branch they were built
+  user's log can be checked against the newest code (HyperHLE logs start with
+  ``touchHLE UNOFFICIAL <shortsha> — …`` and name the branch they were built
   from).
 * Open an issue from a collected fix request.
 
@@ -45,7 +45,7 @@ class GitHubClient:
         headers = {
             "Accept": "application/vnd.github+json",
             "X-GitHub-Api-Version": "2022-11-28",
-            "User-Agent": "RadekHLE-fix-bot",
+            "User-Agent": "hyperhle-fix-bot",
         }
         if self._token:
             headers["Authorization"] = f"Bearer {self._token}"
@@ -159,4 +159,3 @@ class GitHubClient:
             return resp.json().get("content", {}).get("download_url")
         except (httpx.HTTPError, ValueError, KeyError):
             return None
-

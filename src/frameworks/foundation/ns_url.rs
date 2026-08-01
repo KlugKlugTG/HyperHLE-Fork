@@ -764,7 +764,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 {
     let key_str = to_rust_string(env, _key);
     if key_str == "NSURLIsExcludedFromBackupKey" {
-        // RadekHLE does not implement iCloud backup, so excluding a file from
+        // touchHLE does not implement iCloud backup, so excluding a file from
         // it is a no-op. Returning YES matches the real implementation's
         // success path when the file exists and the key is supported.
         log_dbg!("NSURL setResourceValue:forKey:NSURLIsExcludedFromBackupKey — no-op, returning YES");
@@ -890,4 +890,3 @@ pub fn to_rust_path(env: &mut Environment, url: id) -> Cow<'static, GuestPath> {
         Cow::Owned(path_buf) => Cow::Owned(path_buf.into()),
     }
 }
-

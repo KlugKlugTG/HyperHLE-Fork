@@ -207,27 +207,27 @@ destructiveButtonTitle:(id)destructive_title // NSString*
 }
 
 // MARK: - Presentation
-// RadekHLE has no sheet UI. We immediately fire the cancel callback so the
+// touchHLE has no sheet UI. We immediately fire the cancel callback so the
 // app's delegate can clean up, matching the MPMediaPickerController pattern.
 
 - (())showInView:(id)_view {
-    let _: () = msg![env; this _RadekHLE_dismiss];
+    let _: () = msg![env; this _touchHLE_dismiss];
 }
 
 - (())showFromToolbar:(id)_toolbar {
-    let _: () = msg![env; this _RadekHLE_dismiss];
+    let _: () = msg![env; this _touchHLE_dismiss];
 }
 
 - (())showFromTabBar:(id)_tab_bar {
-    let _: () = msg![env; this _RadekHLE_dismiss];
+    let _: () = msg![env; this _touchHLE_dismiss];
 }
 
 - (())showFromBarButtonItem:(id)_item animated:(bool)_animated {
-    let _: () = msg![env; this _RadekHLE_dismiss];
+    let _: () = msg![env; this _touchHLE_dismiss];
 }
 
 - (())showFromRect:(id)_rect inView:(id)_view animated:(bool)_animated {
-    let _: () = msg![env; this _RadekHLE_dismiss];
+    let _: () = msg![env; this _touchHLE_dismiss];
 }
 
 // MARK: - Dismissal
@@ -278,7 +278,7 @@ destructiveButtonTitle:(id)destructive_title // NSString*
 }
 
 // Private helper — dismiss via cancel button (or index 0 as fallback).
-- (())_RadekHLE_dismiss {
+- (())_touchHLE_dismiss {
     env.objc.borrow_mut::<UIActionSheetHostObject>(this).visible = false;
 
     let delegate = env.objc.borrow::<UIActionSheetHostObject>(this).delegate;
@@ -302,4 +302,3 @@ destructiveButtonTitle:(id)destructive_title // NSString*
 @end
 
 };
-

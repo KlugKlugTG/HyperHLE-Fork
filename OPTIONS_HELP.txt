@@ -18,12 +18,12 @@ View options:
         --landscape-right means rotate 90° clockwise from portrait.
         --upside-down means rotate 180° from portrait (portrait upside-down).
 
-        Usually apps that require landscape mode will tell RadekHLE about this,
+        Usually apps that require landscape mode will tell touchHLE about this,
         and it will automatically rotate the window, but some apps neglect to
         do this. These options may be useful in that case.
 
     --scale-hack=...
-        Set a scaling factor for the window. RadekHLE will attempt to run the
+        Set a scaling factor for the window. touchHLE will attempt to run the
         app with an increased internal resolution. This is a hack and there's
         no guarantee it will work correctly for all apps.
 
@@ -62,7 +62,7 @@ Device options:
 
         A model's hardware identifier (e.g. "iphone4,1") is also accepted.
 
-        Use "auto" to let RadekHLE inspect your host display's resolution,
+        Use "auto" to let touchHLE inspect your host display's resolution,
         expose that resolution directly to the app, and still pick the device
         family whose bundled resources are the closest match. The chosen family
         is still validated against what the app bundle supports, so an
@@ -93,7 +93,7 @@ Game controller options:
         Disables mapping of analog stick input to simulated rotation of the
         device.
 
-        By default, if RadekHLE detects a game controller, its analog sticks
+        By default, if touchHLE detects a game controller, its analog sticks
         will be used for simulated accelerometer tilt controls. When this
         happens, the real accelerometer (e.g. on an Android phone), if present,
         is ignored. By setting this option, the real accelerometer can be used
@@ -101,7 +101,7 @@ Game controller options:
         that integrates both an accelerometer and a game controller, or if you
         do not want to disconnect your game controller.
 
-        Note that RadekHLE does not currently support accelerometers contained
+        Note that touchHLE does not currently support accelerometers contained
         within game controllers.
 
     --x-tilt-range=...
@@ -157,7 +157,7 @@ Game controller options:
         For example, --button-to-touch=A,470,310 will make the A button simulate
         tapping in the bottom-right corner of the screen, for a landscape game.
 
-        Except where specified in RadekHLE_default_options.txt, this is not used
+        Except where specified in touchHLE_default_options.txt, this is not used
         by default. There is however a virtual cursor that is controlled by the
         right analog stick (tap/hold by pressing the stick or right shoulder
         button).
@@ -178,7 +178,7 @@ Game controller options:
         Note that this option takes precedence over any D-pad buttons defined
         with --button-to-touch.
 
-        Except where specified in RadekHLE_default_options.txt, this is not used
+        Except where specified in touchHLE_default_options.txt, this is not used
         by default. There is however a virtual cursor that is controlled by the
         right analog stick (tap/hold by pressing the stick or right shoulder
         button).
@@ -197,7 +197,7 @@ Game controller options:
         stick to control a touch within a 100x100 pixel region starting at
         (10,10) on the screen.
 
-        Except where specified in RadekHLE_default_options.txt, this is not used
+        Except where specified in touchHLE_default_options.txt, this is not used
         by default. There is however a virtual cursor that is controlled by the
         right analog stick (tap/hold by pressing the stick or right shoulder
         button).
@@ -225,18 +225,18 @@ Game controller options:
 
 Graphics driver options:
     --gles2-compat
-        Enables RadekHLE's experimental OpenGL ES 2.0 subset using the desktop
+        Enables touchHLE's experimental OpenGL ES 2.0 subset using the desktop
         OpenGL 2.1 compatibility backend. This is an app-specific option and
         is not a complete implementation of OpenGL ES 2.0.
 
     --gles1=...
-        Force RadekHLE to use a particular OpenGL ES 1.1 implementation.
+        Force touchHLE to use a particular OpenGL ES 1.1 implementation.
         This may be useful for troubleshooting graphics driver issues.
 
-        --gles1=gles1_on_gl2 will use RadekHLE's GLES1-on-GL2 layer.
+        --gles1=gles1_on_gl2 will use touchHLE's GLES1-on-GL2 layer.
         --gles1=gles1_native will use native OpenGL ES 1.1.
 
-        When this option isn't in use, RadekHLE will try each in order and use
+        When this option isn't in use, touchHLE will try each in order and use
         the first one that works.
 
 Debugging options:
@@ -245,10 +245,10 @@ Debugging options:
         callbacks, rather than using the fast direct access path (page tables).
 
     --gdb=...
-        Starts RadekHLE in debugging mode, listening for GDB remote serial
+        Starts touchHLE in debugging mode, listening for GDB remote serial
         protocol connections over TCP on the specified host and port.
 
-        You can then connect to RadekHLE with GDB and make use of its features
+        You can then connect to touchHLE with GDB and make use of its features
         to inspect memory and registers, set up software breakpoints, and
         continue or step execution.
 
@@ -285,14 +285,14 @@ Other options:
         language is supported, is determined entirely by the app.
 
     --headless
-        Run in headless mode. RadekHLE will not create a window, so there will
+        Run in headless mode. touchHLE will not create a window, so there will
         be no graphical output and no input. Only useful for command-line apps.
         Implies --no-error-popup.
 
     --args
         All arguments following this option will be passed to the app (via C's
-        argc/argv) rather than processed by RadekHLE. This option can't be used
-        via RadekHLE_options.txt or RadekHLE_default_options.txt.
+        argc/argv) rather than processed by touchHLE. This option can't be used
+        via touchHLE_options.txt or touchHLE_default_options.txt.
 
     --print-fps
         Logs the current framerate (FPS) to the console once per second.
@@ -300,7 +300,7 @@ Other options:
     --fps-limit=...
         Modify or disable the framerate (FPS) limit.
 
-        By default, RadekHLE limits the framerate of an app to 60fps, because
+        By default, touchHLE limits the framerate of an app to 60fps, because
         this is required for accurate emulation. Some apps can however run
         correctly at a higher framerate than normal.
 
@@ -335,7 +335,7 @@ Other options:
         pipeline.
 
     --allow-network-access
-        Allow apps running in RadekHLE to access the Internet and the local network.
+        Allow apps running in touchHLE to access the Internet and the local network.
 
     --ignore-gl-errors
         Ignore host OpenGL errors as queried by glGetError function.
@@ -357,7 +357,7 @@ Other options:
         Workaround for apps that rely on the default ES 1.1
         GL_TEXTURE_MIN_FILTER (GL_NEAREST_MIPMAP_LINEAR) being usable
         on a level-0-only texture. With this flag, after every
-        glTexImage2D(level=0) call RadekHLE issues an extra
+        glTexImage2D(level=0) call HyperHLE issues an extra
         glTexParameteri(GL_TEXTURE_MIN_FILTER, GL_LINEAR) so that
         strict drivers (notably Qualcomm Adreno's native ES 1.1 path)
         don't sample the texture as opaque black just because no
@@ -375,4 +375,3 @@ Other options:
         stack and branch based on the stack's content. There is normally
         no reason to enable this option. The number of bytes must be
         chosen carefully on a per-app basis.
-

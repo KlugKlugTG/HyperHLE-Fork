@@ -1,19 +1,19 @@
 name: Report a bug or regression for a known-working app
-description: If an app is already known to work in RadekHLE, and no longer works, or has some other problem, choose this option.
+description: If an app is already known to work in touchHLE, and no longer works, or has some other problem, choose this option.
 labels: ["bug (supported app)"]
 body:
   - type: markdown
     attributes:
       value: |
         This form is for reporting an issue with an app that is already known
-        to be working in RadekHLE. Please check the [app compatibility database](https://appdb.RadekHLE.org/)
+        to be working in touchHLE. Please check the [app compatibility database](https://appdb.touchhle.org/)
         to see which apps work. Apps with less than three stars are not
         considered “working”.
   - type: input
     attributes:
       label: App DB report link
       description: Link to the pre-existing database report for the app.
-      placeholder: https://appdb.RadekHLE.org/apps/1
+      placeholder: https://appdb.touchhle.org/apps/1
     validations:
       required: true
   - type: input
@@ -30,7 +30,7 @@ body:
       required: true
   - type: input
     attributes:
-      label: RadekHLE version
+      label: touchHLE version
       placeholder: 'v0.2.2'
     validations:
       required: true
@@ -53,7 +53,7 @@ body:
       required: true
   - type: textarea
     attributes:
-      label: If RadekHLE crashed, please paste the log output.
+      label: If touchHLE crashed, please paste the log output.
       description: |
         On Android, this is the log.txt file. On Windows or macOS, it's visible
         in the Terminal/Command Prompt/PowerShell.
@@ -62,10 +62,9 @@ body:
     attributes:
       label: By submitting this issue, I certify that…
       options:
-        - label: I have tested that this version of this app is at least partially working in a previous version of RadekHLE.
+        - label: I have tested that this version of this app is at least partially working in a previous version of touchHLE.
           required: true
         - label: I understand that linking to, discussing or asking for pirated content is not permitted, and will lead to an immediate ban.
           required: true
         - label: I understand that “Abandonware” and illegal copies of free games are also pirated content.
           required: true
-

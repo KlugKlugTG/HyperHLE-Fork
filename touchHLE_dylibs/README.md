@@ -20,7 +20,7 @@ These are impractical to reimplement, but they are Free Software.
 * Aliases: `libz.1.1.3.dylib`, `libz.1.dylib`, `libz.dylib`
 * License: zlib License (see `COPYING.libz`)
 * Binary origin: compilation of zlib source code
-* Build code: <https://github.com/RadekHLE/zlib-dylib>
+* Build code: <https://github.com/touchHLE/zlib-dylib>
 * Source code: <https://github.com/apple-oss-distributions/zlib/tree/zlib-23.0.1>
 
 ## `libsqlite3.dylib`
@@ -28,7 +28,7 @@ These are impractical to reimplement, but they are Free Software.
 * Alias: `libsqlite3.0.dylib`
 * License: public domain (see `COPYING.libsqlite3`)
 * Binary origin: compilation of SQLite source code
-* Build code: <https://github.com/RadekHLE/sqlite-dylib>
+* Build code: <https://github.com/touchHLE/sqlite-dylib>
 * Source code: <https://github.com/sqlite/sqlite/tree/version-3.6.10>
 
 ## Original Apple license acknowledgements
@@ -133,4 +133,3 @@ These are impractical to reimplement, but they are Free Software.
 > >
 > > **END OF TERMS AND CONDITIONS**
 > >
-

@@ -72,8 +72,8 @@ pub const CLASSES: ClassExports = objc_classes! {
 @implementation AVAudioPlayer: NSObject
 
 + (id)allocWithZone:(NSZonePtr)_zone {
-    let symb = "__RadekHLE_AVAudioPlayerOutputBufferHelper";
-    let hf: HostFunction = &(_RadekHLE_AVAudioPlayerOutputBufferHelper as fn(&mut Environment, _, _, _) -> _);
+    let symb = "__touchHLE_AVAudioPlayerOutputBufferHelper";
+    let hf: HostFunction = &(_touchHLE_AVAudioPlayerOutputBufferHelper as fn(&mut Environment, _, _, _) -> _);
     let callback = env
         .dyld
         .create_guest_function(&mut env.mem, symb, hf);
@@ -296,7 +296,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         let status = AudioQueueAllocateBuffer(env, aq_ref, buffer_byte_size, buffers + i as u32);
         assert_eq!(status, 0);
 
-        _RadekHLE_AVAudioPlayerOutputBufferHelper(env, this.cast(), aq_ref, env.mem.read(buffers + i as u32));
+        _touchHLE_AVAudioPlayerOutputBufferHelper(env, this.cast(), aq_ref, env.mem.read(buffers + i as u32));
     }
     env.objc.borrow_mut::<AVAudioPlayerHostObject>(this).is_playing = false;
 
@@ -701,7 +701,7 @@ fn derive_buffer_size(
     (out_buffer_size, out_num_packets_to_read)
 }
 
-fn _RadekHLE_AVAudioPlayerOutputBufferHelper(
+fn _touchHLE_AVAudioPlayerOutputBufferHelper(
     env: &mut Environment,
     in_user_data: MutVoidPtr,
     in_aq: AudioQueueRef,
@@ -756,7 +756,7 @@ fn _RadekHLE_AVAudioPlayerOutputBufferHelper(
     }
 
     log_dbg!(
-        "_RadekHLE_AVAudioPlayerOutputBufferHelper on object of class: {}",
+        "_touchHLE_AVAudioPlayerOutputBufferHelper on object of class: {}",
         env.objc.get_class_name(class)
     );
     let &AVAudioPlayerHostObject {
@@ -895,9 +895,8 @@ fn _RadekHLE_AVAudioPlayerOutputBufferHelper(
                 .borrow::<AVAudioPlayerHostObject>(av_audio_player)
                 .num_packets_to_read;
             if num_packets_to_read > 0 {
-                _RadekHLE_AVAudioPlayerOutputBufferHelper(env, in_user_data, in_aq, in_buf);
+                _touchHLE_AVAudioPlayerOutputBufferHelper(env, in_user_data, in_aq, in_buf);
             }
         }
     }
 }
-

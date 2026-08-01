@@ -13,7 +13,7 @@ fn sched_yield(env: &mut Environment) -> i32 {
     // Apps that synchronise threads without `pthread_cond` (e.g. Angry Birds
     // 1.0) typically use a `while (!flag) sched_yield();` busy-wait loop on
     // one thread while another thread sets `flag`. Treating `sched_yield` as
-    // a no-op leaves the polling thread holding 100% of RadekHLE's
+    // a no-op leaves the polling thread holding 100% of touchHLE's
     // cooperative scheduler, so the producer thread never gets to run and the
     // app deadlocks. A zero-duration sleep gives the scheduler an opportunity
     // to pick another runnable thread, which is what `sched_yield(2)`
@@ -49,4 +49,3 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(sched_get_priority_min(_)),
     export_c_func!(sched_get_priority_max(_)),
 ];
-

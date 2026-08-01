@@ -6,7 +6,7 @@
 //! `GameController.framework` — MFi external game controller API.
 //!
 //! Real iOS exposes the `GCController` class plus a family of profile
-//! classes (`GCExtendedGamepad`, `GCMicroGamepad`, …). RadekHLE has no
+//! classes (`GCExtendedGamepad`, `GCMicroGamepad`, …). touchHLE has no
 //! HID/Bluetooth backend, so there are never any external controllers
 //! attached. The Apple-documented behaviour for that case is well
 //! defined:
@@ -23,7 +23,7 @@
 //! what lets games walk past their "is Game Controller support
 //! available?" probe — typically `if (NSClassFromString(@"GCController"))
 //! { [GCController respondsToSelector:@selector(controllers)] }`. Before
-//! this change RadekHLE would print `Class "GCController" is
+//! this change touchHLE would print `Class "GCController" is
 //! unimplemented` for every such probe and apps would either crash on
 //! the next message send or take the wrong code path.
 
@@ -52,7 +52,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // `+ (NSArray<GCController *> *)controllers;`
 //
 // Per Apple's reference, the returned array is the currently-connected
-// MFi controller list. RadekHLE has no HID backend, so the array is
+// MFi controller list. touchHLE has no HID backend, so the array is
 // always empty. Returning an autoreleased empty NSArray (rather than
 // nil) matches the documented signature; some games iterate the result
 // without a nil-check.
@@ -68,7 +68,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // found, or if no controllers are found, the completion handler is
 // still called." With no Bluetooth backend we finish synchronously and
 // invoke the handler immediately. Block layout on 32-bit ARM is the
-// same as elsewhere in RadekHLE: invoke pointer at word 3.
+// same as elsewhere in touchHLE: invoke pointer at word 3.
 + (())startWirelessControllerDiscoveryWithCompletionHandler:(id)handler {
     if handler == nil {
         return;
@@ -84,7 +84,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 // `+ (void)stopWirelessControllerDiscovery;`
 //
 // No-op when no discovery is in progress, which is always the case in
-// RadekHLE.
+// touchHLE.
 + (())stopWirelessControllerDiscovery {
     // Intentionally empty — matches the documented behaviour when no
     // discovery is active.
@@ -101,5 +101,4 @@ pub const DYLIB: HostDylib = HostDylib {
     constant_exports: &[CONSTANTS],
     function_exports: &[],
 };
-
 

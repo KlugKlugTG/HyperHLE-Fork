@@ -106,7 +106,7 @@ const kAudioFilePositionError: OSStatus = -40;
 const kAudioFileFileNotFoundError: OSStatus = -43;
 
 fn audiofile_soft_eof_enabled() -> bool {
-    std::env::var_os("RadekHLE_AUDIOFILE_SOFT_EOF").is_some()
+    std::env::var_os("TOUCHHLE_AUDIOFILE_SOFT_EOF").is_some()
 }
 
 type AudioFilePermissions = i8;
@@ -169,7 +169,7 @@ pub fn AudioFileCreateWithURL(
     // the file is then ready for writing audio data via AudioFileWriteBytes /
     // AudioFileWritePackets.
     //
-    // In RadekHLE we create a virtual in-memory writable file. The data is
+    // In HyperHLE we create a virtual in-memory writable file. The data is
     // not persisted to the host filesystem (the guest .ipa is read-only), but
     // the AudioFile handle is fully functional for subsequent Read/Write/
     // GetProperty calls — which is all that recording-capable games need
@@ -223,7 +223,7 @@ pub fn AudioFileInitializeWithCallbacks(
     // caller control where data is stored (memory buffer, network stream,
     // etc.). After initialization the AudioFile handle is ready for writing.
     //
-    // In RadekHLE we create the same virtual writable file as
+    // In HyperHLE we create the same virtual writable file as
     // AudioFileCreateWithURL. The write callback is not invoked — all data
     // stays in our in-memory buffer. This is sufficient for games that use
     // callback-based audio file creation (e.g. for streaming to a memory
@@ -518,7 +518,7 @@ pub fn AudioFileReadBytes(
 ///   ioNumBytes: On input, number of bytes to write; on output, actual written
 ///   inBuffer: Pointer to the data to write
 ///
-/// Since RadekHLE's audio files are opened read-only from .ipa bundles,
+/// Since HyperHLE's audio files are opened read-only from .ipa bundles,
 /// write operations are only meaningful for files created via
 /// AudioFileCreateWithURL (not yet implemented for filesystem writes).
 /// We accept the data but discard it, returning success so apps that
@@ -808,7 +808,7 @@ pub fn AudioFileReadPackets(
         env.mem.write(io_num_packets, packets_read);
 
         log!(
-            "AudioFileReadPackets: RadekHLE_AUDIOFILE_SOFT_EOF=1,              softened EOF short read ({} < {} bytes), reporting {} packet(s) without eofErr",
+            "AudioFileReadPackets: TOUCHHLE_AUDIOFILE_SOFT_EOF=1,              softened EOF short read ({} < {} bytes), reporting {} packet(s) without eofErr",
             bytes_read,
             bytes_to_read,
             packets_read
@@ -1694,4 +1694,3 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(AudioFormatGetPropertyInfo(_, _, _, _)),
     export_c_func!(AudioFormatGetProperty(_, _, _, _, _)),
 ];
-

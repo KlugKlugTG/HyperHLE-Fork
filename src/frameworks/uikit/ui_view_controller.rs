@@ -100,7 +100,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     //    call this class method. The system immediately attempts to rotate
     //    to the new orientation."
     //
-    // RadekHLE does not currently perform live device-orientation
+    // touchHLE does not currently perform live device-orientation
     // rotations — the window is pinned to the orientation the app launched
     // in. Re-querying supported orientations would therefore not result in
     // any change, so the documented behavior reduces to a no-op for our
@@ -400,16 +400,16 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (())setWantsFullScreenLayout:(bool)_wants {
     // Apple docs: When set to YES, the view controller's view extends
     // underneath the status bar and navigation bar. On real iOS this
-    // affects layout insets. In RadekHLE we always render full-screen,
+    // affects layout insets. In touchHLE we always render full-screen,
     // so this is effectively a no-op but we accept it silently.
 }
 - (bool)wantsFullScreenLayout {
-    // Always report YES since RadekHLE renders games full-screen.
+    // Always report YES since touchHLE renders games full-screen.
     true
 }
 - (())setExtendedLayoutIncludesOpaqueBars:(bool)value {
     // iOS 7+ layout hint: whether the extended layout includes the area
-    // behind opaque bars. RadekHLE renders full-screen and does not model
+    // behind opaque bars. touchHLE renders full-screen and does not model
     // bar opacity insets, so we faithfully store the value (for the getter)
     // but it has no layout effect.
     env.objc
@@ -430,7 +430,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (())setEdgesForExtendedLayout:(NSUInteger)edges {
     // UIRectEdge bitmask: specifies which edges the view controller's view
     // should extend beneath bars (status bar, navigation bar, tab bar, toolbar).
-    // RadekHLE renders full-screen without system bars, so this has no visual
+    // touchHLE renders full-screen without system bars, so this has no visual
     // effect, but we store the value faithfully for the getter.
     env.objc
         .borrow_mut::<UIViewControllerHostObject>(this)
@@ -962,4 +962,3 @@ pub(crate) fn set_storyboard(env: &mut Environment, vc: id, storyboard: id) {
     host.storyboard = storyboard;
     if old != nil { release(env, old); }
 }
-

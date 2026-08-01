@@ -28,7 +28,7 @@ const kSCNetworkReachabilityFlagsIsWWAN: SCNetworkReachabilityFlags = 1 << 18;
 
 pub const CLASSES: ClassExports = objc_classes! {
     (env, this, _cmd);
-    @implementation _RadekHLE_SCNetworkReachability: NSObject
+    @implementation _touchHLE_SCNetworkReachability: NSObject
     - (())dealloc {
         env.objc.dealloc_object(this, &mut env.mem)
     }
@@ -70,7 +70,7 @@ fn SCNetworkReachabilityCreateWithName(
     let name_str = env.mem.cstr_at_utf8(name).unwrap_or("").to_string();
     let isa = env
         .objc
-        .get_known_class("_RadekHLE_SCNetworkReachability", &mut env.mem);
+        .get_known_class("_touchHLE_SCNetworkReachability", &mut env.mem);
     env.objc.alloc_object(
         isa,
         Box::new(SCNetworkReachabilityHostObject {
@@ -89,7 +89,7 @@ fn SCNetworkReachabilityCreateWithAddress(
 ) -> SCNetworkReachabilityRef {
     let isa = env
         .objc
-        .get_known_class("_RadekHLE_SCNetworkReachability", &mut env.mem);
+        .get_known_class("_touchHLE_SCNetworkReachability", &mut env.mem);
     env.objc.alloc_object(
         isa,
         Box::new(SCNetworkReachabilityHostObject {
@@ -109,7 +109,7 @@ fn SCNetworkReachabilityCreateWithAddressPair(
 ) -> SCNetworkReachabilityRef {
     let isa = env
         .objc
-        .get_known_class("_RadekHLE_SCNetworkReachability", &mut env.mem);
+        .get_known_class("_touchHLE_SCNetworkReachability", &mut env.mem);
     env.objc.alloc_object(
         isa,
         Box::new(SCNetworkReachabilityHostObject {
@@ -181,4 +181,3 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(SCNetworkReachabilityUnscheduleFromRunLoop(_, _, _)),
     export_c_func!(SCNetworkReachabilitySetDispatchQueue(_, _)),
 ];
-

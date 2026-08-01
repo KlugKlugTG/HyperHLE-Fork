@@ -25,7 +25,7 @@ use crate::objc::{
 };
 use crate::Environment;
 
-/// Belongs to _RadekHLE_NSOrderedSet and _RadekHLE_NSMutableOrderedSet.
+/// Belongs to _touchHLE_NSOrderedSet and _touchHLE_NSMutableOrderedSet.
 #[derive(Debug, Default)]
 struct OrderedSetHostObject {
     /// Objects in insertion order. Each object is retained by this Vec and
@@ -54,7 +54,7 @@ fn index_of(env: &mut Environment, this: id, object: id) -> Option<usize> {
 fn append_unique(env: &mut Environment, this: id, object: id) {
     if object == nil {
         // Matches Apple: inserting nil raises NSInvalidArgumentException.
-        // We log instead of unwinding, consistent with RadekHLE's
+        // We log instead of unwinding, consistent with touchHLE's
         // NSException handling.
         log!("Warning: attempted to add nil to an NSOrderedSet; ignoring.");
         return;
@@ -87,18 +87,18 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // NSOrderedSet is an abstract class (class cluster). Our single concrete
 // implementation for both the immutable and mutable variants is
-// _RadekHLE_NSOrderedSet / _RadekHLE_NSMutableOrderedSet.
+// _touchHLE_NSOrderedSet / _touchHLE_NSMutableOrderedSet.
 @implementation NSOrderedSet: NSObject
 
 + (id)allocWithZone:(NSZonePtr)zone {
     if this != env.objc.get_known_class("NSOrderedSet", &mut env.mem) {
         log!(
             "Warning: +[{:?} allocWithZone:] called on NSOrderedSet subclass; \
-             falling back to _RadekHLE_NSOrderedSet.",
+             falling back to _touchHLE_NSOrderedSet.",
             this
         );
     }
-    msg_class![env; _RadekHLE_NSOrderedSet allocWithZone:zone]
+    msg_class![env; _touchHLE_NSOrderedSet allocWithZone:zone]
 }
 
 + (id)orderedSet {
@@ -176,11 +176,11 @@ pub const CLASSES: ClassExports = objc_classes! {
     if this != env.objc.get_known_class("NSMutableOrderedSet", &mut env.mem) {
         log!(
             "Warning: +[{:?} allocWithZone:] called on NSMutableOrderedSet \
-             subclass; falling back to _RadekHLE_NSMutableOrderedSet.",
+             subclass; falling back to _touchHLE_NSMutableOrderedSet.",
             this
         );
     }
-    msg_class![env; _RadekHLE_NSMutableOrderedSet allocWithZone:zone]
+    msg_class![env; _touchHLE_NSMutableOrderedSet allocWithZone:zone]
 }
 
 + (id)orderedSetWithCapacity:(NSUInteger)capacity {
@@ -203,7 +203,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 // Our private concrete subclass implementing the immutable variant.
-@implementation _RadekHLE_NSOrderedSet: NSOrderedSet
+@implementation _touchHLE_NSOrderedSet: NSOrderedSet
 
 + (id)allocWithZone:(NSZonePtr)_zone {
     let host_object = Box::<OrderedSetHostObject>::default();
@@ -390,9 +390,9 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 // Our private concrete subclass implementing the mutable variant. It
-// inherits all reading methods from _RadekHLE_NSOrderedSet via the same
+// inherits all reading methods from _touchHLE_NSOrderedSet via the same
 // host object layout.
-@implementation _RadekHLE_NSMutableOrderedSet: _RadekHLE_NSOrderedSet
+@implementation _touchHLE_NSMutableOrderedSet: _touchHLE_NSOrderedSet
 
 - (id)initWithCapacity:(NSUInteger)capacity {
     env.objc
@@ -628,4 +628,3 @@ pub fn debug_description(env: &mut Environment, ordered_set: id) -> String {
     out.push_str(")}");
     out
 }
-
