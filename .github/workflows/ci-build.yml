@@ -1,0 +1,28 @@
+name: CI Build
+
+on:
+  push:
+    branches: [ "radekparek-shiny-barnacle", "main", "trunk" ]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          components: clippy
+      - name: Install system deps
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y pkg-config libasound2-dev libssl-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libgl1-mesa-dev
+      - name: Build (release)
+        run: cargo build --release
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: radekhle-release
+          path: target/release/

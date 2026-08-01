@@ -1808,7 +1808,7 @@ impl Window {
     pub fn swap_window(&self) {
         self.window.gl_swap_window();
 
-        // FPS logging: count frames and print once per second if enabled.
+        // FPS logging / UI: count frames and print once per second if enabled.
         if self.show_fps_counter.get() {
             // Increment frame count.
             let frames = self.fps_frame_count.get().saturating_add(1);
@@ -1826,6 +1826,17 @@ impl Window {
                 // Reset counters
                 *last = now;
                 self.fps_frame_count.set(0);
+
+                // Also show FPS in the window title so it's visible when the
+                // app is running fullscreen or without console.
+                let base_title = if crate::branding().is_empty() {
+                    format!("touchHLE {}", crate::VERSION)
+                } else {
+                    format!("touchHLE {} {}", crate::branding(), crate::VERSION)
+                };
+                let title = format!("{} - FPS: {:.1}", base_title, fps);
+                // Ignore any error setting the title.
+                let _ = self.window.set_title(&title);
             }
         }
     }
