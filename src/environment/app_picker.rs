@@ -776,6 +776,10 @@ fn app_picker_inner(
         } else if std::mem::take(&mut host_obj.ios_version_toggle) {
             let hidden: bool = msg![env; (quick_options_stuff.ios_version_menu) isHidden];
             () = msg![env; (quick_options_stuff.ios_version_menu) setHidden:(!hidden)];
+            if hidden {
+                () = msg![env; (quick_options_stuff.main_view) bringSubviewToFront:quick_options_stuff.ios_version_menu];
+                () = msg![env; (quick_options_stuff.main_view) bringSubviewToFront:quick_options_stuff.ios_version_btn];
+            }
         } else if std::mem::take(&mut host_obj.ios_version_latest) {
             quick_options_ios_version = None;
             update_ios_version_dropdown(env, quick_options_stuff.ios_version_btn, quick_options_stuff.ios_version_menu, &quick_options_stuff.ios_version_items, quick_options_ios_version);
@@ -974,10 +978,10 @@ fn app_picker_inner(
 }
 
 const ICON_SIZE: CGSize = CGSize {
-    width: 76.0,
-    height: 76.0,
+    width: 70.0,
+    height: 70.0,
 };
-const ICON_IMAGE_INSET: CGFloat = 10.0;
+const ICON_IMAGE_INSET: CGFloat = 9.0;
 
 enum TappedIcon {
     App(usize),
@@ -1263,7 +1267,7 @@ fn make_button_row(
 
     let button_size = CGSize {
         width: (super_view_size.width - margin) / (buttons.len() as CGFloat) - margin,
-        height: 30.0,
+        height: 26.0,
     };
     let mut button_frame = CGRect {
         origin: CGPoint {
@@ -1528,7 +1532,7 @@ const DEVICE_TAG_AUTO: NSInteger = 1001;
 /// list has to be scrolled.
 const DEVICE_MENU_VISIBLE_ITEMS: usize = 6;
 /// Height of a single row in the device-model dropdown.
-const DEVICE_MENU_ITEM_HEIGHT: CGFloat = 30.0;
+const DEVICE_MENU_ITEM_HEIGHT: CGFloat = 26.0;
 
 /// The choices shown in the device-model dropdown, in display order, as
 /// `(title, tag)` pairs: "Default" (no override), "Auto" (match host screen),
@@ -1724,7 +1728,7 @@ fn setup_quick_options(
                     main_frame.size,
                     row_center,
                     buttons,
-                    /* font_size: */ None,
+                    /* font_size: */ Some(12.0),
                 ));
             }
             RowKind::IosVersionDropdown => {
@@ -1864,9 +1868,9 @@ fn make_ios_version_dropdown(
     super_view_size: CGSize,
     row_center: CGFloat,
 ) -> (id, id, Vec<id>) {
-    let button_width: CGFloat = 280.0;
-    let button_height: CGFloat = 30.0;
-    let item_height: CGFloat = 30.0;
+    let button_width: CGFloat = 260.0;
+    let button_height: CGFloat = 26.0;
+    let item_height: CGFloat = 26.0;
     let button_frame = CGRect {
         origin: CGPoint {
             x: super_view_size.width / 2.0 - button_width / 2.0,
@@ -1895,7 +1899,7 @@ fn make_ios_version_dropdown(
 
     let menu: id = msg_class![env; UIView alloc];
     let menu: id = msg![env; menu initWithFrame:(CGRect {
-        origin: CGPoint { x: button_frame.origin.x, y: button_frame.origin.y - item_height * 4.0 },
+        origin: CGPoint { x: button_frame.origin.x, y: button_frame.origin.y + button_height },
         size: CGSize { width: button_width, height: item_height * 4.0 },
     })];
     () = msg![env; menu setBackgroundColor:dark_gray];
@@ -1939,10 +1943,10 @@ fn make_device_model_dropdown(
     super_view_size: CGSize,
     row_center: CGFloat,
 ) -> (id, id, Vec<id>, id) {
-    let btn_width: CGFloat = 280.0;
-    let btn_height: CGFloat = 30.0;
-    let list_width: CGFloat = 256.0;
-    let scrollbar_width: CGFloat = 24.0;
+    let btn_width: CGFloat = 260.0;
+    let btn_height: CGFloat = 26.0;
+    let list_width: CGFloat = 238.0;
+    let scrollbar_width: CGFloat = 22.0;
 
     let btn_frame = CGRect {
         origin: CGPoint {
