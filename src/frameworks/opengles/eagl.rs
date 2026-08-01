@@ -1461,7 +1461,7 @@ unsafe fn present_renderbuffer(env: &mut Environment) {
              skipping host present and swapping window only.",
             env.current_thread
         );
-        if let Some(window) = env.window.as_ref() {
+        if let Some(window) = env.window.as_mut() {
             window.swap_window();
         }
         return;
