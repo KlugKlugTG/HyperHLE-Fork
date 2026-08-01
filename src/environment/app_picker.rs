@@ -149,6 +149,8 @@ struct AppPickerDelegateHostObject {
     orientation_portrait_upside_down: bool,
     analog_stick_tilt_controls: Option<bool>,
     network: Option<bool>,
+    /// Quick option: show FPS counter (maps to --print-fps)
+    show_fps: Option<bool>,
     fullscreen: Option<bool>,
     device_model_tag: Option<i32>,
     device_model_toggle: bool,
@@ -238,6 +240,20 @@ const CLASSES: ClassExports = objc_classes! {
     let switch_state: bool = msg![env; switch isOn];
     env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).network = Some(switch_state);
 }
+- (())showFPS:(id)switch { // UISwitch*
+    let switch_state: bool = msg![env; switch isOn];
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).show_fps = Some(switch_state);
+    // Immediately reflect the runtime change so users see the overlay without
+    // having to re-launch or wait for the option to be applied.
+    // SAFETY: calling into the runtime-level API is safe from the UI thread.
+    if switch_state {
+        std::env::set_var("TOUCHHLE_ONSCREEN_FPS", "1");
+        crate::gles::present::set_onscreen_fps_enabled(true);
+    } else {
+        std::env::remove_var("TOUCHHLE_ONSCREEN_FPS");
+        crate::gles::present::set_onscreen_fps_enabled(false);
+    }
+}
 - (())fullscreen:(id)switch { // UISwitch*
     let switch_state: bool = msg![env; switch isOn];
     env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).fullscreen = Some(switch_state);
@@ -308,11 +324,13 @@ fn show_app_picker_gui(
         };
         let mut image = Image::from_bytes(bytes).unwrap();
         // should match Bundle::load_icon()
-        image.round_corners(
-            (10.0 / 57.0) * (image.dimensions().0 as f32),
-            /* four_corners: */ true,
-            /* add_sheen: */ true,
-        );
+        // Use a slightly smaller corner radius for larger icons for a cleaner look.
+                let corner_radius_px = 12.0;
+                image.round_corners(
+                    corner_radius_px,
+                    /* four_corners: */ true,
+                    /* add_sheen: */ true,
+                );
         image
     };
     let environment = Environment::new_without_app(options, icon)?;
@@ -550,6 +568,7 @@ fn app_picker_inner(
     let mut quick_options_orientation: Option<DeviceOrientation> = None;
     let mut quick_options_analog_stick_tilt_controls = true;
     let mut quick_options_network = false;
+    let mut quick_options_show_fps = false;
     let mut quick_options_device_tag: Option<i32> = None;
     let mut quick_options_device_model_open = false;
     let mut quick_options_device_model_scroll: isize = 0;
@@ -796,6 +815,8 @@ fn app_picker_inner(
             quick_options_analog_stick_tilt_controls = enabled;
         } else if let Some(enabled) = std::mem::take(&mut host_obj.network) {
             quick_options_network = enabled;
+        } else if let Some(enabled) = std::mem::take(&mut host_obj.show_fps) {
+            quick_options_show_fps = enabled;
         } else if let Some(fullscreen) = std::mem::take(&mut host_obj.fullscreen) {
             quick_options_fullscreen = match fullscreen {
                 false => None,
@@ -829,6 +850,15 @@ fn app_picker_inner(
         option_args.push("--allow-network-access".to_string());
     }
 
+    if quick_options_show_fps {
+        // Reuse existing CLI flag to enable FPS logging/counter behaviour.
+        option_args.push("--print-fps".to_string());
+        // Also enable the on-screen FPS overlay both via env var and runtime
+        // flag so users don't need to set env vars manually.
+        std::env::set_var("TOUCHHLE_ONSCREEN_FPS", "1");
+        crate::gles::present::set_onscreen_fps_enabled(true);
+    }
+
     if let Some(tag) = quick_options_device_tag {
         let tag = tag as NSInteger;
         if tag == DEVICE_TAG_DEFAULT {
@@ -847,8 +877,8 @@ fn app_picker_inner(
 }
 
 const ICON_SIZE: CGSize = CGSize {
-    width: 57.0,
-    height: 57.0,
+    width: 96.0,
+    height: 96.0,
 };
 
 enum TappedIcon {
@@ -1024,7 +1054,7 @@ fn make_icon_from_glyph(
     let cg_image = CGBitmapContextCreateImage(env, context);
     // This radius should match the one in src/bundle.rs.
     cg_image::borrow_image_mut(&mut env.objc, cg_image).round_corners(
-        (10.0 / 57.0) * ICON_SIZE.width,
+            12.0,
         /* four_corners: */ true,
         /* add_sheen: */ true,
     );
@@ -1514,6 +1544,8 @@ fn setup_quick_options(
         RowKind::DeviceDropdown,
         RowKind::Label("Network access"),
         RowKind::Switch("network:", false),
+        RowKind::Label("Show FPS"),
+        RowKind::Switch("showFPS:", false),
         RowKind::Label("Use analog sticks for tilt controls"),
         RowKind::Switch("analogStickTiltControls:", true),
         // ---- (divider for stuff skipped below)
