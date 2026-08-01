@@ -58,3 +58,4 @@ We stand on the shoulders of giants. Even despite our past differences and the s
 * [GerritForge](http://www.gerritforge.com/) for providing free Gerrit hosting.
 * The many contributors to [Gerrit](https://www.gerritcodereview.com/); and all friends who took an interest in the project.
 * Developers of early iPhone OS apps and Apple/NeXT for creating such fantastic platforms.
+\nNote: reverted a previous code change to avoid unsafe edits and allow continued work. More commits will follow.
