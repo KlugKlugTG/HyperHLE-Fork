@@ -146,6 +146,7 @@ struct AppPickerDelegateHostObject {
     device_model_scroll_down: bool,
     apps_refresh_requested: bool,
     ios_version_latest: bool,
+    ios_version_toggle: bool,
     ios_version_43: bool,
     ios_version_61: bool,
     ios_version_93: bool,
@@ -269,6 +270,9 @@ const CLASSES: ClassExports = objc_classes! {
 }
 - (())iosVersionLatest {
     env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).ios_version_latest = true;
+}
+- (())iosVersionToggle {
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).ios_version_toggle = true;
 }
 - (())iosVersion43 {
     env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).ios_version_43 = true;
@@ -595,22 +599,43 @@ fn app_picker_inner(
     fn update_scale_hack_buttons(env: &mut Environment, buttons: &[id], value: Option<NonZeroU32>) {
         update_quick_option_buttons(env, buttons, value.map_or(0, |v| v.get() as usize));
     }
-    fn update_ios_version_buttons(
+    fn ios_version_tag(value: Option<(i32, i32, i32)>) -> i32 {
+        match value {
+            None => 0,
+            Some((4, 3, 0)) => 1,
+            Some((6, 1, 0)) => 2,
+            Some((9, 3, 0)) => 3,
+            _ => 0,
+        }
+    }
+    fn update_ios_version_dropdown(
         env: &mut Environment,
-        buttons: &[id],
+        button: id,
+        menu: id,
+        items: &[id],
         value: Option<(i32, i32, i32)>,
     ) {
-        update_quick_option_buttons(
-            env,
-            buttons,
-            match value {
-                None => 0,
-                Some((4, 3, 0)) => 1,
-                Some((6, 1, 0)) => 2,
-                Some((9, 3, 0)) => 3,
-                _ => 0,
-            },
-        );
+        let tag = ios_version_tag(value);
+        for &item in items {
+            let selected = msg![env; item tag] == tag as NSInteger;
+            let color: id = if selected {
+                msg_class![env; UIColor magentaColor]
+            } else {
+                msg_class![env; UIColor darkGrayColor]
+            };
+            () = msg![env; item setBackgroundColor:color];
+        }
+        let label = match tag {
+            0 => format!("Latest (iOS {}.{}) ▼", crate::options::LATEST_IOS_VERSION.0, crate::options::LATEST_IOS_VERSION.1),
+            1 => "iOS 4.3 ▼".to_string(),
+            2 => "iOS 6.1 ▼".to_string(),
+            3 => "iOS 9.3 ▼".to_string(),
+            _ => "Latest ▼".to_string(),
+        };
+        let title = ns_string::from_rust_string(env, label);
+        () = msg![env; button setTitle:title forState:UIControlStateNormal];
+        release(env, title);
+        () = msg![env; menu setHidden:true];
     }
     fn update_orientation_buttons(
         env: &mut Environment,
@@ -628,9 +653,11 @@ fn app_picker_inner(
             }),
         );
     }
-    update_ios_version_buttons(
+    update_ios_version_dropdown(
         env,
-        &quick_options_stuff.ios_version_buttons,
+        quick_options_stuff.ios_version_btn,
+        quick_options_stuff.ios_version_menu,
+        &quick_options_stuff.ios_version_items,
         quick_options_ios_version,
     );
     update_scale_hack_buttons(
@@ -745,18 +772,21 @@ fn app_picker_inner(
                 Ok(_) => echo!("No games found in the game folder yet."),
                 Err(e) => echo!("Couldn't refresh the game list: {}", e),
             }
+        } else if std::mem::take(&mut host_obj.ios_version_toggle) {
+            let hidden: bool = msg![env; (quick_options_stuff.ios_version_menu) isHidden];
+            () = msg![env; (quick_options_stuff.ios_version_menu) setHidden:(!hidden)];
         } else if std::mem::take(&mut host_obj.ios_version_latest) {
             quick_options_ios_version = None;
-            update_ios_version_buttons(env, &quick_options_stuff.ios_version_buttons, quick_options_ios_version);
+            update_ios_version_dropdown(env, quick_options_stuff.ios_version_btn, quick_options_stuff.ios_version_menu, &quick_options_stuff.ios_version_items, quick_options_ios_version);
         } else if std::mem::take(&mut host_obj.ios_version_43) {
             quick_options_ios_version = Some((4, 3, 0));
-            update_ios_version_buttons(env, &quick_options_stuff.ios_version_buttons, quick_options_ios_version);
+            update_ios_version_dropdown(env, quick_options_stuff.ios_version_btn, quick_options_stuff.ios_version_menu, &quick_options_stuff.ios_version_items, quick_options_ios_version);
         } else if std::mem::take(&mut host_obj.ios_version_61) {
             quick_options_ios_version = Some((6, 1, 0));
-            update_ios_version_buttons(env, &quick_options_stuff.ios_version_buttons, quick_options_ios_version);
+            update_ios_version_dropdown(env, quick_options_stuff.ios_version_btn, quick_options_stuff.ios_version_menu, &quick_options_stuff.ios_version_items, quick_options_ios_version);
         } else if std::mem::take(&mut host_obj.ios_version_93) {
             quick_options_ios_version = Some((9, 3, 0));
-            update_ios_version_buttons(env, &quick_options_stuff.ios_version_buttons, quick_options_ios_version);
+            update_ios_version_dropdown(env, quick_options_stuff.ios_version_btn, quick_options_stuff.ios_version_menu, &quick_options_stuff.ios_version_items, quick_options_ios_version);
         } else if std::mem::take(&mut host_obj.scale_hack_default) {
             quick_options_scale_hack = None;
             update_scale_hack_buttons(
@@ -1467,7 +1497,9 @@ fn change_copyright_page(
 
 struct QuickOptionsStuff {
     main_view: id,
-    ios_version_buttons: [id; 4],
+    ios_version_btn: id,
+    ios_version_menu: id,
+    ios_version_items: Vec<id>,
     scale_hack_buttons: [id; 5],
     orientation_buttons: [id; 4],
     /// The button that toggles the "Device model" dropdown open/closed. Its
@@ -1603,16 +1635,13 @@ fn setup_quick_options(
         Buttons(&'static [(&'static str, &'static str)]),
         /// Dropdown listing every selectable device model.
         DeviceDropdown,
+        /// Compact dropdown for the emulated iOS version.
+        IosVersionDropdown,
         Switch(&'static str, bool),
     }
     let rows = [
         RowKind::Label("iOS version"),
-        RowKind::Buttons(&[
-            ("Latest", "iosVersionLatest"),
-            ("4.3", "iosVersion43"),
-            ("6.1", "iosVersion61"),
-            ("9.3", "iosVersion93"),
-        ]),
+        RowKind::IosVersionDropdown,
         RowKind::Label("Game folder"),
         RowKind::Buttons(&[
             ("Open folder", "openFileManager"),
@@ -1654,6 +1683,9 @@ fn setup_quick_options(
     };
 
     let mut button_rows = Vec::new();
+    let mut ios_version_btn: id = nil;
+    let mut ios_version_menu: id = nil;
+    let mut ios_version_items: Vec<id> = Vec::new();
     let mut device_model_btn: id = nil;
     let mut device_model_menu: id = nil;
     let mut device_model_items: Vec<id> = Vec::new();
@@ -1694,6 +1726,18 @@ fn setup_quick_options(
                     /* font_size: */ None,
                 ));
             }
+            RowKind::IosVersionDropdown => {
+                let dropdown = make_ios_version_dropdown(
+                    env,
+                    delegate,
+                    main_view,
+                    main_frame.size,
+                    row_center,
+                );
+                ios_version_btn = dropdown.0;
+                ios_version_menu = dropdown.1;
+                ios_version_items = dropdown.2;
+            }
             RowKind::DeviceDropdown => {
                 let dropdown = make_device_model_dropdown(
                     env,
@@ -1730,9 +1774,11 @@ fn setup_quick_options(
 
     QuickOptionsStuff {
         main_view,
-        ios_version_buttons: button_rows[0][..].try_into().unwrap(),
-        scale_hack_buttons: button_rows[2][..].try_into().unwrap(),
-        orientation_buttons: button_rows[3][..].try_into().unwrap(),
+        ios_version_btn,
+        ios_version_menu,
+        ios_version_items,
+        scale_hack_buttons: button_rows[1][..].try_into().unwrap(),
+        orientation_buttons: button_rows[2][..].try_into().unwrap(),
         device_model_btn,
         device_model_menu,
         device_model_items,
@@ -1810,6 +1856,80 @@ fn update_device_model_menu(
 /// selector and tagged with its choice; the arrows fire `deviceModelScrollUp` /
 /// `deviceModelScrollDown`. Returns `(toggle button, menu view, item buttons,
 /// scrollbar thumb)`.
+fn make_ios_version_dropdown(
+    env: &mut Environment,
+    delegate: id,
+    super_view: id,
+    super_view_size: CGSize,
+    row_center: CGFloat,
+) -> (id, id, Vec<id>) {
+    let button_width: CGFloat = 280.0;
+    let button_height: CGFloat = 30.0;
+    let item_height: CGFloat = 30.0;
+    let button_frame = CGRect {
+        origin: CGPoint {
+            x: super_view_size.width / 2.0 - button_width / 2.0,
+            y: row_center - button_height / 2.0,
+        },
+        size: CGSize { width: button_width, height: button_height },
+    };
+    let button: id = msg_class![env; UIButton buttonWithType:UIButtonTypeCustom];
+    let title = ns_string::from_rust_string(
+        env,
+        format!("Latest (iOS {}.{}) ▼", crate::options::LATEST_IOS_VERSION.0, crate::options::LATEST_IOS_VERSION.1),
+    );
+    () = msg![env; button setTitle:title forState:UIControlStateNormal];
+    release(env, title);
+    let white: id = msg_class![env; UIColor whiteColor];
+    let dark_gray: id = msg_class![env; UIColor darkGrayColor];
+    let magenta: id = msg_class![env; UIColor magentaColor];
+    () = msg![env; button setTitleColor:white forState:UIControlStateNormal];
+    () = msg![env; button setBackgroundColor:dark_gray];
+    () = msg![env; button setFrame:button_frame];
+    let button_layer: id = msg![env; button layer];
+    () = msg![env; button_layer setCornerRadius:(6.0 as CGFloat)];
+    let toggle_selector = env.objc.lookup_selector("iosVersionToggle").unwrap();
+    () = msg![env; button addTarget:delegate action:toggle_selector forControlEvents:UIControlEventTouchUpInside];
+    () = msg![env; super_view addSubview:button];
+
+    let menu: id = msg_class![env; UIView alloc];
+    let menu: id = msg![env; menu initWithFrame:(CGRect {
+        origin: CGPoint { x: button_frame.origin.x, y: button_frame.origin.y - item_height * 4.0 },
+        size: CGSize { width: button_width, height: item_height * 4.0 },
+    })];
+    () = msg![env; menu setBackgroundColor:dark_gray];
+    () = msg![env; menu setClipsToBounds:true];
+    let menu_layer: id = msg![env; menu layer];
+    () = msg![env; menu_layer setCornerRadius:(6.0 as CGFloat)];
+    () = msg![env; menu setHidden:true];
+    () = msg![env; super_view addSubview:menu];
+
+    let entries = [
+        ("Latest", "iosVersionLatest", 0i32),
+        ("iOS 4.3", "iosVersion43", 1i32),
+        ("iOS 6.1", "iosVersion61", 2i32),
+        ("iOS 9.3", "iosVersion93", 3i32),
+    ];
+    let mut items = Vec::new();
+    for (index, (label, selector_name, tag)) in entries.into_iter().enumerate() {
+        let item: id = msg_class![env; UIButton buttonWithType:UIButtonTypeCustom];
+        let text = ns_string::get_static_str(env, label);
+        () = msg![env; item setTitle:text forState:UIControlStateNormal];
+        () = msg![env; item setTitleColor:white forState:UIControlStateNormal];
+        () = msg![env; item setBackgroundColor:if tag == 0 { magenta } else { dark_gray }];
+        () = msg![env; item setFrame:(CGRect {
+            origin: CGPoint { x: 0.0, y: index as CGFloat * item_height },
+            size: CGSize { width: button_width, height: item_height },
+        })];
+        () = msg![env; item setTag:tag];
+        let selector = env.objc.lookup_selector(selector_name).unwrap();
+        () = msg![env; item addTarget:delegate action:selector forControlEvents:UIControlEventTouchUpInside];
+        () = msg![env; menu addSubview:item];
+        items.push(item);
+    }
+    (button, menu, items)
+}
+
 fn make_device_model_dropdown(
     env: &mut Environment,
     delegate: id,

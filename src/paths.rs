@@ -186,13 +186,7 @@ pub fn url_for_opening_user_data_dir() -> Result<String, String> {
 pub fn url_for_opening_apps_dir() -> Result<String, String> {
     let apps_dir = user_data_base_path().join(APPS_DIR);
     if std::env::consts::OS == "android" {
-        let brand = crate::branding();
-        Ok(format!(
-            "content://org.touchhle.android{}{}.provider/root/root/{}",
-            if brand.is_empty() { "" } else { "." },
-            brand.to_lowercase(),
-            APPS_DIR
-        ))
+        Ok("touchhle://game-folder".to_string())
     } else {
         let path = apps_dir
             .canonicalize()
