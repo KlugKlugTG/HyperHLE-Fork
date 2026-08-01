@@ -30,12 +30,8 @@ fn main() {
     let workspace_root = package_root.join("../../..");
 
     let mut build = cmake::Config::new(workspace_root.join("vendor/dynarmic"));
-    let frontends = if env::var_os("CARGO_FEATURE_EXPERIMENTAL_AARCH64").is_some() {
-        "A32;A64"
-    } else {
-        "A32"
-    };
-    build.define("DYNARMIC_FRONTENDS", frontends);
+    let experimental_aarch64 = env::var_os("CARGO_FEATURE_EXPERIMENTAL_AARCH64").is_some();
+    build.define("DYNARMIC_FRONTENDS", if experimental_aarch64 { "A32;A64" } else { "A32" });
     build.define("DYNARMIC_WARNINGS_AS_ERRORS", "OFF");
     build.define("DYNARMIC_TESTS", "OFF");
     build.define("DYNARMIC_USE_BUNDLED_EXTERNALS", "ON");
@@ -102,6 +98,9 @@ fn main() {
         .cpp(true)
         .std("c++17")
         .include(dynarmic_out.join("include"));
+    if experimental_aarch64 {
+        wrapper_build.define("TOUCHHLE_EXPERIMENTAL_AARCH64", "1");
+    }
     if !cfg!(debug_assertions) {
         wrapper_build.define("NDEBUG", "1");
     }
