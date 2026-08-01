@@ -2,8 +2,9 @@ name: CI Build
 
 on:
   push:
-    branches: [ "radekparek-shiny-barnacle", "main", "trunk" ]
+    branches: [ "radekparek-shiny-barnacle", "radekparek-rebrand-radekhle", "main", "trunk" ]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   build:
