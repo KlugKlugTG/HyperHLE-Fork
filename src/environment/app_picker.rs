@@ -243,6 +243,16 @@ const CLASSES: ClassExports = objc_classes! {
 - (())showFPS:(id)switch { // UISwitch*
     let switch_state: bool = msg![env; switch isOn];
     env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).show_fps = Some(switch_state);
+    // Immediately reflect the runtime change so users see the overlay without
+    // having to re-launch or wait for the option to be applied.
+    // SAFETY: calling into the runtime-level API is safe from the UI thread.
+    if switch_state {
+        std::env::set_var("TOUCHHLE_ONSCREEN_FPS", "1");
+        crate::gles::present::set_onscreen_fps_enabled(true);
+    } else {
+        std::env::remove_var("TOUCHHLE_ONSCREEN_FPS");
+        crate::gles::present::set_onscreen_fps_enabled(false);
+    }
 }
 - (())fullscreen:(id)switch { // UISwitch*
     let switch_state: bool = msg![env; switch isOn];
@@ -314,11 +324,13 @@ fn show_app_picker_gui(
         };
         let mut image = Image::from_bytes(bytes).unwrap();
         // should match Bundle::load_icon()
-        image.round_corners(
-            (10.0 / 57.0) * (image.dimensions().0 as f32),
-            /* four_corners: */ true,
-            /* add_sheen: */ true,
-        );
+        // Use a slightly smaller corner radius for larger icons for a cleaner look.
+                let corner_radius_px = 12.0;
+                image.round_corners(
+                    corner_radius_px,
+                    /* four_corners: */ true,
+                    /* add_sheen: */ true,
+                );
         image
     };
     let environment = Environment::new_without_app(options, icon)?;
@@ -865,8 +877,8 @@ fn app_picker_inner(
 }
 
 const ICON_SIZE: CGSize = CGSize {
-    width: 57.0,
-    height: 57.0,
+    width: 96.0,
+    height: 96.0,
 };
 
 enum TappedIcon {
@@ -1042,7 +1054,7 @@ fn make_icon_from_glyph(
     let cg_image = CGBitmapContextCreateImage(env, context);
     // This radius should match the one in src/bundle.rs.
     cg_image::borrow_image_mut(&mut env.objc, cg_image).round_corners(
-        (10.0 / 57.0) * ICON_SIZE.width,
+            12.0,
         /* four_corners: */ true,
         /* add_sheen: */ true,
     );
