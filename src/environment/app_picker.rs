@@ -1916,7 +1916,8 @@ fn make_ios_version_dropdown(
         let text = ns_string::get_static_str(env, label);
         () = msg![env; item setTitle:text forState:UIControlStateNormal];
         () = msg![env; item setTitleColor:white forState:UIControlStateNormal];
-        () = msg![env; item setBackgroundColor:if tag == 0 { magenta } else { dark_gray }];
+        let item_color: id = if tag == 0 { magenta } else { dark_gray };
+        () = msg![env; item setBackgroundColor:item_color];
         () = msg![env; item setFrame:(CGRect {
             origin: CGPoint { x: 0.0, y: index as CGFloat * item_height },
             size: CGSize { width: button_width, height: item_height },
