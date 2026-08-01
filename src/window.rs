@@ -1805,7 +1805,7 @@ impl Window {
 
     /// Swap front-buffer and back-buffer so the result of OpenGL rendering is
     /// presented.
-    pub fn swap_window(&self) {
+    pub fn swap_window(&mut self) {
         self.window.gl_swap_window();
 
         // FPS logging / UI: count frames and print once per second if enabled.
