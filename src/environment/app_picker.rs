@@ -617,7 +617,8 @@ fn app_picker_inner(
     ) {
         let tag = ios_version_tag(value);
         for &item in items {
-            let selected = msg![env; item tag] == tag as NSInteger;
+            let item_tag: NSInteger = msg![env; item tag];
+            let selected = item_tag == tag as NSInteger;
             let color: id = if selected {
                 msg_class![env; UIColor magentaColor]
             } else {
