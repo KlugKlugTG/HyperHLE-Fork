@@ -1,8 +1,0 @@
-What's New
-
-- Rebrand groundwork: RadekHLE naming and assets updated in places (rebrand in-progress).
-- On-screen FPS counter: toggleable at runtime (F9 and Show FPS option in launcher).
-- UI improvements: larger app icons and friendlier layout.
-- Audio: increased OpenAL default buffer to reduce choppy audio in some games.
-- CI: added EGL/GLES dev packages so OpenGL ES host bindings can build.
-- OpenGL ES work: GLES support started; further function additions planned.
