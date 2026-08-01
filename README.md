@@ -34,7 +34,7 @@ We would also like to address the developer **Sheva**, who contributed to this d
 
 ### Credits & Context
 
-This text was written by **TimofeyLednev** (also known on Discord by the Russian alias **"хайкуос шотает"**).
+This text was written by **TimofeyLednev** (also known on Discord by the Russian alias **"хайкуос шотает"**). 
 
 Timofey was banned from the official touchHLE server in April 2026 by ciciplusplus himself due to an accidental pull request, and was never unbanned. Alongside him, **Nekono** (also known as **j92580498-max**), the actual creator of the HyperHLE fork, was also banned at the same time.
 
@@ -48,30 +48,13 @@ We stand on the shoulders of giants. Even despite our past differences and the s
 
 * **The original touchHLE project contributors** (including **hikari_no_yume/ciciplusplus**), who designed the codebase, frameworks, and architecture that made early iOS emulation a reality.
 * Everyone who has contributed to the original project or supported its contributors financially.
-* The authors of and contributors to the many libraries used by this ecosystem: [dynarmic](https://github.com/merryhime/dynarmic), [rust-macho](https://github.com/flier/rust-macho), [SDL](https://libsdl.org/), [rust-sdl2](https://github.com/Rust-SDL2/rust-sdl2), [stb_image](https://github.com/nothings/stb), Imagination Technologies' [PVRTC decompressor](https://github.com/powervr-graphics/Native_SDK/blob/master/framework/PVRCore/texture/PVRTDecompress.cpp), [openal-soft](https://github.com/kcat/openal-soft), [hound](https://github.com/ruuda/hound), [caf](https://github.com/rustaudio/caf), [Symphonia](https://github.com/pdeljanov/Symphonia), [RustType](https://gitlab.redox-os.org/redox-os/rusttype), [the Liberation fonts](https://github.com/liberationfonts/liberation-fonts), [the Noto CJK fonts](https://github.com/googlefonts/noto-cjk), [rust-plist](https://github.com/ebarnard/nibarchive), [quick-xml](https://github.com/tafia/quick-xml), [gl-rs](https://github.com/brendanzab/gl-rs), [cargo-license](https://github.com/onur/cargo-license), [cc-rs](https://github.com/Rust-SDL2/rust-sdl2), [cmake-rs](https://github.com/rust-lang/cmake-rs), [cargo-ndk](https://github.com/bbqsrc/cargo-ndk), [cargo-ndk-android-gradle](https://github.com/willir/cargo-ndk-android-gradle), [md-5 and sha1](https://github.com/RustCrypto/hashes), [yore](https://github.com/bonega/yore), [encoding_rs](https://github.com/hsivonen/encoding_rs), [corosensei](https://github.com/Amanieu/corosensei) and the Rust standard library.
+* The authors of and contributors to the many libraries used by this ecosystem: [dynarmic](https://github.com/merryhime/dynarmic), [rust-macho](https://github.com/flier/rust-macho), [SDL](https://libsdl.org/), [rust-sdl2](https://github.com/Rust-SDL2/rust-sdl2), [stb_image](https://github.com/nothings/stb), Imagination Technologies' [PVRTC decompressor](https://github.com/powervr-graphics/Native_SDK/blob/master/framework/PVRCore/texture/PVRTDecompress.cpp), [openal-soft](https://github.com/kcat/openal-soft), [hound](https://github.com/ruuda/hound), [caf](https://github.com/rustaudio/caf), [Symphonia](https://github.com/pdeljanov/Symphonia), [RustType](https://gitlab.redox-os.org/redox-os/rusttype), [the Liberation fonts](https://github.com/liberationfonts/liberation-fonts), [the Noto CJK fonts](https://github.com/googlefonts/noto-cjk), [rust-plist](https://github.com/ebarnard/rust-plist), [nibarchive](https://github.com/michaelwright235/nibarchive), [quick-xml](https://github.com/tafia/quick-xml), [gl-rs](https://github.com/brendanzab/gl-rs), [cargo-license](https://github.com/onur/cargo-license), [cc-rs](https://github.com/rust-lang/cc-rs), [cmake-rs](https://github.com/rust-lang/cmake-rs), [cargo-ndk](https://github.com/bbqsrc/cargo-ndk), [cargo-ndk-android-gradle](https://github.com/willir/cargo-ndk-android-gradle), [md-5 and sha1](https://github.com/RustCrypto/hashes), [yore](https://github.com/bonega/yore), [encoding_rs](https://github.com/hsivonen/encoding_rs), [corosensei](https://github.com/Amanieu/corosensei) and the Rust standard library.
 * The Skyline emulator project (RIP), for writing the file management workaround for newer Android versions.
 * The [Rust project](https://www.rust-lang.org/) generally.
 * The various people out there who've documented the iPhone OS platform, officially or otherwise.
 * The iOS hacking/jailbreaking community.
 * The Free Software Foundation, for making libgcc and libstdc++ copyleft.
-* The National Security Agency of the United States of America, for [Ghidra](https://ghidra-sre.org/).
+* The National Security Agency of the United States, for [Ghidra](https://ghidra-sre.org/).
 * [GerritForge](http://www.gerritforge.com/) for providing free Gerrit hosting.
 * The many contributors to [Gerrit](https://www.gerritcodereview.com/); and all friends who took an interest in the project.
 * Developers of early iPhone OS apps and Apple/NeXT for creating such fantastic platforms.
-
----
-
-## CPU backends
-
-The bundled Dynarmic backend builds both ARM32 (`A32`) and ARM64 (`A64`) frontends by default. This restores compilation of the A64 frontend that was previously omitted from the default build.
-
-This change only restores the A64 CPU frontend in the build. It does not yet make the complete iPhone OS guest runtime 64-bit: the Mach-O loader, guest pointer model, ABI, dyld, and framework shims still require a separate migration before 64-bit iPhone OS applications can run.
-
-## Building
-
-Build normally with Cargo. The Dynarmic submodule must be initialized:
-
-```sh
-git submodule update --init --recursive
-cargo build
-```
