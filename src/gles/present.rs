@@ -23,6 +23,11 @@ pub struct FpsCounter {
 static LAST_FPS_TEXT: OnceLock<Mutex<String>> = OnceLock::new();
 // Per-process cached GL glyph textures. Created lazily on first overlay draw.
 static GLYPH_TEXTURES: OnceLock<Mutex<Option<Vec<u32>>>> = OnceLock::new();
+// Runtime-controlled flag to enable the on-screen FPS overlay without requiring
+// an environment variable. Use set_onscreen_fps_enabled(true/false) to control it
+// from other parts of the runtime (e.g., the app picker or window input).
+use std::sync::atomic::{AtomicBool, Ordering};
+static ONSCREEN_FPS_ENABLED: OnceLock<AtomicBool> = OnceLock::new();
 
 impl FpsCounter {
     pub fn start() -> Self {
@@ -46,8 +51,14 @@ impl FpsCounter {
                 label,
                 fps
             );
-            // Update global text cache for on-screen overlay if enabled.
-            if std::env::var_os("TOUCHHLE_ONSCREEN_FPS").is_some() {
+            // Update global text cache for on-screen overlay if enabled via
+            // environment variable or the runtime flag.
+            let onscreen_env = std::env::var_os("TOUCHHLE_ONSCREEN_FPS").is_some();
+            let onscreen_runtime = ONSCREEN_FPS_ENABLED
+                .get()
+                .map(|b| b.load(Ordering::SeqCst))
+                .unwrap_or(false);
+            if onscreen_env || onscreen_runtime {
                 let text = format!("FPS: {:.1}", fps);
                 if let Some(mutex) = LAST_FPS_TEXT.get() {
                     if let Ok(mut s) = mutex.lock() {
@@ -57,6 +68,11 @@ impl FpsCounter {
             }
         }
     }
+}
+
+/// Runtime API: enable/disable the on-screen FPS overlay at runtime.
+pub fn set_onscreen_fps_enabled(enabled: bool) {
+    ONSCREEN_FPS_ENABLED.get_or_init(|| AtomicBool::new(false)).store(enabled, Ordering::SeqCst);
 }
 
 /// Present the the latest frame (e.g. the app's splash screen or rendering
@@ -167,8 +183,15 @@ pub unsafe fn present_frame(
         gles.DrawArrays(gles11::TRIANGLES, 0, 6);
     }
 
-    // On-screen FPS overlay (simple bitmap font). Enabled by env var TOUCHHLE_ONSCREEN_FPS=1
-    if std::env::var_os("TOUCHHLE_ONSCREEN_FPS").is_some() {
+    // On-screen FPS overlay (simple bitmap font). Enabled by env var
+    // TOUCHHLE_ONSCREEN_FPS=1 or by the runtime flag set via
+    // crate::gles::present::set_onscreen_fps_enabled(true).
+    let onscreen_env = std::env::var_os("TOUCHHLE_ONSCREEN_FPS").is_some();
+    let onscreen_runtime = ONSCREEN_FPS_ENABLED
+        .get()
+        .map(|b| b.load(Ordering::SeqCst))
+        .unwrap_or(false);
+    if onscreen_env || onscreen_runtime {
         if let Some(mutex) = LAST_FPS_TEXT.get() {
             if let Ok(s) = mutex.lock() {
                 if !s.is_empty() {

@@ -2036,6 +2036,9 @@ impl Window {
     /// Toggle FPS counter at runtime.
     pub fn set_show_fps_counter(&mut self, enabled: bool) {
         self.show_fps_counter.set(enabled);
+        // Also enable the on-screen FPS overlay so runtime toggles apply to
+        // the graphical overlay as well as the window title/console logging.
+        crate::gles::present::set_onscreen_fps_enabled(enabled);
     }
 }
 

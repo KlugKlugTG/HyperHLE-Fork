@@ -841,6 +841,10 @@ fn app_picker_inner(
     if quick_options_show_fps {
         // Reuse existing CLI flag to enable FPS logging/counter behaviour.
         option_args.push("--print-fps".to_string());
+        // Also enable the on-screen FPS overlay both via env var and runtime
+        // flag so users don't need to set env vars manually.
+        std::env::set_var("TOUCHHLE_ONSCREEN_FPS", "1");
+        crate::gles::present::set_onscreen_fps_enabled(true);
     }
 
     if let Some(tag) = quick_options_device_tag {
