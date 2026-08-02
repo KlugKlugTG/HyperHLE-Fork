@@ -7,5 +7,5 @@
 #![allow(non_snake_case)]
 
 fn main() -> Result<(), String> {
-    radekHLE::main(std::env::args())
+    touchHLE::main(std::env::args())
 }
