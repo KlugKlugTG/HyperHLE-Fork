@@ -442,7 +442,7 @@ fn app_picker_inner(
             }
         }
     }
-    if !found_wallpaper {
+    if !have_wallpaper {
         let CGSize { width, height } = app_frame.size;
         log!(
             "No wallpaper found; filename can be one of: {}; ideal size is {}×{} pixels",
