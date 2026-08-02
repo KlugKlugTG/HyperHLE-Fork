@@ -1707,8 +1707,9 @@ fn glReadPixels(
 ) {
     with_ctx_and_mem(env, |gles, mem| {
         let pixels = {
-            let pixel_count: GuestUSize = width.checked_mul(height).unwrap().try_into().unwrap();
-            let size = image_size_estimate(pixel_count, format, type_);
+            let mut alignment = 4;
+            gles.GetIntegerv(gles11::PACK_ALIGNMENT, &mut alignment);
+            let size = image_size_estimate(width, height, format, type_, alignment.max(1) as GuestUSize);
             mem.ptr_at_mut(pixels.cast::<u8>(), size).cast::<GLvoid>()
         };
         unsafe { gles.ReadPixels(x, y, width, height, format, type_, pixels) }
@@ -1980,11 +1981,13 @@ fn glTexParameterxv(
         gles.TexParameterxv(target, pname, params_ptr)
     })
 }
-fn image_size_estimate(pixel_count: GuestUSize, format: GLenum, type_: GLenum) -> GuestUSize {
-    // This is only an upper-bound estimate used for memory tracking, not
-    // anything OpenGL actually needs. Unknown combos should yield a
-    // conservative "don't try to copy guest pixels" sentinel (0) and log,
-    // not crash the host. The driver will catch real format issues.
+fn image_size_estimate(
+    width: GLsizei,
+    height: GLsizei,
+    format: GLenum,
+    type_: GLenum,
+    alignment: GuestUSize,
+) -> GuestUSize {
     let bytes_per_pixel: Option<GuestUSize> = match type_ {
         gles11::UNSIGNED_BYTE => match format {
             gles11::ALPHA | gles11::LUMINANCE => Some(1),
@@ -2006,14 +2009,14 @@ fn image_size_estimate(pixel_count: GuestUSize, format: GLenum, type_: GLenum) -
         );
         return 0;
     };
-    pixel_count.checked_mul(bpp).unwrap_or_else(|| {
-        log!(
-            "Warning: image_size_estimate(): pixel_count {} * bpp {} overflowed GuestUSize; returning u32::MAX.",
-            pixel_count,
-            bpp
-        );
-        GuestUSize::MAX
-    })
+    let width = width.max(0) as GuestUSize;
+    let height = height.max(0) as GuestUSize;
+    let row_bytes = width.saturating_mul(bpp);
+    let alignment = alignment.clamp(1, 8);
+    let row_stride = row_bytes.saturating_add(alignment - 1) / alignment * alignment;
+    row_stride
+        .saturating_mul(height.saturating_sub(1))
+        .saturating_add(row_bytes)
 }
 fn glTexImage2D(
     env: &mut Environment,
@@ -2061,8 +2064,9 @@ fn glTexImage2D(
         let pixels = if pixels.is_null() {
             std::ptr::null()
         } else {
-            let pixel_count: GuestUSize = width.checked_mul(height).unwrap().try_into().unwrap();
-            let size = image_size_estimate(pixel_count, format, type_);
+            let mut alignment = 4;
+            gles.GetIntegerv(gles11::UNPACK_ALIGNMENT, &mut alignment);
+            let size = image_size_estimate(width, height, format, type_, alignment.max(1) as GuestUSize);
             mem.ptr_at(pixels.cast::<u8>(), size).cast::<GLvoid>()
         };
         gles.TexImage2D(
@@ -2107,8 +2111,9 @@ fn glTexSubImage2D(
     pixels: ConstVoidPtr,
 ) {
     with_ctx_and_mem(env, |gles, mem| unsafe {
-        let pixel_count: GuestUSize = width.checked_mul(height).unwrap().try_into().unwrap();
-        let size = image_size_estimate(pixel_count, format, type_);
+        let mut alignment = 4;
+        gles.GetIntegerv(gles11::UNPACK_ALIGNMENT, &mut alignment);
+        let size = image_size_estimate(width, height, format, type_, alignment.max(1) as GuestUSize);
         let pixels = mem.ptr_at(pixels.cast::<u8>(), size).cast::<GLvoid>();
         gles.TexSubImage2D(
             target, level, xoffset, yoffset, width, height, format, type_, pixels,

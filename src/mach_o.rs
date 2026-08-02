@@ -345,7 +345,7 @@ impl MachO {
         }
         let is_64bit = header.is_64bit();
         if is_64bit {
-            return Err("Executable is not 32-bit!");
+            return Err("Executable is 64-bit; RadekHLE currently supports ARMv7 32-bit iOS apps only");
         }
         // TODO: Check cpusubtype (should be some flavour of ARMv6/ARMv7)
 
