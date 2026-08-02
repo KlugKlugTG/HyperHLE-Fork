@@ -245,6 +245,9 @@ fn glDisableClientState(env: &mut Environment, array: GLenum) {
 }
 
 fn glGetBooleanv(env: &mut Environment, pname: GLenum, params: MutPtr<GLboolean>) {
+    if params.is_null() {
+        return;
+    }
     if env
         .framework_state
         .opengles
@@ -260,6 +263,9 @@ fn glGetBooleanv(env: &mut Environment, pname: GLenum, params: MutPtr<GLboolean>
     });
 }
 fn glGetFloatv(env: &mut Environment, pname: GLenum, params: MutPtr<GLfloat>) {
+    if params.is_null() {
+        return;
+    }
     if env
         .framework_state
         .opengles
@@ -275,6 +281,9 @@ fn glGetFloatv(env: &mut Environment, pname: GLenum, params: MutPtr<GLfloat>) {
     });
 }
 fn glGetIntegerv(env: &mut Environment, pname: GLenum, params: MutPtr<GLint>) {
+    if params.is_null() {
+        return;
+    }
     match pname {
         gles11::NUM_COMPRESSED_TEXTURE_FORMATS => {
             env.mem
@@ -309,6 +318,9 @@ fn glGetIntegerv(env: &mut Environment, pname: GLenum, params: MutPtr<GLint>) {
     }
 }
 fn glGetFixedv(env: &mut Environment, pname: GLenum, params: MutPtr<GLfixed>) {
+    if params.is_null() {
+        return;
+    }
     if env
         .framework_state
         .opengles
@@ -324,6 +336,9 @@ fn glGetFixedv(env: &mut Environment, pname: GLenum, params: MutPtr<GLfixed>) {
     });
 }
 fn glGetPointerv(env: &mut Environment, pname: GLenum, params: MutPtr<ConstVoidPtr>) {
+    if params.is_null() {
+        return;
+    }
     if env
         .framework_state
         .opengles

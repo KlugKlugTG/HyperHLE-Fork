@@ -965,8 +965,14 @@ pub fn decode_buffer(
 
     match format.format_id {
         kAudioFormatAppleIMA4 => {
-            assert!(data_slice.len().is_multiple_of(34));
-
+            let valid_len = data_slice.len() / 34 * 34;
+            if valid_len != data_slice.len() {
+                log!(
+                    "Warning: decode_buffer: ignoring {} trailing bytes in Apple IMA4 data.",
+                    data_slice.len() - valid_len
+                );
+            }
+            let data_slice = &data_slice[..valid_len];
             let mut out_pcm = Vec::<u8>::with_capacity((data_slice.len() / 34) * 64 * 2);
             let packets = data_slice.chunks(34);
 
@@ -1063,7 +1069,8 @@ pub fn decode_buffer(
                 (2, 16) => al::AL_FORMAT_STEREO16,
                 // --- ДОБАВЛЕНА РАБОЧАЯ ВЕТКА ДЛЯ (1, 32) ---
                 (1, 32) => {
-                    assert!(processed_data.len().is_multiple_of(4));
+                    let valid_len = processed_data.len() / 4 * 4;
+                    processed_data.truncate(valid_len);
                     let new_size = (processed_data.len() / 4) * 2;
                     let mut new_processed_data = Vec::<u8>::with_capacity(new_size);
 
@@ -1095,7 +1102,8 @@ pub fn decode_buffer(
                 }
                 // --- СУЩЕСТВУЮЩАЯ ВЕТКА (2, 32) ---
                 (2, 32) => {
-                    assert!(processed_data.len().is_multiple_of(4));
+                    let valid_len = processed_data.len() / 4 * 4;
+                    processed_data.truncate(valid_len);
                     let new_size = (processed_data.len() / 4) * 2;
                     let mut new_processed_data = Vec::<u8>::with_capacity(new_size);
 
@@ -1281,12 +1289,25 @@ fn prime_audio_queue(env: &mut Environment, in_aq: AudioQueueRef) {
                 al::AL_BUFFERS_PROCESSED,
                 &mut al_buffers_processed,
             );
-            assert!(context.GetError() == 0);
+            let err = context.GetError();
+            if err != 0 {
+                log!("Warning: audio queue {} OpenAL query failed: {:#x}; skipping refill.", in_aq, err);
+                break;
+            }
         }
-        let al_buffers_queued: usize = al_buffers_queued.try_into().unwrap();
-        let al_buffers_processed: usize = al_buffers_processed.try_into().unwrap();
+        let Ok(al_buffers_queued) = usize::try_from(al_buffers_queued) else {
+            log!("Warning: audio queue {} reported negative queued-buffer count.", in_aq);
+            break;
+        };
+        let Ok(al_buffers_processed) = usize::try_from(al_buffers_processed) else {
+            log!("Warning: audio queue {} reported negative processed-buffer count.", in_aq);
+            break;
+        };
 
-        assert!(al_buffers_queued <= host_object.buffer_queue.len());
+        if al_buffers_processed > al_buffers_queued || al_buffers_queued > host_object.buffer_queue.len() {
+            log!("Warning: audio queue {} reported inconsistent buffer counts (queued={}, processed={}, tracked={}); skipping refill.", in_aq, al_buffers_queued, al_buffers_processed, host_object.buffer_queue.len());
+            break;
+        }
         let unprocessed_buffers = al_buffers_queued - al_buffers_processed;
 
         if unprocessed_buffers > 1 || al_buffers_queued == host_object.buffer_queue.len() {
@@ -1306,7 +1327,11 @@ fn prime_audio_queue(env: &mut Environment, in_aq: AudioQueueRef) {
         let next_al_buffer = host_object.al_unused_buffers.pop().unwrap_or_else(|| {
             let mut al_buffer = 0;
             unsafe { context.GenBuffers(1, &mut al_buffer) };
-            assert!(unsafe { context.GetError() } == 0);
+            let err = unsafe { context.GetError() };
+            if err != 0 || al_buffer == 0 {
+                log!("Warning: audio queue {} could not allocate an OpenAL buffer: {:#x}; stopping refill.", in_aq, err);
+                return;
+            }
             al_buffer
         });
 
