@@ -37,6 +37,7 @@ use crate::window::DeviceOrientation;
 use crate::Environment;
 use std::collections::HashMap;
 use std::ffi::OsStr;
+use std::io::Read;
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 
@@ -416,10 +417,30 @@ fn app_picker_inner(
             },
             size: app_frame.size,
         })];
-        () = msg![env; wallpaper setAlpha:(0.5 as CGFloat)];
+        () = msg![env; wallpaper setAlpha:(1.0 as CGFloat)];
         () = msg![env; main_view addSubview:wallpaper];
         have_wallpaper = true;
         break;
+    }
+    if !found_wallpaper {
+        if let Ok(mut resource) = paths::ResourceFile::open("touchHLE_wallpaper.png") {
+            let mut bytes = Vec::new();
+            if resource.get().read_to_end(&mut bytes).is_ok() {
+                if let Ok(image) = Image::from_bytes(&bytes) {
+                    let image = cg_image::from_image(env, image);
+                    let image: id = msg_class![env; UIImage imageWithCGImage:image];
+                    let wallpaper: id = msg_class![env; UIImageView alloc];
+                    let wallpaper: id = msg![env; wallpaper initWithImage:image];
+                    () = msg![env; wallpaper setFrame:(CGRect {
+                        origin: CGPoint { x: 0.0, y: 0.0 },
+                        size: app_frame.size,
+                    })];
+                    () = msg![env; wallpaper setAlpha:(1.0 as CGFloat)];
+                    () = msg![env; main_view addSubview:wallpaper];
+                    have_wallpaper = true;
+                }
+            }
+        }
     }
     if !found_wallpaper {
         let CGSize { width, height } = app_frame.size;
@@ -637,6 +658,7 @@ fn app_picker_inner(
         () = msg![env; button setTitle:title forState:UIControlStateNormal];
         let black: id = msg_class![env; UIColor blackColor];
         () = msg![env; button setTitleColor:black forState:UIControlStateNormal];
+        () = msg![env; button layoutSubviews];
         release(env, title);
         () = msg![env; menu setHidden:true];
     }
@@ -1881,12 +1903,8 @@ fn make_ios_version_dropdown(
         size: CGSize { width: button_width, height: button_height },
     };
     let button: id = msg_class![env; UIButton buttonWithType:UIButtonTypeCustom];
-    let title = ns_string::from_rust_string(
-        env,
-        format!("Latest (iOS {}.{})", crate::options::LATEST_IOS_VERSION.0, crate::options::LATEST_IOS_VERSION.1),
-    );
+    let title = ns_string::get_static_str(env, "iOS version");
     () = msg![env; button setTitle:title forState:UIControlStateNormal];
-    release(env, title);
     let black: id = msg_class![env; UIColor blackColor];
     let white: id = msg_class![env; UIColor whiteColor];
     let dark_gray: id = msg_class![env; UIColor darkGrayColor];
@@ -1894,6 +1912,7 @@ fn make_ios_version_dropdown(
     () = msg![env; button setTitleColor:black forState:UIControlStateNormal];
     () = msg![env; button setBackgroundColor:dark_gray];
     () = msg![env; button setFrame:button_frame];
+    () = msg![env; button layoutSubviews];
     let button_layer: id = msg![env; button layer];
     () = msg![env; button_layer setCornerRadius:(6.0 as CGFloat)];
     let toggle_selector = env.objc.lookup_selector("iosVersionToggle").unwrap();
@@ -1930,6 +1949,7 @@ fn make_ios_version_dropdown(
             origin: CGPoint { x: 0.0, y: index as CGFloat * item_height },
             size: CGSize { width: button_width, height: item_height },
         })];
+        () = msg![env; item layoutSubviews];
         () = msg![env; item setTag:tag];
         let selector = env.objc.lookup_selector(selector_name).unwrap();
         () = msg![env; item addTarget:delegate action:selector forControlEvents:UIControlEventTouchUpInside];
