@@ -627,14 +627,16 @@ fn app_picker_inner(
             () = msg![env; item setBackgroundColor:color];
         }
         let label = match tag {
-            0 => format!("Latest (iOS {}.{}) ▼", crate::options::LATEST_IOS_VERSION.0, crate::options::LATEST_IOS_VERSION.1),
-            1 => "iOS 4.3 ▼".to_string(),
-            2 => "iOS 6.1 ▼".to_string(),
-            3 => "iOS 9.3 ▼".to_string(),
-            _ => "Latest ▼".to_string(),
+            0 => format!("Latest (iOS {})", crate::options::LATEST_IOS_VERSION.0),
+            1 => "iOS 4.3".to_string(),
+            2 => "iOS 6.1".to_string(),
+            3 => "iOS 9.3".to_string(),
+            _ => "Latest".to_string(),
         };
         let title = ns_string::from_rust_string(env, label);
         () = msg![env; button setTitle:title forState:UIControlStateNormal];
+        let black = msg_class![env; UIColor blackColor];
+        () = msg![env; button setTitleColor:black forState:UIControlStateNormal];
         release(env, title);
         () = msg![env; menu setHidden:true];
     }
@@ -1012,8 +1014,8 @@ fn make_icon_grid(
         width: 74.0,
         height: 13.0,
     };
-    let icon_gap_x: CGFloat = 19.0;
-    let icon_gap_y: CGFloat = 4.0 + label_size.height + 14.0;
+    let icon_gap_x: CGFloat = 12.0;
+    let icon_gap_y: CGFloat = 2.0 + label_size.height + 10.0;
     let icon_grid_width = (ICON_SIZE.width * num_cols_f) + icon_gap_x * (num_cols_f - 1.0);
     let icon_grid_origin = CGPoint {
         x: (app_frame.size.width - icon_grid_width) / 2.0,
@@ -1263,11 +1265,11 @@ fn make_button_row(
     buttons: &[(&'static str, &'static str)],
     font_size: Option<CGFloat>,
 ) -> Vec<id> {
-    let margin = 10.0;
+    let margin = 6.0;
 
     let button_size = CGSize {
         width: (super_view_size.width - margin) / (buttons.len() as CGFloat) - margin,
-        height: 26.0,
+        height: 22.0,
     };
     let mut button_frame = CGRect {
         origin: CGPoint {
@@ -1532,7 +1534,7 @@ const DEVICE_TAG_AUTO: NSInteger = 1001;
 /// list has to be scrolled.
 const DEVICE_MENU_VISIBLE_ITEMS: usize = 6;
 /// Height of a single row in the device-model dropdown.
-const DEVICE_MENU_ITEM_HEIGHT: CGFloat = 26.0;
+const DEVICE_MENU_ITEM_HEIGHT: CGFloat = 22.0;
 
 /// The choices shown in the device-model dropdown, in display order, as
 /// `(title, tag)` pairs: "Default" (no override), "Auto" (match host screen),
@@ -1586,14 +1588,14 @@ fn setup_quick_options(
     () = msg![env; main_view setHidden:true];
     () = msg![env; super_view addSubview:main_view];
 
-    let divider = 50.0;
+    let divider = 42.0;
 
     // Close button (×) in the upper right corner. It uses an explicit border
     // and a slightly larger frame than the title so the glyph is clearly
     // visible against the white menu background.
     {
-        let button_size: CGFloat = 36.0;
-        let button_margin: CGFloat = 8.0;
+        let button_size: CGFloat = 30.0;
+        let button_margin: CGFloat = 6.0;
         let button_frame = CGRect {
             origin: CGPoint {
                 x: main_frame.size.width - button_size - button_margin,
@@ -1613,7 +1615,7 @@ fn setup_quick_options(
         () = msg![env; button layoutSubviews];
 
         let label: id = msg![env; button titleLabel];
-        let font: id = msg_class![env; UIFont systemFontOfSize:(28.0 as CGFloat)];
+        let font: id = msg_class![env; UIFont systemFontOfSize:(23.0 as CGFloat)];
         () = msg![env; label setFont:font];
 
         // `buttonWithType:UIButtonTypeRoundedRect` does not actually apply the
@@ -1705,11 +1707,11 @@ fn setup_quick_options(
                 let frame = CGRect {
                     origin: CGPoint {
                         x: 0.0,
-                        y: row_center - 30.0 / 2.0,
+                        y: row_center - 24.0 / 2.0,
                     },
                     size: CGSize {
                         width: main_frame.size.width,
-                        height: 30.0,
+                        height: 24.0,
                     },
                 };
 
@@ -1728,7 +1730,7 @@ fn setup_quick_options(
                     main_frame.size,
                     row_center,
                     buttons,
-                    /* font_size: */ Some(12.0),
+                    /* font_size: */ Some(10.0),
                 ));
             }
             RowKind::IosVersionDropdown => {
@@ -1760,7 +1762,7 @@ fn setup_quick_options(
                 let switch_frame = CGRect {
                     origin: CGPoint {
                         x: main_frame.size.width / 2.0 - 94.0 / 2.0,
-                        y: row_center - 27.0 / 2.0,
+                        y: row_center - 22.0 / 2.0,
                     },
                     size: Default::default(),
                 };
@@ -1868,9 +1870,9 @@ fn make_ios_version_dropdown(
     super_view_size: CGSize,
     row_center: CGFloat,
 ) -> (id, id, Vec<id>) {
-    let button_width: CGFloat = 260.0;
-    let button_height: CGFloat = 26.0;
-    let item_height: CGFloat = 26.0;
+    let button_width: CGFloat = 244.0;
+    let button_height: CGFloat = 22.0;
+    let item_height: CGFloat = 22.0;
     let button_frame = CGRect {
         origin: CGPoint {
             x: super_view_size.width / 2.0 - button_width / 2.0,
@@ -1881,14 +1883,15 @@ fn make_ios_version_dropdown(
     let button: id = msg_class![env; UIButton buttonWithType:UIButtonTypeCustom];
     let title = ns_string::from_rust_string(
         env,
-        format!("Latest (iOS {}.{}) ▼", crate::options::LATEST_IOS_VERSION.0, crate::options::LATEST_IOS_VERSION.1),
+        format!("Latest (iOS {}.{})", crate::options::LATEST_IOS_VERSION.0, crate::options::LATEST_IOS_VERSION.1),
     );
     () = msg![env; button setTitle:title forState:UIControlStateNormal];
     release(env, title);
+    let black: id = msg_class![env; UIColor blackColor];
     let white: id = msg_class![env; UIColor whiteColor];
     let dark_gray: id = msg_class![env; UIColor darkGrayColor];
     let magenta: id = msg_class![env; UIColor magentaColor];
-    () = msg![env; button setTitleColor:white forState:UIControlStateNormal];
+    () = msg![env; button setTitleColor:black forState:UIControlStateNormal];
     () = msg![env; button setBackgroundColor:dark_gray];
     () = msg![env; button setFrame:button_frame];
     let button_layer: id = msg![env; button layer];
@@ -1910,7 +1913,7 @@ fn make_ios_version_dropdown(
     () = msg![env; super_view addSubview:menu];
 
     let entries = [
-        ("Latest", "iosVersionLatest", 0i32),
+        ("Latest (iOS 12.0)", "iosVersionLatest", 0i32),
         ("iOS 4.3", "iosVersion43", 1i32),
         ("iOS 6.1", "iosVersion61", 2i32),
         ("iOS 9.3", "iosVersion93", 3i32),
@@ -1943,9 +1946,9 @@ fn make_device_model_dropdown(
     super_view_size: CGSize,
     row_center: CGFloat,
 ) -> (id, id, Vec<id>, id) {
-    let btn_width: CGFloat = 260.0;
-    let btn_height: CGFloat = 26.0;
-    let list_width: CGFloat = 238.0;
+    let btn_width: CGFloat = 244.0;
+    let btn_height: CGFloat = 22.0;
+    let list_width: CGFloat = 222.0;
     let scrollbar_width: CGFloat = 22.0;
 
     let btn_frame = CGRect {
