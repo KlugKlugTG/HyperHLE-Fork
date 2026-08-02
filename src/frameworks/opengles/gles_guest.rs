@@ -1708,7 +1708,7 @@ fn glReadPixels(
     with_ctx_and_mem(env, |gles, mem| {
         let pixels = {
             let mut alignment = 4;
-            gles.GetIntegerv(gles11::PACK_ALIGNMENT, &mut alignment);
+            unsafe { gles.GetIntegerv(gles11::PACK_ALIGNMENT, &mut alignment); }
             let size = image_size_estimate(width, height, format, type_, alignment.max(1) as GuestUSize);
             mem.ptr_at_mut(pixels.cast::<u8>(), size).cast::<GLvoid>()
         };
