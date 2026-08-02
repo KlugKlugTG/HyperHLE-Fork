@@ -1909,9 +1909,10 @@ fn make_ios_version_dropdown(
     let mut items = Vec::new();
     for (index, (label, selector_name, tag)) in entries.into_iter().enumerate() {
         let item: id = msg_class![env; UIButton buttonWithType:UIButtonTypeCustom];
-        let text = ns_string::get_static_str(env, label);
+        let text = ns_string::from_rust_string(env, label.to_owned());
         () = msg![env; item setTitle:text forState:UIControlStateNormal];
-        () = msg![env; item setTitleColor:white forState:UIControlStateNormal];
+        let item_text_color: id = msg_class![env; UIColor whiteColor];
+        () = msg![env; item setTitleColor:item_text_color forState:UIControlStateNormal];
         let item_color: id = if tag == 0 { magenta } else { dark_gray };
         () = msg![env; item setBackgroundColor:item_color];
         () = msg![env; item setFrame:(CGRect {
