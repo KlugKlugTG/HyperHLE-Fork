@@ -495,37 +495,6 @@ fn app_picker_inner(
         () = msg![env; main_view addSubview:label];
     }
 
-    let brand_color: id = if crate::branding() == "UNOFFICIAL" {
-        msg_class![env; UIColor redColor]
-    } else {
-        msg_class![env; UIColor grayColor]
-    };
-
-    for i in 1..=7 {
-        let label_frame = CGRect {
-            origin: CGPoint {
-                x: 0.0,
-                y: (app_frame.size.height / 8.0) * (i as f32) - 25.0,
-            },
-            size: CGSize {
-                width: app_frame.size.width,
-                height: 50.0,
-            },
-        };
-        let label: id = msg_class![env; UILabel alloc];
-        let label: id = msg![env; label initWithFrame:label_frame];
-        let text = ns_string::from_rust_string(env, crate::branding().to_owned());
-        () = msg![env; label setText:text];
-        () = msg![env; label setTextAlignment:(if i % 2 == 0 { UITextAlignmentLeft } else { UITextAlignmentRight })];
-        let font_size: CGFloat = 48.0;
-        let font: id = msg_class![env; UIFont systemFontOfSize:font_size];
-        () = msg![env; label setFont:font];
-        () = msg![env; label setTextColor:brand_color];
-        let bg_color: id = msg_class![env; UIColor clearColor];
-        () = msg![env; label setBackgroundColor:bg_color];
-        () = msg![env; main_view addSubview:label];
-    }
-
     let divider = app_frame.size.height - 100.0;
 
     let mut icon_grid_stuff = match &mut apps {
