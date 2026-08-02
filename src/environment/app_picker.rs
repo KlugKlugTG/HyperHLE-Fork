@@ -635,7 +635,7 @@ fn app_picker_inner(
         };
         let title = ns_string::from_rust_string(env, label);
         () = msg![env; button setTitle:title forState:UIControlStateNormal];
-        let black = msg_class![env; UIColor blackColor];
+        let black: id = msg_class![env; UIColor blackColor];
         () = msg![env; button setTitleColor:black forState:UIControlStateNormal];
         release(env, title);
         () = msg![env; menu setHidden:true];
