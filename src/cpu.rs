@@ -96,7 +96,7 @@ fn touchHLE_cpu_read_64_impl<T: SafeRead + Default>(mem: *mut touchHLE_Mem, addr
     let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mem = unsafe { &mut *mem.cast::<Mem>() };
         let addr = u32::try_from(addr).expect("A64 guest address exceeds the current guest address space");
-        mem.read(Ptr::from_bits(addr.try_into().unwrap()))
+        mem.read(Ptr::<T, false>::from_bits(addr.try_into().unwrap()))
     }));
     unsafe { error.write(res.is_err()); }
     res.unwrap_or_default()
