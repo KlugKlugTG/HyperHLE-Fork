@@ -36,16 +36,16 @@ impl MachO64 {
         let mut memory = Mem64::new();
         let mut dynamic_libraries = Vec::new();
         let mut exported_symbols = HashMap::new();
-        let mut text_base = None;
-        let mut last_segment_end = 0;
-        let mut entry_point_pc = None;
+        let mut text_base: Option<Guest64Addr> = None;
+        let mut last_segment_end: Guest64Addr = 0;
+        let mut entry_point_pc: Option<Guest64Addr> = None;
         let mut symtab = None;
         let mut sections = Vec::new();
 
         for MachCommand(command, _) in commands {
             match command {
                 LoadCommand::Segment64 { segname, vmaddr, vmsize, fileoff, filesize, sections: segment_sections, .. } => {
-                    let base = vmaddr.checked_add(slide).ok_or("segment address overflows")?;
+                    let base = (vmaddr as u64).checked_add(slide).ok_or("segment address overflows")?;
                     last_segment_end = last_segment_end.max(base.checked_add(vmsize as u64).ok_or("segment end overflows")?);
                     if segname == "__PAGEZERO" { continue; }
                     if segname == "__TEXT" { text_base = Some(base); }
