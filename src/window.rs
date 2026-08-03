@@ -30,6 +30,7 @@ use std::f32::consts::{FRAC_PI_2, PI};
 use std::num::NonZeroU32;
 use std::ptr::null_mut;
 use std::time::{Duration, Instant};
+use std::cell::{Cell, RefCell};
 
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -656,6 +657,10 @@ pub struct Window {
     virtual_cursor_last: Option<(f32, f32, bool, bool)>,
     virtual_cursor_last_unsticky: Option<(f32, f32, Instant)>,
     virtual_accelerometer_last: Option<(f32, f32, bool)>,
+    // FPS counter state
+    show_fps_counter: Cell<bool>,
+    fps_frame_count: Cell<u32>,
+    fps_last_log: RefCell<Instant>,
     /// Whether or not we are on the "main" environment stack (rather than
     /// a coroutine stack). Checked in various functions to make sure that
     /// certain SDL functions (that call JNI functions) are on the main
@@ -877,6 +882,12 @@ impl Window {
             virtual_cursor_last: None,
             virtual_cursor_last_unsticky: None,
             virtual_accelerometer_last: None,
+
+            // NEW FPS fields:
+            show_fps_counter: Cell::new(false),
+            fps_frame_count: Cell::new(0),
+            fps_last_log: RefCell::new(Instant::now()),
+
             on_main_stack: true,
         };
 
@@ -1476,6 +1487,17 @@ impl Window {
                     self.toggle_fullscreen();
                     continue;
                 }
+                // Toggle FPS counter with F9
+                E::KeyDown {
+                    keycode: Some(sdl2::keyboard::Keycode::F9),
+                    repeat: false,
+                    ..
+                } => {
+                    let new = !self.show_fps_counter.get();
+                    self.set_show_fps_counter(new);
+                    echo!("FPS counter {}", if new { "enabled" } else { "disabled" });
+                    continue;
+                }
                 E::KeyDown {
                     keycode: Some(sdl2::keyboard::Keycode::F12),
                     ..
@@ -1964,8 +1986,40 @@ impl Window {
 
     /// Swap front-buffer and back-buffer so the result of OpenGL rendering is
     /// presented.
-    pub fn swap_window(&self) {
+    pub fn swap_window(&mut self) {
         self.window.gl_swap_window();
+
+        // FPS logging / UI: count frames and print once per second if enabled.
+        if self.show_fps_counter.get() {
+            // Increment frame count.
+            let frames = self.fps_frame_count.get().saturating_add(1);
+            self.fps_frame_count.set(frames);
+
+            let now = Instant::now();
+            // Borrow last log time
+            let mut last = self.fps_last_log.borrow_mut();
+            let elapsed = now.duration_since(*last);
+            if elapsed >= Duration::from_secs(1) {
+                // Compute FPS (frames in elapsed duration)
+                let fps = (frames as f32) / (elapsed.as_secs_f32().max(1e-6));
+                // Log to stdout / echo
+                echo!("FPS: {:.1}", fps);
+                // Reset counters
+                *last = now;
+                self.fps_frame_count.set(0);
+
+                // Also show FPS in the window title so it's visible when the
+                // app is running fullscreen or without console.
+                let base_title = if crate::branding().is_empty() {
+                    format!("touchHLE {}", crate::VERSION)
+                } else {
+                    format!("touchHLE {} {}", crate::branding(), crate::VERSION)
+                };
+                let title = format!("{} - FPS: {:.1}", base_title, fps);
+                // Ignore any error setting the title.
+                let _ = self.window.set_title(&title);
+            }
+        }
     }
 
     /// Consider the emulated device to be rotated to a particular orientation.
@@ -2158,6 +2212,14 @@ impl Window {
 
     pub fn on_main_stack(&self) -> bool {
         self.on_main_stack
+    }
+
+    /// Toggle FPS counter at runtime.
+    pub fn set_show_fps_counter(&mut self, enabled: bool) {
+        self.show_fps_counter.set(enabled);
+        // Also enable the on-screen FPS overlay so runtime toggles apply to
+        // the graphical overlay as well as the window title/console logging.
+        crate::gles::present::set_onscreen_fps_enabled(enabled);
     }
 }
 

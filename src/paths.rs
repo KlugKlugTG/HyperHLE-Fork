@@ -174,8 +174,26 @@ pub fn url_for_opening_user_data_dir() -> Result<String, String> {
         let path = path
             .to_str()
             .ok_or_else(|| "User data directory path is not UTF-8".to_string())?;
-        // std::fs::canonicalize() on Windows uses the extended-length path
-        // syntax, but Windows Explorer doesn't understand it.
+        let path = if std::env::consts::OS == "windows" {
+            path.strip_prefix("\\\\?\\").unwrap_or(path)
+        } else {
+            path
+        };
+        Ok(format!("file://{path}"))
+    }
+}
+
+pub fn url_for_opening_apps_dir() -> Result<String, String> {
+    let apps_dir = user_data_base_path().join(APPS_DIR);
+    if std::env::consts::OS == "android" {
+        Ok("touchhle://game-folder".to_string())
+    } else {
+        let path = apps_dir
+            .canonicalize()
+            .map_err(|e| format!("Can't canonicalize apps directory: {e}"))?;
+        let path = path
+            .to_str()
+            .ok_or_else(|| "Apps directory path is not UTF-8".to_string())?;
         let path = if std::env::consts::OS == "windows" {
             path.strip_prefix("\\\\?\\").unwrap_or(path)
         } else {

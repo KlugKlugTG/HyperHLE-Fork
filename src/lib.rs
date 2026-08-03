@@ -42,8 +42,10 @@ mod image;
 mod libc;
 mod licenses;
 mod mach_o;
+mod mach_o64;
 mod matrix;
 mod mem;
+mod mem64;
 mod objc;
 mod options;
 mod paths;
@@ -434,6 +436,19 @@ pub fn main<T: Iterator<Item = String>>(mut args: T) -> Result<(), String> {
             std::panic::resume_unwind(e)
         }
     };
-    env.run();
-    Ok(())
+    let run_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| env.run()));
+    match run_result {
+        Ok(()) => Ok(()),
+        Err(payload) => {
+            let message = if let Some(s) = payload.downcast_ref::<&str>() {
+                (*s).to_string()
+            } else if let Some(s) = payload.downcast_ref::<String>() {
+                s.clone()
+            } else {
+                "guest application terminated unexpectedly".to_string()
+            };
+            echo!("Guest application stopped: {}", message);
+            Err(message)
+        }
+    }
 }

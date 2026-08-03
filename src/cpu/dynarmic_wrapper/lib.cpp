@@ -10,6 +10,8 @@
 #include "dynarmic/interface/A32/config.h"
 #include "dynarmic/interface/A32/coprocessor.h"
 #include "dynarmic/interface/exclusive_monitor.h"
+#include "dynarmic/interface/A64/a64.h"
+#include "dynarmic/interface/A64/config.h"
 
 namespace touchHLE::cpu {
 

@@ -89,6 +89,9 @@ fn ensure_openal_backend_available() {
     // made. No other thread can be reading the environment concurrently.
     unsafe {
         std::env::set_var("ALSOFT_DRIVERS", "null");
+        if std::env::var_os("ALSOFT_BUFFER_SIZE").is_none() {
+            std::env::set_var("ALSOFT_BUFFER_SIZE", "1024");
+        }
     }
 }
 

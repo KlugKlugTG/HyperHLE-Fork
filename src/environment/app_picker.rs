@@ -37,6 +37,7 @@ use crate::window::DeviceOrientation;
 use crate::Environment;
 use std::collections::HashMap;
 use std::ffi::OsStr;
+use std::io::Read;
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 
@@ -64,16 +65,6 @@ pub fn app_picker(options: Options) -> Result<(PathBuf, Vec<String>), String> {
                     err
                 )
             })
-            .and_then(|apps| {
-                if apps.is_empty() {
-                    Err(format!(
-                        "No apps were found in the {} directory.",
-                        apps_dir.display()
-                    ))
-                } else {
-                    Ok(apps)
-                }
-            })
     };
 
     show_app_picker_gui(options, apps)
@@ -81,51 +72,49 @@ pub fn app_picker(options: Options) -> Result<(PathBuf, Vec<String>), String> {
 
 fn enumerate_apps(apps_dir: &Path) -> Result<Vec<AppInfo>, std::io::Error> {
     let mut apps = Vec::new();
-    for app in std::fs::read_dir(apps_dir)? {
-        let app_path = app?.path();
-        if app_path.extension() != Some(OsStr::new("app"))
-            && app_path.extension() != Some(OsStr::new("ipa"))
-        {
-            continue;
+    let mut directories = vec![apps_dir.to_path_buf()];
+    while let Some(directory) = directories.pop() {
+        for entry in std::fs::read_dir(directory)? {
+            let app_path = entry?.path();
+            let extension = app_path.extension();
+            if extension == Some(OsStr::new("app")) || extension == Some(OsStr::new("ipa")) {
+                let (bundle, fs) = match BundleData::open_any(&app_path).and_then(|bundle_data| {
+                    Bundle::new_bundle_and_fs_from_host_path(bundle_data, /* read_only_mode: */ true)
+                }) {
+                    Ok(ok) => ok,
+                    Err(e) => {
+                        log!(
+                            "Warning: couldn't open app bundle {}: {} (skipping)",
+                            app_path.display(),
+                            e
+                        );
+                        continue;
+                    }
+                };
+
+                let display_name = bundle.display_name().to_owned();
+                let icon = match bundle.load_icon(&fs) {
+                    Ok(icon) => Some(icon),
+                    Err(e) => {
+                        log!("Warning: couldn't load icon for app bundle {}: {} (displaying placeholder instead)", app_path.display(), e);
+                        None
+                    }
+                };
+
+                apps.push(AppInfo {
+                    path: app_path,
+                    display_name,
+                    icon,
+                    display_name_ns_string: None,
+                    icon_ui_image: None,
+                });
+            } else if app_path.is_dir() {
+                directories.push(app_path);
+            }
         }
-
-        // TODO: avoid loading the whole FS somehow?
-        let (bundle, fs) = match BundleData::open_any(&app_path).and_then(|bundle_data| {
-            Bundle::new_bundle_and_fs_from_host_path(bundle_data, /* read_only_mode: */ true)
-        }) {
-            Ok(ok) => ok,
-            Err(e) => {
-                log!(
-                    "Warning: couldn't open app bundle {}: {} (skipping)",
-                    app_path.display(),
-                    e
-                );
-                continue;
-            }
-        };
-
-        // TODO: what if this crashes?
-        let display_name = bundle.display_name().to_owned();
-
-        let icon = match bundle.load_icon(&fs) {
-            Ok(icon) => Some(icon),
-            Err(e) => {
-                log!("Warning: couldn't load icon for app bundle {}: {} (displaying placeholder instead)", app_path.display(), e);
-                None
-            }
-        };
-
-        apps.push(AppInfo {
-            path: app_path,
-            display_name,
-            icon,
-            display_name_ns_string: None,
-            icon_ui_image: None,
-        });
     }
 
     apps.sort_by_key(|app| app.display_name.to_uppercase());
-
     Ok(apps)
 }
 
@@ -149,11 +138,19 @@ struct AppPickerDelegateHostObject {
     orientation_portrait_upside_down: bool,
     analog_stick_tilt_controls: Option<bool>,
     network: Option<bool>,
+    /// Quick option: show FPS counter (maps to --print-fps)
+    show_fps: Option<bool>,
     fullscreen: Option<bool>,
     device_model_tag: Option<i32>,
     device_model_toggle: bool,
     device_model_scroll_up: bool,
     device_model_scroll_down: bool,
+    apps_refresh_requested: bool,
+    ios_version_latest: bool,
+    ios_version_toggle: bool,
+    ios_version_43: bool,
+    ios_version_61: bool,
+    ios_version_93: bool,
 }
 impl HostObject for AppPickerDelegateHostObject {}
 
@@ -238,6 +235,20 @@ const CLASSES: ClassExports = objc_classes! {
     let switch_state: bool = msg![env; switch isOn];
     env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).network = Some(switch_state);
 }
+- (())showFPS:(id)switch { // UISwitch*
+    let switch_state: bool = msg![env; switch isOn];
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).show_fps = Some(switch_state);
+    // Immediately reflect the runtime change so users see the overlay without
+    // having to re-launch or wait for the option to be applied.
+    // SAFETY: calling into the runtime-level API is safe from the UI thread.
+    if switch_state {
+        std::env::set_var("TOUCHHLE_ONSCREEN_FPS", "1");
+        crate::gles::present::set_onscreen_fps_enabled(true);
+    } else {
+        std::env::remove_var("TOUCHHLE_ONSCREEN_FPS");
+        crate::gles::present::set_onscreen_fps_enabled(false);
+    }
+}
 - (())fullscreen:(id)switch { // UISwitch*
     let switch_state: bool = msg![env; switch isOn];
     env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).fullscreen = Some(switch_state);
@@ -255,12 +266,30 @@ const CLASSES: ClassExports = objc_classes! {
 - (())deviceModelScrollDown {
     env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).device_model_scroll_down = true;
 }
+- (())refreshApps {
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).apps_refresh_requested = true;
+}
+- (())iosVersionLatest {
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).ios_version_latest = true;
+}
+- (())iosVersionToggle {
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).ios_version_toggle = true;
+}
+- (())iosVersion43 {
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).ios_version_43 = true;
+}
+- (())iosVersion61 {
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).ios_version_61 = true;
+}
+- (())iosVersion93 {
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).ios_version_93 = true;
+}
 
 - (())openFileManager {
     // Assert (see above).
     let _ = env.objc.borrow_mut::<AppPickerDelegateHostObject>(this);
 
-    match paths::url_for_opening_user_data_dir() {
+    match paths::url_for_opening_apps_dir() {
         Ok(url) => {
             // Our `openURL:` implementation is bypassed because it doesn't
             // allow non-web URLs.
@@ -268,8 +297,8 @@ const CLASSES: ClassExports = objc_classes! {
             if let Err(e) = url_res {
                 echo!("Couldn't open file manager at {:?}: {}", url, e);
             } else {
-                echo!("Opened file manager at {:?}, exiting.", url);
-                std::process::exit(0);
+                echo!("Opened game folder at {:?}, returning to the picker.", url);
+                env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).apps_refresh_requested = true;
             }
         },
         Err(e) => echo!("Couldn't open file manager: {}", e),
@@ -308,11 +337,13 @@ fn show_app_picker_gui(
         };
         let mut image = Image::from_bytes(bytes).unwrap();
         // should match Bundle::load_icon()
-        image.round_corners(
-            (10.0 / 57.0) * (image.dimensions().0 as f32),
-            /* four_corners: */ true,
-            /* add_sheen: */ true,
-        );
+        // Use a slightly smaller corner radius for larger icons for a cleaner look.
+                let corner_radius_px = 12.0;
+                image.round_corners(
+                    corner_radius_px,
+                    /* four_corners: */ true,
+                    /* add_sheen: */ true,
+                );
         image
     };
     let environment = Environment::new_without_app(options, icon)?;
@@ -386,12 +417,32 @@ fn app_picker_inner(
             },
             size: app_frame.size,
         })];
-        () = msg![env; wallpaper setAlpha:(0.5 as CGFloat)];
+        () = msg![env; wallpaper setAlpha:(1.0 as CGFloat)];
         () = msg![env; main_view addSubview:wallpaper];
         have_wallpaper = true;
         break;
     }
     if !found_wallpaper {
+        if let Ok(mut resource) = paths::ResourceFile::open("touchHLE_wallpaper.png") {
+            let mut bytes = Vec::new();
+            if resource.get().read_to_end(&mut bytes).is_ok() {
+                if let Ok(image) = Image::from_bytes(&bytes) {
+                    let image = cg_image::from_image(env, image);
+                    let image: id = msg_class![env; UIImage imageWithCGImage:image];
+                    let wallpaper: id = msg_class![env; UIImageView alloc];
+                    let wallpaper: id = msg![env; wallpaper initWithImage:image];
+                    () = msg![env; wallpaper setFrame:(CGRect {
+                        origin: CGPoint { x: 0.0, y: 0.0 },
+                        size: app_frame.size,
+                    })];
+                    () = msg![env; wallpaper setAlpha:(1.0 as CGFloat)];
+                    () = msg![env; main_view addSubview:wallpaper];
+                    have_wallpaper = true;
+                }
+            }
+        }
+    }
+    if !have_wallpaper {
         let CGSize { width, height } = app_frame.size;
         log!(
             "No wallpaper found; filename can be one of: {}; ideal size is {}×{} pixels",
@@ -444,37 +495,6 @@ fn app_picker_inner(
         () = msg![env; main_view addSubview:label];
     }
 
-    let brand_color: id = if crate::branding() == "UNOFFICIAL" {
-        msg_class![env; UIColor redColor]
-    } else {
-        msg_class![env; UIColor grayColor]
-    };
-
-    for i in 1..=7 {
-        let label_frame = CGRect {
-            origin: CGPoint {
-                x: 0.0,
-                y: (app_frame.size.height / 8.0) * (i as f32) - 25.0,
-            },
-            size: CGSize {
-                width: app_frame.size.width,
-                height: 50.0,
-            },
-        };
-        let label: id = msg_class![env; UILabel alloc];
-        let label: id = msg![env; label initWithFrame:label_frame];
-        let text = ns_string::from_rust_string(env, crate::branding().to_owned());
-        () = msg![env; label setText:text];
-        () = msg![env; label setTextAlignment:(if i % 2 == 0 { UITextAlignmentLeft } else { UITextAlignmentRight })];
-        let font_size: CGFloat = 48.0;
-        let font: id = msg_class![env; UIFont systemFontOfSize:font_size];
-        () = msg![env; label setFont:font];
-        () = msg![env; label setTextColor:brand_color];
-        let bg_color: id = msg_class![env; UIColor clearColor];
-        () = msg![env; label setBackgroundColor:bg_color];
-        () = msg![env; main_view addSubview:label];
-    }
-
     let divider = app_frame.size.height - 100.0;
 
     let mut icon_grid_stuff = match &mut apps {
@@ -522,7 +542,7 @@ fn app_picker_inner(
         app_frame.size,
         buttons_row_center,
         &[
-            ("File manager", "openFileManager"),
+            ("Add game folder", "openFileManager"),
             ("Quick options", "quickOptionsShow"),
         ],
         None,
@@ -550,9 +570,11 @@ fn app_picker_inner(
     let mut quick_options_orientation: Option<DeviceOrientation> = None;
     let mut quick_options_analog_stick_tilt_controls = true;
     let mut quick_options_network = false;
+    let mut quick_options_show_fps = false;
     let mut quick_options_device_tag: Option<i32> = None;
     let mut quick_options_device_model_open = false;
     let mut quick_options_device_model_scroll: isize = 0;
+    let mut quick_options_ios_version: Option<(i32, i32, i32)> = None;
 
     fn update_quick_option_buttons(env: &mut Environment, buttons: &[id], selected_idx: usize) {
         for (idx, &button) in buttons.iter().enumerate() {
@@ -566,6 +588,48 @@ fn app_picker_inner(
     }
     fn update_scale_hack_buttons(env: &mut Environment, buttons: &[id], value: Option<NonZeroU32>) {
         update_quick_option_buttons(env, buttons, value.map_or(0, |v| v.get() as usize));
+    }
+    fn ios_version_tag(value: Option<(i32, i32, i32)>) -> i32 {
+        match value {
+            None => 0,
+            Some((4, 3, 0)) => 1,
+            Some((6, 1, 0)) => 2,
+            Some((9, 3, 0)) => 3,
+            _ => 0,
+        }
+    }
+    fn update_ios_version_dropdown(
+        env: &mut Environment,
+        button: id,
+        menu: id,
+        items: &[id],
+        value: Option<(i32, i32, i32)>,
+    ) {
+        let tag = ios_version_tag(value);
+        for &item in items {
+            let item_tag: NSInteger = msg![env; item tag];
+            let selected = item_tag == tag as NSInteger;
+            let color: id = if selected {
+                msg_class![env; UIColor magentaColor]
+            } else {
+                msg_class![env; UIColor darkGrayColor]
+            };
+            () = msg![env; item setBackgroundColor:color];
+        }
+        let label = match tag {
+            0 => format!("Latest (iOS {})", crate::options::LATEST_IOS_VERSION.0),
+            1 => "iOS 4.3".to_string(),
+            2 => "iOS 6.1".to_string(),
+            3 => "iOS 9.3".to_string(),
+            _ => "Latest".to_string(),
+        };
+        let title = ns_string::from_rust_string(env, label);
+        () = msg![env; button setTitle:title forState:UIControlStateNormal];
+        let black: id = msg_class![env; UIColor blackColor];
+        () = msg![env; button setTitleColor:black forState:UIControlStateNormal];
+        () = msg![env; button layoutSubviews];
+        release(env, title);
+        () = msg![env; menu setHidden:true];
     }
     fn update_orientation_buttons(
         env: &mut Environment,
@@ -583,6 +647,13 @@ fn app_picker_inner(
             }),
         );
     }
+    update_ios_version_dropdown(
+        env,
+        quick_options_stuff.ios_version_btn,
+        quick_options_stuff.ios_version_menu,
+        &quick_options_stuff.ios_version_items,
+        quick_options_ios_version,
+    );
     update_scale_hack_buttons(
         env,
         &quick_options_stuff.scale_hack_buttons,
@@ -675,6 +746,45 @@ fn app_picker_inner(
             () = msg![env; (quick_options_stuff.main_view) setHidden:false];
         } else if std::mem::take(&mut host_obj.quick_options_hide) {
             () = msg![env; (quick_options_stuff.main_view) setHidden:true];
+        } else if std::mem::take(&mut host_obj.apps_refresh_requested) {
+            let apps_dir = paths::user_data_base_path().join(paths::APPS_DIR);
+            match enumerate_apps(&apps_dir) {
+                Ok(new_apps) if !new_apps.is_empty() => {
+                    apps = Ok(new_apps);
+                    if let Some(icon_grid) = icon_grid_stuff.as_mut() {
+                        *icon_grid = make_icon_grid(
+                            env,
+                            delegate,
+                            main_view,
+                            app_frame,
+                            apps.as_ref().unwrap().len(),
+                            have_wallpaper,
+                        );
+                        update_icon_grid(env, icon_grid, apps.as_mut().unwrap(), 0);
+                    }
+                }
+                Ok(_) => echo!("No games found in the game folder yet."),
+                Err(e) => echo!("Couldn't refresh the game list: {}", e),
+            }
+        } else if std::mem::take(&mut host_obj.ios_version_toggle) {
+            let hidden: bool = msg![env; (quick_options_stuff.ios_version_menu) isHidden];
+            () = msg![env; (quick_options_stuff.ios_version_menu) setHidden:(!hidden)];
+            if hidden {
+                () = msg![env; (quick_options_stuff.main_view) bringSubviewToFront:(quick_options_stuff.ios_version_menu)];
+                () = msg![env; (quick_options_stuff.main_view) bringSubviewToFront:(quick_options_stuff.ios_version_btn)];
+            }
+        } else if std::mem::take(&mut host_obj.ios_version_latest) {
+            quick_options_ios_version = None;
+            update_ios_version_dropdown(env, quick_options_stuff.ios_version_btn, quick_options_stuff.ios_version_menu, &quick_options_stuff.ios_version_items, quick_options_ios_version);
+        } else if std::mem::take(&mut host_obj.ios_version_43) {
+            quick_options_ios_version = Some((4, 3, 0));
+            update_ios_version_dropdown(env, quick_options_stuff.ios_version_btn, quick_options_stuff.ios_version_menu, &quick_options_stuff.ios_version_items, quick_options_ios_version);
+        } else if std::mem::take(&mut host_obj.ios_version_61) {
+            quick_options_ios_version = Some((6, 1, 0));
+            update_ios_version_dropdown(env, quick_options_stuff.ios_version_btn, quick_options_stuff.ios_version_menu, &quick_options_stuff.ios_version_items, quick_options_ios_version);
+        } else if std::mem::take(&mut host_obj.ios_version_93) {
+            quick_options_ios_version = Some((9, 3, 0));
+            update_ios_version_dropdown(env, quick_options_stuff.ios_version_btn, quick_options_stuff.ios_version_menu, &quick_options_stuff.ios_version_items, quick_options_ios_version);
         } else if std::mem::take(&mut host_obj.scale_hack_default) {
             quick_options_scale_hack = None;
             update_scale_hack_buttons(
@@ -796,6 +906,8 @@ fn app_picker_inner(
             quick_options_analog_stick_tilt_controls = enabled;
         } else if let Some(enabled) = std::mem::take(&mut host_obj.network) {
             quick_options_network = enabled;
+        } else if let Some(enabled) = std::mem::take(&mut host_obj.show_fps) {
+            quick_options_show_fps = enabled;
         } else if let Some(fullscreen) = std::mem::take(&mut host_obj.fullscreen) {
             quick_options_fullscreen = match fullscreen {
                 false => None,
@@ -805,6 +917,9 @@ fn app_picker_inner(
     };
 
     // Apply user-specified overrides
+    if let Some((major, minor, patch)) = quick_options_ios_version {
+        option_args.push(format!("--ios-version={major}.{minor}.{patch}"));
+    }
     if let Some(scale_hack) = quick_options_scale_hack {
         option_args.push(format!("--scale-hack={}", scale_hack.get()));
     }
@@ -829,6 +944,15 @@ fn app_picker_inner(
         option_args.push("--allow-network-access".to_string());
     }
 
+    if quick_options_show_fps {
+        // Reuse existing CLI flag to enable FPS logging/counter behaviour.
+        option_args.push("--print-fps".to_string());
+        // Also enable the on-screen FPS overlay both via env var and runtime
+        // flag so users don't need to set env vars manually.
+        std::env::set_var("TOUCHHLE_ONSCREEN_FPS", "1");
+        crate::gles::present::set_onscreen_fps_enabled(true);
+    }
+
     if let Some(tag) = quick_options_device_tag {
         let tag = tag as NSInteger;
         if tag == DEVICE_TAG_DEFAULT {
@@ -847,9 +971,10 @@ fn app_picker_inner(
 }
 
 const ICON_SIZE: CGSize = CGSize {
-    width: 57.0,
-    height: 57.0,
+    width: 70.0,
+    height: 70.0,
 };
+const ICON_IMAGE_INSET: CGFloat = 9.0;
 
 enum TappedIcon {
     App(usize),
@@ -880,8 +1005,8 @@ fn make_icon_grid(
         width: 74.0,
         height: 13.0,
     };
-    let icon_gap_x: CGFloat = 19.0;
-    let icon_gap_y: CGFloat = 4.0 + label_size.height + 14.0;
+    let icon_gap_x: CGFloat = 12.0;
+    let icon_gap_y: CGFloat = 2.0 + label_size.height + 10.0;
     let icon_grid_width = (ICON_SIZE.width * num_cols_f) + icon_gap_x * (num_cols_f - 1.0);
     let icon_grid_origin = CGPoint {
         x: (app_frame.size.width - icon_grid_width) / 2.0,
@@ -909,7 +1034,17 @@ fn make_icon_grid(
         () = msg![env; icon_button setFrame:icon_frame];
         let image_view: id = msg![env; icon_button imageView];
         let bounds: CGRect = msg![env; icon_button bounds];
-        () = msg![env; image_view setFrame:bounds];
+        let inset = ICON_IMAGE_INSET;
+        () = msg![env; image_view setFrame:(CGRect {
+            origin: CGPoint { x: inset, y: inset },
+            size: CGSize {
+                width: (bounds.size.width - inset * 2.0).max(1.0),
+                height: (bounds.size.height - inset * 2.0).max(1.0),
+            },
+        })];
+        let layer: id = msg![env; image_view layer];
+        let gravity = ns_string::get_static_str(env, "resizeAspect");
+        () = msg![env; layer setContentsGravity:gravity];
         () = msg![env; icon_button addTarget:delegate
                                       action:icon_tapped_sel
                             forControlEvents:UIControlEventTouchUpInside];
@@ -948,6 +1083,9 @@ fn make_icon_grid(
 
     // TODO: Use UIScrollView pagination and UIPageControl once available.
     let mut pages = Vec::new();
+    if total_app_count == 0 {
+        pages.push(0..0);
+    }
     let mut start = 0;
     while start < total_app_count {
         let mut end = start + icon_buttons_and_labels.len();
@@ -1024,7 +1162,7 @@ fn make_icon_from_glyph(
     let cg_image = CGBitmapContextCreateImage(env, context);
     // This radius should match the one in src/bundle.rs.
     cg_image::borrow_image_mut(&mut env.objc, cg_image).round_corners(
-        (10.0 / 57.0) * ICON_SIZE.width,
+            12.0,
         /* four_corners: */ true,
         /* add_sheen: */ true,
     );
@@ -1118,11 +1256,11 @@ fn make_button_row(
     buttons: &[(&'static str, &'static str)],
     font_size: Option<CGFloat>,
 ) -> Vec<id> {
-    let margin = 10.0;
+    let margin = 6.0;
 
     let button_size = CGSize {
         width: (super_view_size.width - margin) / (buttons.len() as CGFloat) - margin,
-        height: 30.0,
+        height: 22.0,
     };
     let mut button_frame = CGRect {
         origin: CGPoint {
@@ -1357,6 +1495,9 @@ fn change_copyright_page(
 
 struct QuickOptionsStuff {
     main_view: id,
+    ios_version_btn: id,
+    ios_version_menu: id,
+    ios_version_items: Vec<id>,
     scale_hack_buttons: [id; 5],
     orientation_buttons: [id; 4],
     /// The button that toggles the "Device model" dropdown open/closed. Its
@@ -1384,7 +1525,7 @@ const DEVICE_TAG_AUTO: NSInteger = 1001;
 /// list has to be scrolled.
 const DEVICE_MENU_VISIBLE_ITEMS: usize = 6;
 /// Height of a single row in the device-model dropdown.
-const DEVICE_MENU_ITEM_HEIGHT: CGFloat = 30.0;
+const DEVICE_MENU_ITEM_HEIGHT: CGFloat = 22.0;
 
 /// The choices shown in the device-model dropdown, in display order, as
 /// `(title, tag)` pairs: "Default" (no override), "Auto" (match host screen),
@@ -1438,14 +1579,14 @@ fn setup_quick_options(
     () = msg![env; main_view setHidden:true];
     () = msg![env; super_view addSubview:main_view];
 
-    let divider = 50.0;
+    let divider = 42.0;
 
     // Close button (×) in the upper right corner. It uses an explicit border
     // and a slightly larger frame than the title so the glyph is clearly
     // visible against the white menu background.
     {
-        let button_size: CGFloat = 36.0;
-        let button_margin: CGFloat = 8.0;
+        let button_size: CGFloat = 30.0;
+        let button_margin: CGFloat = 6.0;
         let button_frame = CGRect {
             origin: CGPoint {
                 x: main_frame.size.width - button_size - button_margin,
@@ -1465,7 +1606,7 @@ fn setup_quick_options(
         () = msg![env; button layoutSubviews];
 
         let label: id = msg![env; button titleLabel];
-        let font: id = msg_class![env; UIFont systemFontOfSize:(28.0 as CGFloat)];
+        let font: id = msg_class![env; UIFont systemFontOfSize:(23.0 as CGFloat)];
         () = msg![env; label setFont:font];
 
         // `buttonWithType:UIButtonTypeRoundedRect` does not actually apply the
@@ -1492,9 +1633,18 @@ fn setup_quick_options(
         Buttons(&'static [(&'static str, &'static str)]),
         /// Dropdown listing every selectable device model.
         DeviceDropdown,
+        /// Compact dropdown for the emulated iOS version.
+        IosVersionDropdown,
         Switch(&'static str, bool),
     }
     let rows = [
+        RowKind::Label("iOS version"),
+        RowKind::IosVersionDropdown,
+        RowKind::Label("Game folder"),
+        RowKind::Buttons(&[
+            ("Open folder", "openFileManager"),
+            ("Refresh", "refreshApps"),
+        ]),
         RowKind::Label("Scale hack"),
         RowKind::Buttons(&[
             ("Default", "scaleHackDefault"),
@@ -1514,6 +1664,8 @@ fn setup_quick_options(
         RowKind::DeviceDropdown,
         RowKind::Label("Network access"),
         RowKind::Switch("network:", false),
+        RowKind::Label("Show FPS"),
+        RowKind::Switch("showFPS:", false),
         RowKind::Label("Use analog sticks for tilt controls"),
         RowKind::Switch("analogStickTiltControls:", true),
         // ---- (divider for stuff skipped below)
@@ -1529,6 +1681,9 @@ fn setup_quick_options(
     };
 
     let mut button_rows = Vec::new();
+    let mut ios_version_btn: id = nil;
+    let mut ios_version_menu: id = nil;
+    let mut ios_version_items: Vec<id> = Vec::new();
     let mut device_model_btn: id = nil;
     let mut device_model_menu: id = nil;
     let mut device_model_items: Vec<id> = Vec::new();
@@ -1543,11 +1698,11 @@ fn setup_quick_options(
                 let frame = CGRect {
                     origin: CGPoint {
                         x: 0.0,
-                        y: row_center - 30.0 / 2.0,
+                        y: row_center - 24.0 / 2.0,
                     },
                     size: CGSize {
                         width: main_frame.size.width,
-                        height: 30.0,
+                        height: 24.0,
                     },
                 };
 
@@ -1566,8 +1721,20 @@ fn setup_quick_options(
                     main_frame.size,
                     row_center,
                     buttons,
-                    /* font_size: */ None,
+                    /* font_size: */ Some(10.0),
                 ));
+            }
+            RowKind::IosVersionDropdown => {
+                let dropdown = make_ios_version_dropdown(
+                    env,
+                    delegate,
+                    main_view,
+                    main_frame.size,
+                    row_center,
+                );
+                ios_version_btn = dropdown.0;
+                ios_version_menu = dropdown.1;
+                ios_version_items = dropdown.2;
             }
             RowKind::DeviceDropdown => {
                 let dropdown = make_device_model_dropdown(
@@ -1586,7 +1753,7 @@ fn setup_quick_options(
                 let switch_frame = CGRect {
                     origin: CGPoint {
                         x: main_frame.size.width / 2.0 - 94.0 / 2.0,
-                        y: row_center - 27.0 / 2.0,
+                        y: row_center - 22.0 / 2.0,
                     },
                     size: Default::default(),
                 };
@@ -1605,8 +1772,11 @@ fn setup_quick_options(
 
     QuickOptionsStuff {
         main_view,
-        scale_hack_buttons: button_rows[0][..].try_into().unwrap(),
-        orientation_buttons: button_rows[1][..].try_into().unwrap(),
+        ios_version_btn,
+        ios_version_menu,
+        ios_version_items,
+        scale_hack_buttons: button_rows[1][..].try_into().unwrap(),
+        orientation_buttons: button_rows[2][..].try_into().unwrap(),
         device_model_btn,
         device_model_menu,
         device_model_items,
@@ -1684,6 +1854,81 @@ fn update_device_model_menu(
 /// selector and tagged with its choice; the arrows fire `deviceModelScrollUp` /
 /// `deviceModelScrollDown`. Returns `(toggle button, menu view, item buttons,
 /// scrollbar thumb)`.
+fn make_ios_version_dropdown(
+    env: &mut Environment,
+    delegate: id,
+    super_view: id,
+    super_view_size: CGSize,
+    row_center: CGFloat,
+) -> (id, id, Vec<id>) {
+    let button_width: CGFloat = 244.0;
+    let button_height: CGFloat = 22.0;
+    let item_height: CGFloat = 22.0;
+    let button_frame = CGRect {
+        origin: CGPoint {
+            x: super_view_size.width / 2.0 - button_width / 2.0,
+            y: row_center - button_height / 2.0,
+        },
+        size: CGSize { width: button_width, height: button_height },
+    };
+    let button: id = msg_class![env; UIButton buttonWithType:UIButtonTypeCustom];
+    let title = ns_string::get_static_str(env, "iOS version");
+    () = msg![env; button setTitle:title forState:UIControlStateNormal];
+    let black: id = msg_class![env; UIColor blackColor];
+    let white: id = msg_class![env; UIColor whiteColor];
+    let dark_gray: id = msg_class![env; UIColor darkGrayColor];
+    let magenta: id = msg_class![env; UIColor magentaColor];
+    () = msg![env; button setTitleColor:black forState:UIControlStateNormal];
+    () = msg![env; button setBackgroundColor:dark_gray];
+    () = msg![env; button setFrame:button_frame];
+    () = msg![env; button layoutSubviews];
+    let button_layer: id = msg![env; button layer];
+    () = msg![env; button_layer setCornerRadius:(6.0 as CGFloat)];
+    let toggle_selector = env.objc.lookup_selector("iosVersionToggle").unwrap();
+    () = msg![env; button addTarget:delegate action:toggle_selector forControlEvents:UIControlEventTouchUpInside];
+    () = msg![env; super_view addSubview:button];
+
+    let menu: id = msg_class![env; UIView alloc];
+    let menu: id = msg![env; menu initWithFrame:(CGRect {
+        origin: CGPoint { x: button_frame.origin.x, y: button_frame.origin.y + button_height },
+        size: CGSize { width: button_width, height: item_height * 4.0 },
+    })];
+    () = msg![env; menu setBackgroundColor:dark_gray];
+    () = msg![env; menu setClipsToBounds:true];
+    let menu_layer: id = msg![env; menu layer];
+    () = msg![env; menu_layer setCornerRadius:(6.0 as CGFloat)];
+    () = msg![env; menu setHidden:true];
+    () = msg![env; super_view addSubview:menu];
+
+    let entries = [
+        ("Latest (iOS 12.0)", "iosVersionLatest", 0i32),
+        ("iOS 4.3", "iosVersion43", 1i32),
+        ("iOS 6.1", "iosVersion61", 2i32),
+        ("iOS 9.3", "iosVersion93", 3i32),
+    ];
+    let mut items = Vec::new();
+    for (index, (label, selector_name, tag)) in entries.into_iter().enumerate() {
+        let item: id = msg_class![env; UIButton buttonWithType:UIButtonTypeCustom];
+        let text = ns_string::from_rust_string(env, label.to_owned());
+        () = msg![env; item setTitle:text forState:UIControlStateNormal];
+        let item_text_color: id = msg_class![env; UIColor whiteColor];
+        () = msg![env; item setTitleColor:item_text_color forState:UIControlStateNormal];
+        let item_color: id = if tag == 0 { magenta } else { dark_gray };
+        () = msg![env; item setBackgroundColor:item_color];
+        () = msg![env; item setFrame:(CGRect {
+            origin: CGPoint { x: 0.0, y: index as CGFloat * item_height },
+            size: CGSize { width: button_width, height: item_height },
+        })];
+        () = msg![env; item layoutSubviews];
+        () = msg![env; item setTag:tag];
+        let selector = env.objc.lookup_selector(selector_name).unwrap();
+        () = msg![env; item addTarget:delegate action:selector forControlEvents:UIControlEventTouchUpInside];
+        () = msg![env; menu addSubview:item];
+        items.push(item);
+    }
+    (button, menu, items)
+}
+
 fn make_device_model_dropdown(
     env: &mut Environment,
     delegate: id,
@@ -1691,10 +1936,10 @@ fn make_device_model_dropdown(
     super_view_size: CGSize,
     row_center: CGFloat,
 ) -> (id, id, Vec<id>, id) {
-    let btn_width: CGFloat = 280.0;
-    let btn_height: CGFloat = 30.0;
-    let list_width: CGFloat = 256.0;
-    let scrollbar_width: CGFloat = 24.0;
+    let btn_width: CGFloat = 244.0;
+    let btn_height: CGFloat = 22.0;
+    let list_width: CGFloat = 222.0;
+    let scrollbar_width: CGFloat = 22.0;
 
     let btn_frame = CGRect {
         origin: CGPoint {

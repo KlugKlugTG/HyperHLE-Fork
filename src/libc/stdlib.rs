@@ -815,13 +815,9 @@ fn exit(env: &mut Environment, exit_code: i32) {
 }
 
 fn abort(env: &mut Environment) {
-    // abort() means the guest hit a fatal error (e.g. a failed assertion or an
-    // uncaught C++ exception calling std::terminate). Log it with a guest stack
-    // trace before quitting so the cause is visible, instead of exiting
-    // silently.
     echo!("App called abort(); the guest encountered a fatal error.");
     env.stack_trace_current();
-    std::process::exit(1);
+    panic!("guest called abort()")
 }
 
 fn bsearch(

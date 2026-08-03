@@ -92,6 +92,45 @@ extern "C" fn touchHLE_cpu_write_u64(mem: *mut touchHLE_Mem, addr: VAddr, value:
     touchHLE_cpu_write_impl(mem, addr, value)
 }
 
+fn touchHLE_cpu_read_64_impl<T: SafeRead + Default>(mem: *mut touchHLE_Mem, addr: u64, error: *mut bool) -> T {
+    let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let mem = unsafe { &mut *mem.cast::<Mem>() };
+        let addr = u32::try_from(addr).expect("A64 guest address exceeds the current guest address space");
+        mem.read(Ptr::<T, false>::from_bits(addr.try_into().unwrap()))
+    }));
+    unsafe { error.write(res.is_err()); }
+    res.unwrap_or_default()
+}
+
+fn touchHLE_cpu_write_64_impl<T: SafeWrite>(mem: *mut touchHLE_Mem, addr: u64, value: T) -> bool {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let mem = unsafe { &mut *mem.cast::<Mem>() };
+        let addr = u32::try_from(addr).expect("A64 guest address exceeds the current guest address space");
+        mem.write(Ptr::from_bits(addr.try_into().unwrap()), value)
+    })).is_err()
+}
+
+#[no_mangle]
+extern "C" fn touchHLE_cpu_read_u8_64(mem: *mut touchHLE_Mem, addr: u64, error: *mut bool) -> u8 { touchHLE_cpu_read_64_impl(mem, addr, error) }
+#[no_mangle]
+extern "C" fn touchHLE_cpu_read_u16_64(mem: *mut touchHLE_Mem, addr: u64, error: *mut bool) -> u16 { touchHLE_cpu_read_64_impl(mem, addr, error) }
+#[no_mangle]
+extern "C" fn touchHLE_cpu_read_u32_64(mem: *mut touchHLE_Mem, addr: u64, error: *mut bool) -> u32 { touchHLE_cpu_read_64_impl(mem, addr, error) }
+#[no_mangle]
+extern "C" fn touchHLE_cpu_read_u64_64(mem: *mut touchHLE_Mem, addr: u64, error: *mut bool) -> u64 { touchHLE_cpu_read_64_impl(mem, addr, error) }
+#[no_mangle]
+extern "C" fn touchHLE_cpu_read_u128_64(mem: *mut touchHLE_Mem, addr: u64, error: *mut bool) -> [u64; 2] { touchHLE_cpu_read_64_impl(mem, addr, error) }
+#[no_mangle]
+extern "C" fn touchHLE_cpu_write_u8_64(mem: *mut touchHLE_Mem, addr: u64, value: u8) -> bool { touchHLE_cpu_write_64_impl(mem, addr, value) }
+#[no_mangle]
+extern "C" fn touchHLE_cpu_write_u16_64(mem: *mut touchHLE_Mem, addr: u64, value: u16) -> bool { touchHLE_cpu_write_64_impl(mem, addr, value) }
+#[no_mangle]
+extern "C" fn touchHLE_cpu_write_u32_64(mem: *mut touchHLE_Mem, addr: u64, value: u32) -> bool { touchHLE_cpu_write_64_impl(mem, addr, value) }
+#[no_mangle]
+extern "C" fn touchHLE_cpu_write_u64_64(mem: *mut touchHLE_Mem, addr: u64, value: u64) -> bool { touchHLE_cpu_write_64_impl(mem, addr, value) }
+#[no_mangle]
+extern "C" fn touchHLE_cpu_write_u128_64(mem: *mut touchHLE_Mem, addr: u64, value: [u64; 2]) -> bool { touchHLE_cpu_write_64_impl(mem, addr, value) }
+
 pub struct Cpu {
     dynarmic_wrapper: *mut touchHLE_DynarmicWrapper,
     /// Copy of the direct memory access pointer used to check it has not
@@ -297,6 +336,38 @@ impl Cpu {
             -4 => CpuState::Error(CpuError::Breakpoint),
             _ if res < -4 => panic!("Unexpected CPU execution result"),
             svc => CpuState::Svc(svc as u32),
+        }
+    }
+}
+
+pub struct A64Cpu {
+    dynarmic_wrapper: *mut touchHLE_DynarmicWrapper,
+}
+
+impl Drop for A64Cpu {
+    fn drop(&mut self) {
+        unsafe { touchHLE_DynarmicA64Wrapper_delete(self.dynarmic_wrapper) }
+    }
+}
+
+impl A64Cpu {
+    pub fn new() -> Self {
+        Self {
+            dynarmic_wrapper: unsafe { touchHLE_DynarmicA64Wrapper_new() },
+        }
+    }
+
+    pub fn swap_context(&mut self, context: &mut touchHLE_DynarmicA64Context) {
+        unsafe { touchHLE_DynarmicA64Wrapper_swap_context(self.dynarmic_wrapper, context) }
+    }
+
+    pub fn run_or_step(&mut self, mem: &mut Mem, ticks: Option<&mut u64>) -> i32 {
+        unsafe {
+            touchHLE_DynarmicA64Wrapper_run_or_step(
+                self.dynarmic_wrapper,
+                mem as *mut _ as *mut _,
+                ticks,
+            )
         }
     }
 }
