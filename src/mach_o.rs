@@ -34,6 +34,47 @@ const VM_PROT_WRITE: vm_prot_t = 2;
 #[allow(dead_code)]
 const VM_PROT_EXECUTE: vm_prot_t = 4;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MachOArchitecture {
+    Arm32,
+    Arm64,
+}
+
+pub fn architecture_name(architecture: MachOArchitecture) -> &'static str {
+    match architecture {
+        MachOArchitecture::Arm32 => "ARM32",
+        MachOArchitecture::Arm64 => "ARM64",
+    }
+}
+
+pub fn detect_architecture(bytes: &[u8]) -> Result<MachOArchitecture, &'static str> {
+    let mut cursor = Cursor::new(bytes);
+    let file = OFile::parse(&mut cursor).map_err(|_| "Could not parse Mach-O file")?;
+    let cputype = match file {
+        OFile::MachFile { header, .. } => header.cputype,
+        OFile::FatFile { files, .. } => files
+            .iter()
+            .map(|(arch, _)| arch.cputype)
+            .find(|&cpu| cpu == mach_object::CPU_TYPE_ARM64)
+            .or_else(|| {
+                files
+                    .iter()
+                    .map(|(arch, _)| arch.cputype)
+                    .find(|&cpu| cpu == mach_object::CPU_TYPE_ARM)
+            })
+            .ok_or("No ARM architecture in the fat binary")?,
+        OFile::ArFile { .. } | OFile::SymDef { .. } => {
+            return Err("Unexpected Mach-O file kind: not an executable")
+        }
+    };
+
+    match cputype {
+        mach_object::CPU_TYPE_ARM => Ok(MachOArchitecture::Arm32),
+        mach_object::CPU_TYPE_ARM64 => Ok(MachOArchitecture::Arm64),
+        _ => Err("Executable is not for an ARM CPU!"),
+    }
+}
+
 #[derive(Debug)]
 pub struct MachO {
     /// Name (for debugging purposes and sorting)
