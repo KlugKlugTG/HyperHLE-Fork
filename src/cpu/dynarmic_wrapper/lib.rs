@@ -44,6 +44,39 @@ impl touchHLE_DynarmicContext {
         Self::default()
     }
 }
+
+#[repr(C)]
+#[allow(non_camel_case_types)]
+#[derive(Debug)]
+pub struct touchHLE_DynarmicA64Context {
+    pub regs: [u64; 31],
+    pub vectors: [[u64; 2]; 32],
+    pub sp: u64,
+    pub pc: u64,
+    pub pstate: u32,
+    pub fpcr: u32,
+    pub fpsr: u32,
+}
+
+impl Default for touchHLE_DynarmicA64Context {
+    fn default() -> Self {
+        Self {
+            regs: [0; 31],
+            vectors: [[0; 2]; 32],
+            sp: 0,
+            pc: 0,
+            pstate: 0,
+            fpcr: 0,
+            fpsr: 0,
+        }
+    }
+}
+
+impl touchHLE_DynarmicA64Context {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
 type VAddr = u32;
 
 // Import functions from lib.cpp, see build.rs. Note that lib.cpp depends on
@@ -68,6 +101,17 @@ extern "C" {
         size: u32,
     );
     pub fn touchHLE_DynarmicWrapper_run_or_step(
+        cpu: *mut touchHLE_DynarmicWrapper,
+        mem: *mut touchHLE_Mem,
+        ticks: Option<&mut u64>,
+    ) -> i32;
+    pub fn touchHLE_DynarmicA64Wrapper_new() -> *mut touchHLE_DynarmicWrapper;
+    pub fn touchHLE_DynarmicA64Wrapper_delete(cpu: *mut touchHLE_DynarmicWrapper);
+    pub fn touchHLE_DynarmicA64Wrapper_swap_context(
+        cpu: *mut touchHLE_DynarmicWrapper,
+        context: *mut touchHLE_DynarmicA64Context,
+    );
+    pub fn touchHLE_DynarmicA64Wrapper_run_or_step(
         cpu: *mut touchHLE_DynarmicWrapper,
         mem: *mut touchHLE_Mem,
         ticks: Option<&mut u64>,
