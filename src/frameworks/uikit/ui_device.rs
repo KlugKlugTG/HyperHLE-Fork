@@ -212,12 +212,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     ns_string::get_static_str(env, "iPhone OS")
 }
 - (id)systemVersion {
-    let (major, minor, patch) = env
-        .options
-        .as_ref()
-        .ios_version
-        .unwrap_or(crate::options::LATEST_IOS_VERSION);
-    ns_string::from_rust_string(env, format!("{major}.{minor}.{patch}"))
+    ns_string::get_static_str(env, "6.1")
 }
 - (id)uniqueIdentifier {
     ns_string::get_static_str(env, "touchHLEdevice..........................")

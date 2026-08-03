@@ -1005,12 +1005,7 @@ fn alSourceQueueBuffers(
     };
     let buffers = env.mem.ptr_at(buffers, nb_usize);
     try_get_context!(env, context);
-    unsafe { context.SourceQueueBuffers(source, nb, buffers) };
-    let mut state = 0;
-    unsafe { context.GetSourcei(source, al::AL_SOURCE_STATE, &mut state) };
-    if state != al::AL_PLAYING {
-        unsafe { context.SourcePlay(source) };
-    }
+    unsafe { context.SourceQueueBuffers(source, nb, buffers) }
 }
 fn alSourceUnqueueBuffers(
     env: &mut Environment,

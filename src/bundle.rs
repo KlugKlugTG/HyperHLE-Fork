@@ -383,8 +383,7 @@ impl Bundle {
         // 10px radius rounded corner (see e.g. documentation of
         // UIPrerenderedIcon). If the icon is larger for some reason,
         // let's scale to match.
-        // Use a slightly smaller fixed corner radius for higher-resolution icons.
-        let corner_radius = 12.0;
+        let corner_radius = (10.0 / 57.0) * (image.dimensions().0 as f32);
         image.round_corners(corner_radius, /* four_corners: */ true, add_sheen);
         Ok(image)
     }

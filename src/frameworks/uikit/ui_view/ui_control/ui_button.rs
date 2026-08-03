@@ -142,7 +142,12 @@ fn update(env: &mut Environment, this: id) {
     let background_image: id = msg![env; this currentBackgroundImage];
 
     () = msg![env; background_image_view setImage:background_image];
-    () = msg![env; title_label setHidden:false];
+
+    // Hide the title label when the button has a foreground image, since the
+    // image already contains any necessary text (e.g. baked-in button labels).
+    // Without proper side-by-side layout the title would overlap the image.
+    let hide_title = image != nil;
+    () = msg![env; title_label setHidden:hide_title];
 }
 
 fn init_common(env: &mut Environment, this: id) -> id {

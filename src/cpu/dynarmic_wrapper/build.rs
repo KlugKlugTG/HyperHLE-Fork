@@ -34,7 +34,7 @@ fn main() {
     let workspace_root = package_root.join("../../..");
 
     let mut build = cmake::Config::new(workspace_root.join("vendor/dynarmic"));
-    build.define("DYNARMIC_FRONTENDS", "A32;A64");
+    build.define("DYNARMIC_FRONTENDS", "A32"); // We don't need 64-bit
     build.define("DYNARMIC_WARNINGS_AS_ERRORS", "OFF");
     build.define("DYNARMIC_TESTS", "OFF");
     build.define("DYNARMIC_USE_BUNDLED_EXTERNALS", "ON");
@@ -142,7 +142,6 @@ fn main() {
     let mut wrapper_build = cc::Build::new();
     wrapper_build
         .file(package_root.join("lib.cpp"))
-        .file(package_root.join("a64.cpp"))
         .cpp(true)
         .std("c++17")
         .include(dynarmic_out.join("include"));
@@ -151,5 +150,4 @@ fn main() {
     }
     wrapper_build.compile("dynarmic_wrapper");
     rerun_if_changed(&package_root.join("lib.cpp"));
-    rerun_if_changed(&package_root.join("a64.cpp"));
 }
