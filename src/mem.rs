@@ -296,6 +296,7 @@ unsafe impl<T, const MUT: bool> SafeRead for Ptr<T, MUT> {}
 ///
 /// See also [SafeRead] and [crate::abi].
 pub trait SafeWrite: Sized {}
+impl SafeRead for [u64; 2] {}
 impl<T: SafeRead> SafeWrite for T {}
 
 type Bytes = [u8; 1 << 32];
