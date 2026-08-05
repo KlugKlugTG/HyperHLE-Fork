@@ -7,7 +7,7 @@
 #![allow(dead_code)]
 //! SCNetworkReachability
 
-use crate::abi::GuestFunction;
+use crate::abi::{CallFromHost, GuestFunction};
 use crate::dyld::{export_c_func, FunctionExports};
 use crate::frameworks::core_foundation::cf_allocator::CFAllocatorRef;
 use crate::frameworks::core_foundation::{CFRelease, CFRetain, CFTypeRef};
@@ -146,12 +146,25 @@ fn SCNetworkReachabilitySetCallback(
 }
 
 fn SCNetworkReachabilityScheduleWithRunLoop(
-    _env: &mut Environment,
-    _target: SCNetworkReachabilityRef,
+    env: &mut Environment,
+    target: SCNetworkReachabilityRef,
     _run_loop: CFTypeRef,
     _run_loop_mode: CFTypeRef,
 ) -> bool {
-    false
+    let (callback, context) = {
+        let host = env
+            .objc
+            .borrow::<SCNetworkReachabilityHostObject>(target);
+        (host.callout, host.context)
+    };
+    if let Some(callback) = callback {
+        env.sleep(std::time::Duration::from_millis(16));
+        let flags = kSCNetworkReachabilityFlagsReachable
+            | kSCNetworkReachabilityFlagsIsDirect
+            | kSCNetworkReachabilityFlagsIsWWAN;
+        let _: () = callback.call_from_host(env, (target, flags, context));
+    }
+    true
 }
 fn SCNetworkReachabilityUnscheduleFromRunLoop(
     _env: &mut Environment,
