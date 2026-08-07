@@ -103,7 +103,11 @@ pub enum GLESImplementation {
 }
 impl GLESImplementation {
     /// List of OpenGL ES 1.1 implementations in order of preference.
-    pub const GLES1_IMPLEMENTATIONS: &'static [Self] = &[Self::GLES1Native, Self::GLES1OnGL2];
+    pub const GLES1_IMPLEMENTATIONS: &'static [Self] = if cfg!(target_os = "android") {
+        &[Self::GLES1Native, Self::GLES1OnGLES2, Self::GLES1OnGL2]
+    } else {
+        &[Self::GLES1Native, Self::GLES1OnGL2]
+    };
     /// Convert from short name used for command-line arguments. Returns [Err]
     /// if name is not recognized..
     pub fn from_short_name(name: &str) -> Result<Self, ()> {

@@ -234,6 +234,7 @@ Graphics driver options:
         This may be useful for troubleshooting graphics driver issues.
 
         --gles1=gles1_on_gl2 will use touchHLE's GLES1-on-GL2 layer.
+        --gles1=gles1_on_gles2 will use the GLES1-on-GLES2 shader translator.
         --gles1=gles1_native will use native OpenGL ES 1.1.
 
         When this option isn't in use, touchHLE will try each in order and use
