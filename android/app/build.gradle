@@ -49,9 +49,11 @@ def getTouchHLEVersionCode() {
 
 def hyperHLEKeystoreFile = System.getenv('HYPERHLE_KEYSTORE_FILE')
 def hyperHLEKeystoreB64 = System.getenv('HYPERHLE_KEYSTORE_B64')
+def hyperHLEUsesExternalKey = (hyperHLEKeystoreB64 != null && !hyperHLEKeystoreB64.trim().isEmpty()) || (hyperHLEKeystoreFile != null && !hyperHLEKeystoreFile.trim().isEmpty())
 def hyperHLEKeystorePass = System.getenv('HYPERHLE_KEYSTORE_PASSWORD') ?: 'hyperhle'
 def hyperHLEKeyAlias = System.getenv('HYPERHLE_KEY_ALIAS') ?: 'hyperhle'
-def hyperHLEHasReleaseKey = (hyperHLEKeystoreB64 != null && !hyperHLEKeystoreB64.trim().isEmpty()) || (hyperHLEKeystoreFile != null && !hyperHLEKeystoreFile.trim().isEmpty()) || file('../keystore/release.keystore').exists()
+def hyperHLECommittedKeystore = file("${rootDir}/keystore/release.keystore")
+def hyperHLEHasReleaseKey = hyperHLEUsesExternalKey || hyperHLECommittedKeystore.exists()
 
 
 android {
@@ -65,6 +67,8 @@ android {
                 storeFile tmp
             } else if (hyperHLEKeystoreFile != null && !hyperHLEKeystoreFile.trim().isEmpty()) {
                 storeFile file(hyperHLEKeystoreFile)
+            } else if (hyperHLECommittedKeystore.exists()) {
+                storeFile hyperHLECommittedKeystore
             }
             if (hyperHLEHasReleaseKey) {
                 storePassword hyperHLEKeystorePass
