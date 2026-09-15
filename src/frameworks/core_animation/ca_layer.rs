@@ -422,16 +422,17 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())dealloc {
-    let &mut CALayerHostObject {
-        drawable_properties,
-        contents,
-        superlayer,
-        cg_context,
-        mask,
-        ref mut sublayers,
-        ..
-    } = env.objc.borrow_mut(this);
-    let sublayers = std::mem::take(sublayers);
+    let (drawable_properties, contents, superlayer, cg_context, mask, sublayers) = {
+        let host = env.objc.borrow_mut::<CALayerHostObject>(this);
+        (
+            host.drawable_properties,
+            host.contents,
+            host.superlayer,
+            host.cg_context,
+            host.mask,
+            std::mem::take(&mut host.sublayers),
+        )
+    };
 
     if drawable_properties != nil { release(env, drawable_properties); }
     if contents != nil { release(env, contents); }
@@ -458,9 +459,10 @@ pub const CLASSES: ClassExports = objc_classes! {
             this,
             superlayer
         );
-        let CALayerHostObject { sublayers: ref mut super_sublayers, .. } =
-            env.objc.borrow_mut(superlayer);
-        super_sublayers.retain(|&sublayer| sublayer != this);
+        {
+            let mut super_host = env.objc.borrow_mut::<CALayerHostObject>(superlayer);
+            super_host.sublayers.retain(|&sublayer| sublayer != this);
+        }
         // Clear our own back-pointer so the recursive cleanup below sees a
         // clean state if something unexpected re-enters.
         env.objc.borrow_mut::<CALayerHostObject>(this).superlayer = nil;
@@ -564,9 +566,16 @@ pub const CLASSES: ClassExports = objc_classes! {
     if old_idx.is_some() {
         retain(env, new_layer);
         () = msg![env; new_layer removeFromSuperlayer];
-        let host = env.objc.borrow_mut::<CALayerHostObject>(this);
-        if let Some(actual_idx) = host.sublayers.iter().position(|&x| x == old_layer) {
-            host.sublayers[actual_idx] = new_layer;
+        let actual_idx_opt = {
+            let mut host = env.objc.borrow_mut::<CALayerHostObject>(this);
+            if let Some(actual_idx) = host.sublayers.iter().position(|&x| x == old_layer) {
+                host.sublayers[actual_idx] = new_layer;
+                Some(actual_idx)
+            } else {
+                None
+            }
+        };
+        if actual_idx_opt.is_some() {
             env.objc.borrow_mut::<CALayerHostObject>(new_layer).superlayer = this;
             env.objc.borrow_mut::<CALayerHostObject>(old_layer).superlayer = nil;
             release(env, old_layer);
@@ -900,10 +909,12 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (id)contents { env.objc.borrow::<CALayerHostObject>(this).contents }
 - (())setContents:(id)new_contents {
-    let host_obj = env.objc.borrow_mut::<CALayerHostObject>(this);
-    host_obj.gles_texture_is_up_to_date = false;
-    let old_contents = std::mem::replace(&mut host_obj.contents, new_contents);
     retain(env, new_contents);
+    let old_contents = {
+        let mut host_obj = env.objc.borrow_mut::<CALayerHostObject>(this);
+        host_obj.gles_texture_is_up_to_date = false;
+        std::mem::replace(&mut host_obj.contents, new_contents)
+    };
     release(env, old_contents);
 }
 

@@ -219,9 +219,13 @@ pub const CLASSES: ClassExports = objc_classes! {
             }
         },
         kCATransactionAnimationTimingFunction => {
-            if let Some(transaction) = State::get_current_transaction_mut(env) {
-                let old_value = std::mem::replace(&mut transaction.animation_timing_function, value);
+            let has_transaction = State::get_current_transaction(env).is_some();
+            if has_transaction {
                 retain(env, value);
+                let old_value = {
+                    let transaction = State::get_current_transaction_mut(env).unwrap();
+                    std::mem::replace(&mut transaction.animation_timing_function, value)
+                };
                 release(env, old_value);
             } else {
                 log!("Warning: [CATransaction setValue:forKey:kCATransactionAnimationTimingFunction] called outside a transaction; ignoring.");
@@ -238,9 +242,13 @@ pub const CLASSES: ClassExports = objc_classes! {
             );
         },
         _ => {
-            if let Some(transaction) = State::get_current_transaction_mut(env) {
-                let old_value = transaction.data.insert(key_string.to_string(), value).unwrap_or(nil);
+            let has_transaction = State::get_current_transaction(env).is_some();
+            if has_transaction {
                 retain(env, value);
+                let old_value = {
+                    let transaction = State::get_current_transaction_mut(env).unwrap();
+                    transaction.data.insert(key_string.to_string(), value).unwrap_or(nil)
+                };
                 release(env, old_value);
             } else {
                 log!(

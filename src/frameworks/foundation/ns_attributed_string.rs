@@ -82,11 +82,12 @@ pub const CLASSES: ClassExports = objc_classes! {
     let text: id = msg![env; other string];
     // Clone runs from other if it's an NSAttributedString
     let other_runs: Vec<(NSRange, id)> = {
-        if let Some(other_host) = env.objc.try_borrow::<NSAttributedStringHostObject>(other) {
-            other_host.runs.iter().map(|(r, a)| (*r, retain(env, *a))).collect()
+        let cloned = if let Some(other_host) = env.objc.try_borrow::<NSAttributedStringHostObject>(other) {
+            other_host.runs.clone()
         } else {
             Vec::new()
-        }
+        };
+        cloned.into_iter().map(|(r, a)| (r, retain(env, a))).collect()
     };
     let this2: id = msg![env; this initWithString:text];
     if this2 != nil && !other_runs.is_empty() {
@@ -195,11 +196,8 @@ pub const CLASSES: ClassExports = objc_classes! {
     let mutable: id = msg_class![env; NSMutableAttributedString alloc];
     let mutable: id = msg![env; mutable initWithString:text];
     if mutable != nil && !runs.is_empty() {
-        let mut host_mut = env.objc.borrow_mut::<NSAttributedStringHostObject>(mutable);
-        for (range, attrs) in runs {
-            let retained = retain(env, attrs);
-            host_mut.runs.push((range, retained));
-        }
+        let retained_runs: Vec<(NSRange, id)> = runs.into_iter().map(|(range, attrs)| (range, retain(env, attrs))).collect();
+        env.objc.borrow_mut::<NSAttributedStringHostObject>(mutable).runs = retained_runs;
     }
     mutable
 }
@@ -229,10 +227,13 @@ pub const CLASSES: ClassExports = objc_classes! {
     if other == nil { return; }
     let text: id = msg![env; other string];
     let new_text = retain(env, text);
-    let other_runs: Vec<(NSRange, id)> = if let Some(other_host) = env.objc.try_borrow::<NSAttributedStringHostObject>(other) {
-        other_host.runs.iter().map(|(r, a)| (*r, retain(env, *a))).collect()
-    } else {
-        Vec::new()
+    let other_runs: Vec<(NSRange, id)> = {
+        let cloned = if let Some(other_host) = env.objc.try_borrow::<NSAttributedStringHostObject>(other) {
+            other_host.runs.clone()
+        } else {
+            Vec::new()
+        };
+        cloned.into_iter().map(|(r, a)| (r, retain(env, a))).collect()
     };
     let old_text;
     let old_runs;
