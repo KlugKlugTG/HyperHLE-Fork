@@ -84,9 +84,9 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (())setName:(id)name { // NSString*
     let old = env.objc.borrow::<NSConditionHostObject>(this).name;
-    release(env, old);
-    retain(env, name);
+    if name != nil { retain(env, name); }
     env.objc.borrow_mut::<NSConditionHostObject>(this).name = name;
+    if old != nil { release(env, old); }
 }
 
 // MARK: NSLocking protocol
@@ -257,9 +257,9 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (())setName:(id)name {
     let old = env.objc.borrow::<NSConditionLockHostObject>(this).name;
-    release(env, old);
-    retain(env, name);
+    if name != nil { retain(env, name); }
     env.objc.borrow_mut::<NSConditionLockHostObject>(this).name = name;
+    if old != nil { release(env, old); }
 }
 
 // MARK: Condition

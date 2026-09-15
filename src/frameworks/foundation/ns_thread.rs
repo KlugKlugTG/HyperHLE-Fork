@@ -322,10 +322,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setName:(id)name { // NSString*
-    let old = env.objc.borrow::<NSThreadHostObject>(this).name;
-    release(env, old);
     retain(env, name);
+    let old = env.objc.borrow::<NSThreadHostObject>(this).name;
     env.objc.borrow_mut::<NSThreadHostObject>(this).name = name;
+    release(env, old);
 }
 
 // =========================================================================

@@ -105,14 +105,16 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (id)message { env.objc.borrow::<UIAlertViewHostObject>(this).message }
 - (id)delegate { env.objc.borrow::<UIAlertViewHostObject>(this).delegate }
 - (())setTitle:(id)title {
+    retain(env, title);
     let old = env.objc.borrow::<UIAlertViewHostObject>(this).title;
-    release(env, old); retain(env, title);
     env.objc.borrow_mut::<UIAlertViewHostObject>(this).title = title;
+    release(env, old);
 }
 - (())setMessage:(id)message {
+    retain(env, message);
     let old = env.objc.borrow::<UIAlertViewHostObject>(this).message;
-    release(env, old); retain(env, message);
     env.objc.borrow_mut::<UIAlertViewHostObject>(this).message = message;
+    release(env, old);
 }
 - (())setDelegate:(id)delegate {
     // Делегаты в UIKit не удерживаются!

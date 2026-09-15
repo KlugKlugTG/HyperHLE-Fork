@@ -90,8 +90,11 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setName:(id)name { // NSString *
-    // @property(copy), name has to be copied
-    env.objc.borrow_mut::<NSLockHostObject>(this).name = msg![env; name copy];
+    // @property(copy), name has to be copied — compute copy before borrow_mut to avoid double-borrow panic
+    let name_copy: id = if name == nil { nil } else { msg![env; name copy] };
+    let old = env.objc.borrow::<NSLockHostObject>(this).name;
+    env.objc.borrow_mut::<NSLockHostObject>(this).name = name_copy;
+    if old != nil { crate::objc::release(env, old); }
 }
 - (id)name {
     env.objc.borrow::<NSLockHostObject>(this).name
@@ -101,6 +104,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     log_dbg!("[(NSLock *){:?} dealloc]", this);
     let host_object = env.objc.borrow::<NSLockHostObject>(this);
     let _ = env.mutex_state.destroy_mutex(host_object.mutex_id);
+    if host_object.name != nil { crate::objc::release(env, host_object.name); }
     env.objc.dealloc_object(this, &mut env.mem)
 }
 
@@ -145,8 +149,11 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setName:(id)name { // NSString *
-    // @property(copy), name has to be copied
-    env.objc.borrow_mut::<NSLockHostObject>(this).name = msg![env; name copy];
+    // @property(copy), name has to be copied — compute copy before borrow_mut to avoid double-borrow panic
+    let name_copy: id = if name == nil { nil } else { msg![env; name copy] };
+    let old = env.objc.borrow::<NSLockHostObject>(this).name;
+    env.objc.borrow_mut::<NSLockHostObject>(this).name = name_copy;
+    if old != nil { crate::objc::release(env, old); }
 }
 - (id)name {
     env.objc.borrow::<NSLockHostObject>(this).name
@@ -156,6 +163,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     log_dbg!("[(NSRecursiveLock *){:?} dealloc]", this);
     let host_object = env.objc.borrow::<NSLockHostObject>(this);
     let _ = env.mutex_state.destroy_mutex(host_object.mutex_id);
+    if host_object.name != nil { crate::objc::release(env, host_object.name); }
     env.objc.dealloc_object(this, &mut env.mem)
 }
 

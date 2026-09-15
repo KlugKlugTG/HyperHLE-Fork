@@ -950,10 +950,10 @@ insertIntoManagedObjectContext:(id)context {           // NSManagedObjectContext
 }
 
 - (())setName:(id)name {
-    let old = env.objc.borrow::<NSEntityDescriptionHostObject>(this).name;
-    release(env, old);
     retain(env, name);
+    let old = env.objc.borrow::<NSEntityDescriptionHostObject>(this).name;
     env.objc.borrow_mut::<NSEntityDescriptionHostObject>(this).name = name;
+    release(env, old);
 }
 
 - (id)managedObjectClassName {
@@ -961,10 +961,10 @@ insertIntoManagedObjectContext:(id)context {           // NSManagedObjectContext
 }
 
 - (())setManagedObjectClassName:(id)name {
-    let old = env.objc.borrow::<NSEntityDescriptionHostObject>(this).managed_object_class_name;
-    release(env, old);
     retain(env, name);
+    let old = env.objc.borrow::<NSEntityDescriptionHostObject>(this).managed_object_class_name;
     env.objc.borrow_mut::<NSEntityDescriptionHostObject>(this).managed_object_class_name = name;
+    release(env, old);
 }
 
 - (id)propertiesByName {
@@ -1160,10 +1160,10 @@ insertIntoManagedObjectContext:(id)context {           // NSManagedObjectContext
 }
 
 - (())setName:(id)name {
-    let old = env.objc.borrow::<NSPropertyDescriptionHostObject>(this).name;
-    release(env, old);
     retain(env, name);
+    let old = env.objc.borrow::<NSPropertyDescriptionHostObject>(this).name;
     env.objc.borrow_mut::<NSPropertyDescriptionHostObject>(this).name = name;
+    release(env, old);
 }
 
 - (bool)isOptional {
