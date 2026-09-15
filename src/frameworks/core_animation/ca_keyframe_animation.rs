@@ -1,4 +1,4 @@
-use crate::objc::{autorelease, id, msg, nil, release, retain, HostObject};
+use crate::objc::{autorelease, id, msg, msg_super, nil, release, retain, HostObject};
 use crate::objc_classes;
 
 // =====================================================================
@@ -115,9 +115,9 @@ pub const CLASSES: crate::objc::ClassExports = objc_classes! {
     @end
 
     // -----------------------------------------------------------------
-    // CASpringAnimation
+    // CASpringAnimation - subclass of CABasicAnimation
     // -----------------------------------------------------------------
-    @implementation CASpringAnimation : NSObject
+    @implementation CASpringAnimation : CABasicAnimation
     + (id)alloc {
         let host_object = Box::new(CASpringAnimationHostObject {
             duration: 0.0, fill_mode: nil, delegate: nil, removed_on_completion: true, timing_function: nil,
@@ -163,7 +163,6 @@ pub const CLASSES: crate::objc::ClassExports = objc_classes! {
     }
 
     // CAAnimation + CAPropertyAnimation + CABasicAnimation properties
-    // (Повторяем базовые геттеры/сеттеры для CASpringAnimation)
     - (f64)duration { env.objc.borrow::<CASpringAnimationHostObject>(this).duration }
     - (())setDuration:(f64)val { env.objc.borrow_mut::<CASpringAnimationHostObject>(this).duration = val; }
 
@@ -266,9 +265,9 @@ pub const CLASSES: crate::objc::ClassExports = objc_classes! {
     @end
 
     // -----------------------------------------------------------------
-    // CAKeyframeAnimation (Updated)
+    // CAKeyframeAnimation - subclass of CAPropertyAnimation
     // -----------------------------------------------------------------
-    @implementation CAKeyframeAnimation : NSObject
+    @implementation CAKeyframeAnimation : CAPropertyAnimation
     + (id)alloc {
         let host_object = Box::new(CAKeyframeAnimationHostObject {
             duration: 0.0, fill_mode: nil, delegate: nil, removed_on_completion: true, timing_function: nil,

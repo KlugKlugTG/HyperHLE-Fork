@@ -1089,20 +1089,17 @@ pub const CLASSES: ClassExports = objc_classes! {
         .unwrap_or(nil)
 }
 
-// --- ДОБАВЛЕННЫЙ МЕТОД: removeAllAnimations ---
 - (())removeAllAnimations {
-    let host = env.objc.borrow_mut::<CALayerHostObject>(this);
-
-    // Забираем коллекции, оставляя пустые на их месте
-    let named_animations = std::mem::take(&mut host.animations);
-    let anonymous_animations = std::mem::take(&mut host.anonymous_animations);
-
-    // Освобождаем память (release) для каждой именованной анимации
+    let (named_animations, anonymous_animations) = {
+        let mut host = env.objc.borrow_mut::<CALayerHostObject>(this);
+        (
+            std::mem::take(&mut host.animations),
+            std::mem::take(&mut host.anonymous_animations),
+        )
+    };
     for (_, anim) in named_animations {
         release(env, anim);
     }
-
-    // Освобождаем память (release) для каждой анонимной анимации
     for anim in anonymous_animations {
         release(env, anim);
     }

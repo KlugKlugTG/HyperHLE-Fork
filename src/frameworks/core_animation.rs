@@ -14,22 +14,20 @@ pub mod ca_animation;
 pub mod ca_display_link;
 pub mod ca_eagl_layer;
 pub mod ca_gradient_layer;
-pub mod ca_keyframe_animation; // <-- ДОБАВЛЕН НОВЫЙ МОДУЛЬ
+pub mod ca_keyframe_animation;
 pub mod ca_layer;
 pub mod ca_media_timing_function;
 pub mod ca_transaction;
-pub mod ca_transform3d; // <-- НАШ НОВЫЙ МОДУЛЬ ДЛЯ ТРАНСФОРМАЦИЙ
+pub mod ca_transform3d;
 
 mod animation;
 mod composition;
 
 pub use composition::recomposite_if_necessary;
+pub use ca_transform3d::CATransform3D;
 
-use crate::abi::{impl_GuestRet_for_large_struct, GuestArg};
 use crate::dyld::{export_c_func, FunctionExports};
 use crate::frameworks::core_foundation::time::CFTimeInterval;
-use crate::frameworks::core_graphics::CGFloat;
-use crate::mem::SafeRead;
 use crate::Environment;
 use std::time::Instant;
 
@@ -44,7 +42,7 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
         ca_display_link::CLASSES,
         ca_eagl_layer::CLASSES,
         ca_gradient_layer::CLASSES,
-        ca_keyframe_animation::CLASSES, // <-- КЛАСС ЭКСПОРТИРОВАН
+        ca_keyframe_animation::CLASSES,
         ca_layer::CLASSES,
         ca_media_timing_function::CLASSES,
         ca_transaction::CLASSES,
@@ -54,12 +52,9 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
         ca_layer::CONSTANTS,
         ca_media_timing_function::CONSTANTS,
         ca_transaction::CONSTANTS,
-        ca_transform3d::CONSTANTS, // <-- ЭКСПОРТ КОНСТАНТЫ IDENTITY
+        ca_transform3d::CONSTANTS,
     ],
-    function_exports: &[
-        FUNCTIONS,
-        ca_transform3d::FUNCTIONS, // <-- ЭКСПОРТ НОВЫХ ФУНКЦИЙ (MakeRotation и т.д.)
-    ],
+    function_exports: &[FUNCTIONS, ca_transform3d::FUNCTIONS],
 };
 
 #[derive(Default)]
@@ -79,66 +74,5 @@ pub fn CACurrentMediaTime(env: &mut Environment) -> CFTimeInterval {
         .duration_since(env.startup_time)
         .as_secs_f64()
 }
-
-#[derive(Copy, Clone, Debug, PartialEq)]
-#[repr(C, packed)]
-pub struct CATransform3D {
-    pub m11: CGFloat,
-    pub m12: CGFloat,
-    pub m13: CGFloat,
-    pub m14: CGFloat,
-    pub m21: CGFloat,
-    pub m22: CGFloat,
-    pub m23: CGFloat,
-    pub m24: CGFloat,
-    pub m31: CGFloat,
-    pub m32: CGFloat,
-    pub m33: CGFloat,
-    pub m34: CGFloat,
-    pub m41: CGFloat,
-    pub m42: CGFloat,
-    pub m43: CGFloat,
-    pub m44: CGFloat,
-}
-unsafe impl SafeRead for CATransform3D {}
-impl GuestArg for CATransform3D {
-    const REG_COUNT: usize = 16;
-
-    fn from_regs(regs: &[u32]) -> Self {
-        let mut values = [0.0; 16];
-        for (idx, value) in values.iter_mut().enumerate() {
-            *value = GuestArg::from_regs(&regs[idx..idx + 1]);
-        }
-        Self {
-            m11: values[0],
-            m12: values[1],
-            m13: values[2],
-            m14: values[3],
-            m21: values[4],
-            m22: values[5],
-            m23: values[6],
-            m24: values[7],
-            m31: values[8],
-            m32: values[9],
-            m33: values[10],
-            m34: values[11],
-            m41: values[12],
-            m42: values[13],
-            m43: values[14],
-            m44: values[15],
-        }
-    }
-
-    fn to_regs(self, regs: &mut [u32]) {
-        let values = [
-            self.m11, self.m12, self.m13, self.m14, self.m21, self.m22, self.m23, self.m24,
-            self.m31, self.m32, self.m33, self.m34, self.m41, self.m42, self.m43, self.m44,
-        ];
-        for (idx, value) in values.into_iter().enumerate() {
-            value.to_regs(&mut regs[idx..idx + 1]);
-        }
-    }
-}
-impl_GuestRet_for_large_struct!(CATransform3D);
 
 pub const FUNCTIONS: FunctionExports = &[export_c_func!(CACurrentMediaTime())];

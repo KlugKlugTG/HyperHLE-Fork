@@ -10,12 +10,9 @@
 //! Styles are not rendered (our text stack draws plain text), but the
 //! object model is complete: ranges, attributes, mutable editing.
 
-use crate::abi::GuestArg;
-use crate::dyld::{export_c_func, FunctionExports};
-use crate::frameworks::core_foundation::CFRange;
-use crate::frameworks::foundation::{ns_dictionary, ns_string, NSRange, NSInteger, NSUInteger};
-use crate::mem::{ConstPtr, MutPtr, SafeRead};
+use crate::frameworks::foundation::{NSRange, NSInteger, NSUInteger};
 use crate::frameworks::foundation::ns_string::NSUTF8StringEncoding;
+use crate::mem::MutPtr;
 use crate::objc::{id, msg, msg_class, nil, objc_classes, release, retain, ClassExports, NSZonePtr};
 use crate::Environment;
 
@@ -47,7 +44,9 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (id)init {
     let text: id = msg_class![env; NSString new];
-    msg![env; this initWithString:text]
+    let this2: id = msg![env; this initWithString:text];
+    let _: () = msg![env; text release];
+    this2
 }
 
 - (id)initWithString:(id)string { // NSString*
@@ -76,8 +75,29 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (id)initWithAttributedString:(id)other {
+    if other == nil {
+        let _: () = msg![env; this release];
+        return nil;
+    }
     let text: id = msg![env; other string];
-    msg![env; this initWithString:text]
+    // Clone runs from other if it's an NSAttributedString
+    let other_runs: Vec<(NSRange, id)> = {
+        if let Some(other_host) = env.objc.try_borrow::<NSAttributedStringHostObject>(other) {
+            other_host.runs.iter().map(|(r, a)| (*r, retain(env, *a))).collect()
+        } else {
+            Vec::new()
+        }
+    };
+    let this2: id = msg![env; this initWithString:text];
+    if this2 != nil && !other_runs.is_empty() {
+        let mut host = env.objc.borrow_mut::<NSAttributedStringHostObject>(this2);
+        host.runs = other_runs;
+    } else {
+        for (_, a) in other_runs {
+            release(env, a);
+        }
+    }
+    this2
 }
 
 - (id)initWithData:(id)data options:(id)_options documentAttributes:(MutPtr<id>)_doc_attrs error:(MutPtr<id>)_error {
@@ -126,11 +146,33 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (id)attributedSubstringFromRange:(NSRange)range {
-    let host = env.objc.borrow::<NSAttributedStringHostObject>(this);
-    let sub: id = msg![env; (host.text) substringWithRange:range];
+    // Snapshot text and runs
+    let (text, runs) = {
+        let host = env.objc.borrow::<NSAttributedStringHostObject>(this);
+        (host.text, host.runs.clone())
+    };
+    let sub: id = msg![env; text substringWithRange:range];
+    // Collect overlapping runs and adjust to subrange coordinates
+    let mut new_runs: Vec<(NSRange, id)> = Vec::new();
+    for (r, attrs) in runs {
+        let overlap_start = r.location.max(range.location);
+        let overlap_end = (r.location + r.length).min(range.location + range.length);
+        if overlap_start < overlap_end {
+            let retained = retain(env, attrs);
+            new_runs.push((NSRange { location: overlap_start - range.location, length: overlap_end - overlap_start }, retained));
+        }
+    }
     let new: id = msg_class![env; NSAttributedString alloc];
-    let _: () = msg![env; new initWithString:sub];
-    let _: () = msg![env; sub release];
+    let new: id = msg![env; new initWithString:sub];
+    if new != nil {
+        if !new_runs.is_empty() {
+            env.objc.borrow_mut::<NSAttributedStringHostObject>(new).runs = new_runs;
+        }
+    } else {
+        for (_, a) in new_runs {
+            release(env, a);
+        }
+    }
     new
 }
 
@@ -146,9 +188,19 @@ pub const CLASSES: ClassExports = objc_classes! {
     retain(env, this)
 }
 - (id)mutableCopyWithZone:(NSZonePtr)_zone {
-    let host_text: id = msg![env; this string];
+    let (text, runs) = {
+        let host = env.objc.borrow::<NSAttributedStringHostObject>(this);
+        (host.text, host.runs.clone())
+    };
     let mutable: id = msg_class![env; NSMutableAttributedString alloc];
-    let _: () = msg![env; mutable initWithString:host_text];
+    let mutable: id = msg![env; mutable initWithString:text];
+    if mutable != nil && !runs.is_empty() {
+        let mut host_mut = env.objc.borrow_mut::<NSAttributedStringHostObject>(mutable);
+        for (range, attrs) in runs {
+            let retained = retain(env, attrs);
+            host_mut.runs.push((range, retained));
+        }
+    }
     mutable
 }
 
@@ -174,8 +226,14 @@ pub const CLASSES: ClassExports = objc_classes! {
 // ---- mutable editing ----
 
 - (())setAttributedString:(id)other {
+    if other == nil { return; }
     let text: id = msg![env; other string];
     let new_text = retain(env, text);
+    let other_runs: Vec<(NSRange, id)> = if let Some(other_host) = env.objc.try_borrow::<NSAttributedStringHostObject>(other) {
+        other_host.runs.iter().map(|(r, a)| (*r, retain(env, *a))).collect()
+    } else {
+        Vec::new()
+    };
     let old_text;
     let old_runs;
     {
@@ -187,71 +245,171 @@ pub const CLASSES: ClassExports = objc_classes! {
     for (_, attrs) in old_runs {
         release(env, attrs);
     }
+    if !other_runs.is_empty() {
+        env.objc.borrow_mut::<NSAttributedStringHostObject>(this).runs = other_runs;
+    }
 }
 
 - (())addAttribute:(id)name value:(id)value range:(NSRange)range {
-    // Merge: get existing attributes for the run covering the range start.
-    let range_ptr: MutPtr<NSRange> = MutPtr::null();
-    let existing: id = msg![env; this attributesAtIndex:(range.location) effectiveRange:range_ptr];
+    if name == nil || value == nil || range.length == 0 { return; }
+    let existing: id = msg![env; this attributesAtIndex:(range.location) effectiveRange:(MutPtr::null())];
     let dict: id = if existing != nil {
         let mutable: id = msg![env; existing mutableCopy];
         let _: () = msg![env; mutable setObject:value forKey:name];
         mutable
     } else {
-        let arr: id = msg_class![env; NSArray arrayWithObject:name];
-        let arr2: id = msg_class![env; NSArray arrayWithObject:value];
-        let _: () = msg![env; arr release];
-        let d: id = msg_class![env; NSDictionary dictionaryWithObjects:arr2 forKeys:arr];
-        let _: () = msg![env; arr2 release];
-        d
+        let dict: id = msg_class![env; NSMutableDictionary new];
+        let _: () = msg![env; dict setObject:value forKey:name];
+        dict
     };
-    let host = env.objc.borrow_mut::<NSAttributedStringHostObject>(this);
-    host.runs.push((range, dict));
-    host.runs.sort_by_key(|(r, _)| r.location);
+    // Remove overlapping runs, preserving non-overlapping fragments
+    let old_runs = {
+        let host = env.objc.borrow_mut::<NSAttributedStringHostObject>(this);
+        std::mem::take(&mut host.runs)
+    };
+    let mut new_runs: Vec<(NSRange, id)> = Vec::new();
+    let mut to_release: Vec<id> = Vec::new();
+    for (r, attrs) in old_runs {
+        if r.location + r.length <= range.location || r.location >= range.location + range.length {
+            new_runs.push((r, attrs));
+        } else {
+            if r.location < range.location {
+                let retained = retain(env, attrs);
+                new_runs.push((NSRange { location: r.location, length: range.location - r.location }, retained));
+            }
+            if r.location + r.length > range.location + range.length {
+                let tail_start = range.location + range.length;
+                let retained = retain(env, attrs);
+                new_runs.push((NSRange { location: tail_start, length: (r.location + r.length) - tail_start }, retained));
+            }
+            to_release.push(attrs);
+        }
+    }
+    for a in to_release {
+        release(env, a);
+    }
+    new_runs.push((range, dict));
+    new_runs.sort_by_key(|(r, _)| r.location);
+    env.objc.borrow_mut::<NSAttributedStringHostObject>(this).runs = new_runs;
 }
 
 - (())removeAttribute:(id)name range:(NSRange)range {
-    let mut targets: Vec<id> = Vec::new();
-    {
+    if name == nil || range.length == 0 { return; }
+    let old_runs = {
         let host = env.objc.borrow_mut::<NSAttributedStringHostObject>(this);
-        for (r, attrs) in host.runs.iter_mut() {
-            if r.location <= range.location && range.location + range.length <= r.location + r.length {
-                targets.push(*attrs);
+        std::mem::take(&mut host.runs)
+    };
+    let mut new_runs: Vec<(NSRange, id)> = Vec::new();
+    for (r, attrs) in old_runs {
+        if r.location + r.length <= range.location || r.location >= range.location + range.length {
+            new_runs.push((r, attrs));
+        } else {
+            let contains: bool = {
+                let v: id = msg![env; attrs objectForKey:name];
+                v != nil
+            };
+            if !contains {
+                new_runs.push((r, attrs));
+                continue;
             }
+            if r.location < range.location {
+                let retained = retain(env, attrs);
+                new_runs.push((NSRange { location: r.location, length: range.location - r.location }, retained));
+            }
+            let middle_start = r.location.max(range.location);
+            let middle_end = (r.location + r.length).min(range.location + range.length);
+            if middle_start < middle_end {
+                let mutable: id = msg![env; attrs mutableCopy];
+                let _: () = msg![env; mutable removeObjectForKey:name];
+                new_runs.push((NSRange { location: middle_start, length: middle_end - middle_start }, mutable));
+            }
+            if r.location + r.length > range.location + range.length {
+                let tail_start = range.location + range.length;
+                let retained = retain(env, attrs);
+                new_runs.push((NSRange { location: tail_start, length: (r.location + r.length) - tail_start }, retained));
+            }
+            release(env, attrs);
         }
     }
-    for attrs in targets {
-        let _: () = msg![env; attrs removeObjectForKey:name];
-    }
+    new_runs.sort_by_key(|(r, _)| r.location);
+    env.objc.borrow_mut::<NSAttributedStringHostObject>(this).runs = new_runs;
 }
 
 - (())replaceCharactersInRange:(NSRange)range withString:(id)string {
+    if string == nil { return; }
     let new_len: NSUInteger = msg![env; string length];
     let delta: NSInteger = new_len as NSInteger - range.length as NSInteger;
     let old_text: id = msg![env; this string];
     let new_text: id = msg![env; old_text stringByReplacingCharactersInRange:range withString:string];
     let stored_text = retain(env, new_text);
-    let _ = new_text;
-    {
+    let old_runs = {
         let host = env.objc.borrow_mut::<NSAttributedStringHostObject>(this);
-        host.text = stored_text;
-        for (r, _attrs) in host.runs.iter_mut() {
-            if r.location >= range.location + range.length {
-                r.location = (r.location as NSInteger + delta) as NSUInteger;
-            } else if r.location + r.length > range.location {
-                r.length = range.location.saturating_sub(r.location);
-            }
-        }
-        host.runs.retain(|(r, _)| r.length > 0 || new_len == 0);
-    }
+        let _old = std::mem::replace(&mut host.text, stored_text);
+        // _old is same as old_text's retained storage, we will release old_text below
+        std::mem::take(&mut host.runs)
+    };
     release(env, old_text);
+    let mut new_runs: Vec<(NSRange, id)> = Vec::new();
+    for (r, attrs) in old_runs {
+        if r.location + r.length <= range.location {
+            new_runs.push((r, attrs));
+        } else if r.location >= range.location + range.length {
+            let mut nr = r;
+            nr.location = (nr.location as NSInteger + delta) as NSUInteger;
+            new_runs.push((nr, attrs));
+        } else {
+            if r.location < range.location {
+                let retained = retain(env, attrs);
+                new_runs.push((NSRange { location: r.location, length: range.location - r.location }, retained));
+            }
+            if r.location + r.length > range.location + range.length {
+                let tail_start = range.location + range.length;
+                let tail_len = (r.location + r.length) - tail_start;
+                let new_loc = (tail_start as NSInteger + delta) as NSUInteger;
+                let retained = retain(env, attrs);
+                new_runs.push((NSRange { location: new_loc, length: tail_len }, retained));
+            }
+            release(env, attrs);
+        }
+    }
+    new_runs.retain(|(r, _)| r.length > 0);
+    new_runs.sort_by_key(|(r, _)| r.location);
+    env.objc.borrow_mut::<NSAttributedStringHostObject>(this).runs = new_runs;
 }
 
 - (())setAttributes:(id)attributes range:(NSRange)range {
-    let attrs = retain(env, attributes);
-    let host = env.objc.borrow_mut::<NSAttributedStringHostObject>(this);
-    host.runs.push((range, attrs));
-    host.runs.sort_by_key(|(r, _)| r.location);
+    if range.length == 0 { return; }
+    let new_attrs = if attributes != nil { retain(env, attributes) } else { nil };
+    let old_runs = {
+        let host = env.objc.borrow_mut::<NSAttributedStringHostObject>(this);
+        std::mem::take(&mut host.runs)
+    };
+    let mut new_runs: Vec<(NSRange, id)> = Vec::new();
+    let mut to_release: Vec<id> = Vec::new();
+    for (r, attrs) in old_runs {
+        if r.location + r.length <= range.location || r.location >= range.location + range.length {
+            new_runs.push((r, attrs));
+        } else {
+            if r.location < range.location {
+                let retained = retain(env, attrs);
+                new_runs.push((NSRange { location: r.location, length: range.location - r.location }, retained));
+            }
+            if r.location + r.length > range.location + range.length {
+                let tail_start = range.location + range.length;
+                let retained = retain(env, attrs);
+                new_runs.push((NSRange { location: tail_start, length: (r.location + r.length) - tail_start }, retained));
+            }
+            to_release.push(attrs);
+        }
+    }
+    for a in to_release {
+        release(env, a);
+    }
+    if new_attrs != nil {
+        new_runs.push((range, new_attrs));
+    }
+    new_runs.sort_by_key(|(r, _)| r.location);
+    env.objc.borrow_mut::<NSAttributedStringHostObject>(this).runs = new_runs;
 }
 
 @end

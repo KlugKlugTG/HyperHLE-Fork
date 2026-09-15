@@ -11,9 +11,11 @@
 //! subclass so it composites (showing its background color) and so property
 //! accessors round-trip instead of warning "class is unimplemented".
 
-use super::ca_layer::CALayerHostObject;
-use crate::frameworks::core_graphics::{cg_affine_transform::CGAffineTransformIdentity, CGFloat, CGPoint, CGRect, CGSize};
-use crate::frameworks::core_animation::{ca_layer::kCAGravityResize, ca_transform3d::CATransform3DIdentity};
+use super::ca_layer::{CALayerHostObject, kCAGravityResize, kCAFilterLinear};
+use crate::frameworks::core_graphics::{
+    cg_affine_transform::CGAffineTransformIdentity, CGFloat, CGPoint, CGRect, CGSize,
+};
+use crate::frameworks::core_animation::ca_transform3d::CATransform3DIdentity;
 use crate::frameworks::foundation::ns_string::get_static_str;
 use crate::objc::{id, msg, msg_class, msg_super, nil, objc_classes, release, retain, ClassExports, NSZonePtr};
 use crate::Environment;
@@ -68,8 +70,51 @@ pub const CLASSES: ClassExports = objc_classes! {
 @implementation CAGradientLayer: CALayer
 
 + (id)allocWithZone:(NSZonePtr)_zone {
-    let _: crate::objc::NSZonePtr = _zone;
-    msg![env; this alloc]
+    let host_object = Box::new(CALayerHostObject {
+        metal_device: nil,
+        metal_pixel_format: 0,
+        metal_drawable_size: CGSize { width: 0.0, height: 0.0 },
+        metal_framebuffer_only: false,
+        delegate: nil,
+        sublayers: Vec::new(),
+        superlayer: nil,
+        bounds: CGRect { origin: CGPoint { x: 0.0, y: 0.0 }, size: CGSize { width: 0.0, height: 0.0 } },
+        position: CGPoint { x: 0.0, y: 0.0 },
+        z_position: 0.0,
+        anchor_point: CGPoint { x: 0.5, y: 0.5 },
+        affine_transform: CGAffineTransformIdentity,
+        transform_3d: CATransform3DIdentity,
+        sublayer_transform: CATransform3DIdentity,
+        hidden: false,
+        opaque: false,
+        opacity: 1.0,
+        background_color: None,
+        background_pattern_cg_image: nil,
+        background_pattern_gles_texture: None,
+        corner_radius: 0.0,
+        border_width: 0.0,
+        border_color: None,
+        needs_display: false,
+        needs_display_on_bounds_change: false,
+        contents: nil,
+        drawable_properties: nil,
+        presented_pixels: None,
+        cg_context: None,
+        gles_texture: None,
+        gles_texture_is_up_to_date: false,
+        animations: HashMap::new(),
+        anonymous_animations: HashSet::new(),
+        name: None,
+        mask: nil,
+        contents_gravity: kCAGravityResize.to_owned(),
+        contents_rect: CGRect { origin: CGPoint { x: 0.0, y: 0.0 }, size: CGSize { width: 1.0, height: 1.0 } },
+        edge_antialiasing_mask: 0,
+        minification_filter: kCAFilterLinear.to_owned(),
+        magnification_filter: kCAFilterLinear.to_owned(),
+        minification_filter_bias: 0.0,
+        use_implicit_animations: true,
+    });
+    env.objc.alloc_object(this, host_object, &mut env.mem)
 }
 
 // CAGradientLayer's designated creation path (also used by the older
@@ -128,8 +173,8 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (id)gradientType {
-    // iOS 3.x-era string property ("kCAGradientLayerAxial" etc.)
-    get_static_str(env, "kCAGradientLayerAxial")
+    // Apple's constant kCAGradientLayerAxial has value "axial"
+    get_static_str(env, "axial")
 }
 
 - (())setGradientType:(id)_type {
