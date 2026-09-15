@@ -248,6 +248,22 @@ impl super::ObjC {
         self.objects.get(&object).map(|entry| &*entry.host_object)
     }
 
+    pub fn try_borrow<T: AnyHostObject + 'static>(&self, object: id) -> Option<&T> {
+        if let Some(entry) = self.objects.get(&object) {
+            let mut host_object: &(dyn AnyHostObject + 'static) = &*entry.host_object;
+            loop {
+                if let Some(res) = host_object.as_any().downcast_ref::<T>() {
+                    return Some(res);
+                } else if let Some(next) = host_object.as_superclass() {
+                    host_object = next;
+                } else {
+                    break;
+                }
+            }
+        }
+        None
+    }
+
     pub fn borrow<T: AnyHostObject + Default + 'static>(&self, object: id) -> &T {
         if let Some(entry) = self.objects.get(&object) {
             let mut host_object: &(dyn AnyHostObject + 'static) = &*entry.host_object;
@@ -311,6 +327,26 @@ impl super::ObjC {
             );
         }
         phantom_host_object::<T>(object)
+    }
+
+    pub fn try_borrow_mut<T: AnyHostObject + 'static>(&mut self, object: id) -> Option<&mut T> {
+        if let Some(entry) = self.objects.get_mut(&object) {
+            type Aho = dyn AnyHostObject + 'static;
+            let mut host_object: &mut Aho = &mut *entry.host_object;
+            loop {
+                let current_ptr = host_object as *mut Aho;
+                if let Some(res) = unsafe { &mut *current_ptr }.as_any_mut().downcast_mut::<T>() {
+                    return Some(res);
+                }
+                let has_super = unsafe { &*current_ptr }.as_superclass().is_some();
+                if has_super {
+                    host_object = unsafe { &mut *current_ptr }.as_superclass_mut().unwrap();
+                } else {
+                    break;
+                }
+            }
+        }
+        None
     }
 
     pub fn borrow_mut<T: AnyHostObject + Default + 'static>(&mut self, object: id) -> &mut T {

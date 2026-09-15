@@ -102,9 +102,12 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (())dealloc {
     log_dbg!("[(NSLock *){:?} dealloc]", this);
-    let host_object = env.objc.borrow::<NSLockHostObject>(this);
-    let _ = env.mutex_state.destroy_mutex(host_object.mutex_id);
-    if host_object.name != nil { crate::objc::release(env, host_object.name); }
+    let (mutex_id, name) = {
+        let host = env.objc.borrow::<NSLockHostObject>(this);
+        (host.mutex_id, host.name)
+    };
+    let _ = env.mutex_state.destroy_mutex(mutex_id);
+    if name != nil { crate::objc::release(env, name); }
     env.objc.dealloc_object(this, &mut env.mem)
 }
 
@@ -161,9 +164,12 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (())dealloc {
     log_dbg!("[(NSRecursiveLock *){:?} dealloc]", this);
-    let host_object = env.objc.borrow::<NSLockHostObject>(this);
-    let _ = env.mutex_state.destroy_mutex(host_object.mutex_id);
-    if host_object.name != nil { crate::objc::release(env, host_object.name); }
+    let (mutex_id, name) = {
+        let host = env.objc.borrow::<NSLockHostObject>(this);
+        (host.mutex_id, host.name)
+    };
+    let _ = env.mutex_state.destroy_mutex(mutex_id);
+    if name != nil { crate::objc::release(env, name); }
     env.objc.dealloc_object(this, &mut env.mem)
 }
 
