@@ -288,8 +288,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (())setDelegate:(id)delegate { // CAAnimationDelegate*
     log_dbg!("[(CAAnimation*){:?} setDelegate:{:?}]", this, delegate);
+    let old = env.objc.borrow::<CAAnimationHostObject>(this).delegate;
+    if delegate != nil { retain(env, delegate); }
     env.objc.borrow_mut::<CAAnimationHostObject>(this).delegate = delegate;
-    retain(env, delegate);
+    if old != nil { release(env, old); }
 }
 - (id)delegate {
     env.objc.borrow::<CAAnimationHostObject>(this).delegate
@@ -297,8 +299,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (())setTimingFunction:(id)timingFunction { // CAMediaTimingFunction*
     log_dbg!("[(CAAnimation*){:?} setTimingFunction:{:?}]", this, timingFunction);
+    let old = env.objc.borrow::<CAAnimationHostObject>(this).timing_function;
+    if timingFunction != nil { retain(env, timingFunction); }
     env.objc.borrow_mut::<CAAnimationHostObject>(this).timing_function = timingFunction;
-    retain(env, timingFunction);
+    if old != nil { release(env, old); }
 }
 - (id)timingFunction {
     env.objc.borrow::<CAAnimationHostObject>(this).timing_function
@@ -391,8 +395,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (())setKeyPath:(id)path { // NSString*
     log_dbg!("[(CAPropertyAnimation*){:?} setKeyPath:{:?} ({:?})]", this, path, to_rust_string(env, path));
-    let path_copy: id = msg![env; path copy];
+    let path_copy: id = if path == nil { nil } else { msg![env; path copy] };
+    let old = env.objc.borrow::<CAPropertyAnimationHostObject>(this).key_path;
     env.objc.borrow_mut::<CAPropertyAnimationHostObject>(this).key_path = path_copy;
+    if old != nil { release(env, old); }
 }
 - (id)keyPath {
     env.objc.borrow::<CAPropertyAnimationHostObject>(this).key_path
@@ -419,8 +425,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (())setFromValue:(id)value {
     log_dbg!("[(CABasicAnimation*){:?} setFromValue:{:?}]", this, value);
+    let old = env.objc.borrow::<CABasicAnimationHostObject>(this).from_value;
+    if value != nil { retain(env, value); }
     env.objc.borrow_mut::<CABasicAnimationHostObject>(this).from_value = value;
-    retain(env, value);
+    if old != nil { release(env, old); }
 }
 - (id)fromValue {
     env.objc.borrow::<CABasicAnimationHostObject>(this).from_value
@@ -428,8 +436,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (())setToValue:(id)value {
     log_dbg!("[(CABasicAnimation*){:?} setToValue:{:?}]", this, value);
+    let old = env.objc.borrow::<CABasicAnimationHostObject>(this).to_value;
+    if value != nil { retain(env, value); }
     env.objc.borrow_mut::<CABasicAnimationHostObject>(this).to_value = value;
-    retain(env, value);
+    if old != nil { release(env, old); }
 }
 - (id)toValue {
     env.objc.borrow::<CABasicAnimationHostObject>(this).to_value
@@ -437,20 +447,25 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (())setByValue:(id)value {
     log_dbg!("[(CABasicAnimation*){:?} setByValue:{:?}]", this, value);
+    let old = env.objc.borrow::<CABasicAnimationHostObject>(this).by_value;
+    if value != nil { retain(env, value); }
     env.objc.borrow_mut::<CABasicAnimationHostObject>(this).by_value = value;
-    retain(env, value);
+    if old != nil { release(env, old); }
 }
 - (id)byValue {
     env.objc.borrow::<CABasicAnimationHostObject>(this).by_value
 }
 
 - (())dealloc {
-    let &CABasicAnimationHostObject { from_value, to_value, .. } = env.objc.borrow(this);
+    let &CABasicAnimationHostObject { from_value, to_value, by_value, .. } = env.objc.borrow(this);
     if from_value != nil {
         release(env, from_value);
     }
     if to_value != nil {
         release(env, to_value);
+    }
+    if by_value != nil {
+        release(env, by_value);
     }
 
     msg_super![env; this dealloc]
@@ -468,8 +483,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (())setAnimations:(id)animations { // NSArray*
     log_dbg!("[(CAAnimationGroup*){:?} setAnimations:{:?}]", this, animations);
+    let old = env.objc.borrow::<CAAnimationGroupHostObject>(this).animations;
+    if animations != nil { retain(env, animations); }
     env.objc.borrow_mut::<CAAnimationGroupHostObject>(this).animations = animations;
-    retain(env, animations);
+    if old != nil { release(env, old); }
 }
 
 - (id)animations {

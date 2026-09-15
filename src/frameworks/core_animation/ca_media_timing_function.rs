@@ -55,14 +55,21 @@ struct CAMediaTimingFunctionHostObject {
 impl HostObject for CAMediaTimingFunctionHostObject {}
 impl CAMediaTimingFunctionHostObject {
     fn solve_for_input(&self, input: f32) -> f32 {
-        // My math is kinda rusty so i couldnt solve the equation
-        // but a quick google search yielded me people "solving" it
-        // by brute forcing it through binary search so... ah well
+        // Guard against NaN / infinite inputs that would otherwise cause
+        // an infinite binary-search loop (NaN comparisons are always false).
+        if !input.is_finite() {
+            return input.clamp(0.0, 1.0);
+        }
+        // Clamp input to [0,1] — real Core Animation does this for out-of-range
+        // values, and it prevents the search from diverging.
+        let input = input.clamp(0.0, 1.0);
+
         let mut lower = 0.0;
         let mut upper = 1.0;
-        let mut t;
+        let mut t = 0.5;
         let mut x;
-        loop {
+        // Limit iterations to avoid infinite loop on degenerate curves.
+        for _ in 0..32 {
             t = (upper + lower) / 2.0;
             x = self.coord_in_curve(t, 0);
             if (x - input).abs() < f32::EPSILON {

@@ -127,8 +127,9 @@ pub struct Transaction {
 impl Transaction {
     fn new(env: &mut Environment) -> Self {
         let animation_timing_function_name = get_static_str(env, kCAMediaTimingFunctionDefault);
-        let animation_timing_function =
+        let animation_timing_function: id =
             msg_class![env; CAMediaTimingFunction functionWithName:animation_timing_function_name];
+        retain(env, animation_timing_function);
         Self {
             disable_actions: false,
             animation_duration: 0.25,
@@ -158,6 +159,8 @@ impl Transaction {
             release(env, layer);
             release(env, animation);
         }
+
+        release(env, self.animation_timing_function);
 
         for (_key, value) in self.data {
             release(env, value);
