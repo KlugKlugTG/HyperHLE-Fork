@@ -904,6 +904,12 @@ impl Window {
         // abort ART when made from that context (pending StackOverflowError).
         populate_battery_cache();
 
+        // Likewise, resolve the WebView overlay bridge's JNI class and
+        // method IDs here: FindClass needs the app class loader, which is
+        // only reachable from this stack before guest code starts running
+        // on a coroutine stack.
+        crate::android_web_view::populate_jni_cache();
+
         #[cfg(target_os = "macos")]
         let max_height = window.size().1;
 

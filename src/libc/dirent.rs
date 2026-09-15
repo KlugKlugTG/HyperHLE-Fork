@@ -93,65 +93,110 @@ pub(super) fn opendir(env: &mut Environment, filename: ConstPtr<u8>) -> MutPtr<D
     }
 }
 
+/// Read the next entry of `dirp` (advancing its cursor) and build the guest
+/// `dirent` struct value for it. Shared by [readdir] and [readdir_r].
+/// Returns `None` for an unknown `dirp` or at the end of the directory.
+fn next_dirent(env: &mut Environment, dirp: MutPtr<DIR>) -> Option<dirent> {
+    let mut dir = env.mem.read(dirp);
+    let vec = env.libc_state.dirent.open_dirs.get(&dirp)?;
+    let Some((str, type_)) = vec.get(dir.idx) else {
+        // End of directory. The cursor is left as-is, so further calls
+        // keep reporting "no more entries" (matches Darwin behaviour).
+        return None;
+    };
+    dir.idx += 1;
+    env.mem.write(dirp, dir);
+
+    let len = str.len();
+    let d_type = match type_ {
+        FsNodeType::File => DT_REG,
+        FsNodeType::Directory => DT_DIR,
+    };
+    // Fill fields other than the name with values matching Apple's
+    // dirent layout: a plausible inode (derived from the entry name),
+    // the record length (actual struct size), and d_seekoff left at 0
+    // (the guest is not allowed to rely on it for telldir anyway).
+    let d_ino = {
+        // FNV-1a hash of the name: stable fake inode per entry.
+        let mut h: u64 = 0xcbf29ce484222325;
+        for b in str.as_bytes() {
+            h ^= *b as u64;
+            h = h.wrapping_mul(0x100000001b3);
+        }
+        h
+    };
+    let d_reclen = guest_size_of::<dirent>() as u16;
+    let mut dirent = dirent {
+        d_ino,
+        d_seekoff: 0,
+        d_reclen,
+        d_namlen: len as u16,
+        d_type,
+        d_name: [b'\0'; MAXPATHLEN],
+    };
+    dirent.d_name[..len].copy_from_slice(str.as_bytes());
+    Some(dirent)
+}
+
 pub(super) fn readdir(env: &mut Environment, dirp: MutPtr<DIR>) -> MutPtr<dirent> {
     // TODO: handle errno properly
     set_errno(env, 0);
 
-    let mut dir = env.mem.read(dirp);
-    let Some(vec) = env.libc_state.dirent.open_dirs.get(&dirp) else {
+    if !env.libc_state.dirent.open_dirs.contains_key(&dirp) {
         log!("readdir: invalid DIR pointer {:?}, returning NULL", dirp);
         set_errno(env, EBADF);
         return Ptr::null();
-    };
+    }
+    let dir = env.mem.read(dirp);
     log_dbg!(
         "readdir: dirp {:?}, idx {}, entry '{:?}'",
         dirp,
         dir.idx,
-        vec.get(dir.idx)
-    );
-    if let Some((str, type_)) = vec.get(dir.idx) {
-        dir.idx += 1;
-        env.mem.write(dirp, dir);
-
-        let len = str.len();
-        let d_type = match type_ {
-            FsNodeType::File => DT_REG,
-            FsNodeType::Directory => DT_DIR,
-        };
-        // Fill fields other than the name with values matching Apple's
-        // dirent layout: a plausible inode (derived from the entry name),
-        // the record length (actual struct size), and d_seekoff left at 0
-        // (the guest is not allowed to rely on it for telldir anyway).
-        let d_ino = {
-            // FNV-1a hash of the name: stable fake inode per entry.
-            let mut h: u64 = 0xcbf29ce484222325;
-            for b in str.as_bytes() {
-                h ^= *b as u64;
-                h = h.wrapping_mul(0x100000001b3);
-            }
-            h
-        };
-        let d_reclen = guest_size_of::<dirent>() as u16;
-        let mut dirent = dirent {
-            d_ino,
-            d_seekoff: 0,
-            d_reclen,
-            d_namlen: len as u16,
-            d_type,
-            d_name: [b'\0'; MAXPATHLEN],
-        };
-        dirent.d_name[..len].copy_from_slice(str.as_bytes());
-        let res = env.mem.alloc_and_write(dirent);
         env.libc_state
             .dirent
-            .read_dirs
-            .get_mut(&dirp)
-            .unwrap()
-            .push(res);
-        res
-    } else {
-        Ptr::null()
+            .open_dirs
+            .get(&dirp)
+            .and_then(|vec| vec.get(dir.idx))
+    );
+    let Some(dirent) = next_dirent(env, dirp) else {
+        return Ptr::null();
+    };
+    let res = env.mem.alloc_and_write(dirent);
+    env.libc_state
+        .dirent
+        .read_dirs
+        .get_mut(&dirp)
+        .unwrap()
+        .push(res);
+    res
+}
+
+pub(super) fn readdir_r(
+    env: &mut Environment,
+    dirp: MutPtr<DIR>,
+    entry: MutPtr<dirent>,
+    result: MutPtr<MutPtr<dirent>>,
+) -> i32 {
+    // TODO: handle errno properly
+    set_errno(env, 0);
+
+    if !env.libc_state.dirent.open_dirs.contains_key(&dirp) {
+        log!("readdir_r: invalid DIR pointer {:?}", dirp);
+        // POSIX: readdir_r returns the error number itself instead of
+        // setting errno.
+        return EBADF;
     }
+    log_dbg!("readdir_r: dirp {:?}", dirp);
+    match next_dirent(env, dirp) {
+        Some(dirent) => {
+            env.mem.write(entry, dirent);
+            // On success *result points at the entry we just filled in.
+            env.mem.write(result, entry);
+        }
+        // End of directory: *result is set to NULL and 0 is returned.
+        None => env.mem.write(result, Ptr::null()),
+    }
+    0 // Success
 }
 
 pub(super) fn closedir(env: &mut Environment, dirp: MutPtr<DIR>) -> i32 {
@@ -262,6 +307,7 @@ fn rewinddir(env: &mut Environment, dirp: MutPtr<DIR>) {
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(opendir(_)),
     export_c_func!(readdir(_)),
+    export_c_func!(readdir_r(_, _, _)),
     export_c_func!(closedir(_)),
     export_c_func!(scandir(_, _, _, _)),
     export_c_func!(rewinddir(_)),

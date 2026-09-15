@@ -771,6 +771,7 @@ fn overlay_show_or_update(env: &mut Environment, this: id) -> Option<i32> {
     let frame: CGRect = msg![env; this frame];
     let (x, y, w, h) = env.window().guest_frame_to_window_px(frame);
     if w <= 0 || h <= 0 {
+        log!("UIWebView overlay skipped: view has no on-screen extent yet");
         return None;
     }
     let current = env.objc.borrow::<UIWebViewHostObject>(this).overlay_id;

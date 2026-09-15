@@ -26,6 +26,7 @@ pub mod cf_error;
 pub mod cf_host;
 pub mod cf_net_service;
 pub mod cf_locale;
+pub mod cf_notification_center;
 pub mod cf_number;
 pub mod cf_preferences;
 pub mod cf_run_loop;
@@ -77,6 +78,7 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
         cf_host::FUNCTIONS,
         cf_net_service::FUNCTIONS,
         cf_locale::FUNCTIONS,
+        cf_notification_center::FUNCTIONS,
         cf_number::FUNCTIONS,
         cf_preferences::FUNCTIONS,
         cf_run_loop::FUNCTIONS,
