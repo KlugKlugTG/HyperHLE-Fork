@@ -100,11 +100,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setCategory:(id)category {
-    let old = env.objc.borrow::<GKScoreHostObject>(this).category;
-    release(env, old);
-
     retain(env, category);
+    let old = env.objc.borrow::<GKScoreHostObject>(this).category;
     env.objc.borrow_mut::<GKScoreHostObject>(this).category = category;
+    release(env, old);
 }
 
 - (id)leaderboardIdentifier {
@@ -112,11 +111,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setLeaderboardIdentifier:(id)identifier {
-    let old = env.objc.borrow::<GKScoreHostObject>(this).leaderboard_identifier;
-
-    release(env, old);
     retain(env, identifier);
+    let old = env.objc.borrow::<GKScoreHostObject>(this).leaderboard_identifier;
     env.objc.borrow_mut::<GKScoreHostObject>(this).leaderboard_identifier = identifier;
+    release(env, old);
 }
 
 - (i64)value {

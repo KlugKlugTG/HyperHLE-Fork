@@ -255,19 +255,19 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (id)placeholder { env.objc.borrow::<UITextFieldHostObject>(this).placeholder }
 
 - (())setPlaceholder:(id)placeholder {
-    let old = env.objc.borrow::<UITextFieldHostObject>(this).placeholder;
-    release(env, old);
     retain(env, placeholder);
+    let old = env.objc.borrow::<UITextFieldHostObject>(this).placeholder;
     env.objc.borrow_mut::<UITextFieldHostObject>(this).placeholder = placeholder;
+    release(env, old);
 }
 
 - (id)attributedPlaceholder { env.objc.borrow::<UITextFieldHostObject>(this).attributed_placeholder }
 
 - (())setAttributedPlaceholder:(id)attr_placeholder {
-    let old = env.objc.borrow::<UITextFieldHostObject>(this).attributed_placeholder;
-    release(env, old);
     retain(env, attr_placeholder);
+    let old = env.objc.borrow::<UITextFieldHostObject>(this).attributed_placeholder;
     env.objc.borrow_mut::<UITextFieldHostObject>(this).attributed_placeholder = attr_placeholder;
+    release(env, old);
     if attr_placeholder != nil {
         let plain: id = msg![env; attr_placeholder string];
         let _: () = msg![env; this setPlaceholder:plain];
@@ -277,10 +277,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (id)font { env.objc.borrow::<UITextFieldHostObject>(this).font }
 
 - (())setFont:(id)new_font {
-    let old = env.objc.borrow::<UITextFieldHostObject>(this).font;
-    release(env, old);
     retain(env, new_font);
+    let old = env.objc.borrow::<UITextFieldHostObject>(this).font;
     env.objc.borrow_mut::<UITextFieldHostObject>(this).font = new_font;
+    release(env, old);
     let text_label = env.objc.borrow::<UITextFieldHostObject>(this).text_label;
     let _: () = msg![env; text_label setFont:new_font];
 }
@@ -288,10 +288,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (id)textColor { env.objc.borrow::<UITextFieldHostObject>(this).text_color }
 
 - (())setTextColor:(id)color {
-    let old = env.objc.borrow::<UITextFieldHostObject>(this).text_color;
-    release(env, old);
     retain(env, color);
+    let old = env.objc.borrow::<UITextFieldHostObject>(this).text_color;
     env.objc.borrow_mut::<UITextFieldHostObject>(this).text_color = color;
+    release(env, old);
     let text_label = env.objc.borrow::<UITextFieldHostObject>(this).text_label;
     let _: () = msg![env; text_label setTextColor:color];
 }
@@ -309,18 +309,18 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (id)background { env.objc.borrow::<UITextFieldHostObject>(this).background }
 - (())setBackground:(id)background {
-    let old = env.objc.borrow::<UITextFieldHostObject>(this).background;
-    release(env, old);
     retain(env, background);
+    let old = env.objc.borrow::<UITextFieldHostObject>(this).background;
     env.objc.borrow_mut::<UITextFieldHostObject>(this).background = background;
+    release(env, old);
 }
 
 - (id)disabledBackground { env.objc.borrow::<UITextFieldHostObject>(this).disabled_background }
 - (())setDisabledBackground:(id)background {
-    let old = env.objc.borrow::<UITextFieldHostObject>(this).disabled_background;
-    release(env, old);
     retain(env, background);
+    let old = env.objc.borrow::<UITextFieldHostObject>(this).disabled_background;
     env.objc.borrow_mut::<UITextFieldHostObject>(this).disabled_background = background;
+    release(env, old);
 }
 
 - (UITextFieldViewMode)clearButtonMode { env.objc.borrow::<UITextFieldHostObject>(this).clear_button_mode }
@@ -330,10 +330,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (id)leftView { env.objc.borrow::<UITextFieldHostObject>(this).left_view }
 - (())setLeftView:(id)view {
-    let old = env.objc.borrow::<UITextFieldHostObject>(this).left_view;
-    release(env, old);
     retain(env, view);
+    let old = env.objc.borrow::<UITextFieldHostObject>(this).left_view;
     env.objc.borrow_mut::<UITextFieldHostObject>(this).left_view = view;
+    release(env, old);
 }
 
 - (UITextFieldViewMode)leftViewMode { env.objc.borrow::<UITextFieldHostObject>(this).left_view_mode }
@@ -341,28 +341,28 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (id)rightView { env.objc.borrow::<UITextFieldHostObject>(this).right_view }
 - (())setRightView:(id)view {
-    let old = env.objc.borrow::<UITextFieldHostObject>(this).right_view;
-    release(env, old);
     retain(env, view);
+    let old = env.objc.borrow::<UITextFieldHostObject>(this).right_view;
     env.objc.borrow_mut::<UITextFieldHostObject>(this).right_view = view;
+    release(env, old);
 }
 - (UITextFieldViewMode)rightViewMode { env.objc.borrow::<UITextFieldHostObject>(this).right_view_mode }
 - (())setRightViewMode:(UITextFieldViewMode)mode { env.objc.borrow_mut::<UITextFieldHostObject>(this).right_view_mode = mode; }
 
 - (id)inputView { env.objc.borrow::<UITextFieldHostObject>(this).input_view }
 - (())setInputView:(id)view {
-    let old = env.objc.borrow::<UITextFieldHostObject>(this).input_view;
-    release(env, old);
     retain(env, view);
+    let old = env.objc.borrow::<UITextFieldHostObject>(this).input_view;
     env.objc.borrow_mut::<UITextFieldHostObject>(this).input_view = view;
+    release(env, old);
 }
 
 - (id)inputAccessoryView { env.objc.borrow::<UITextFieldHostObject>(this).input_accessory_view }
 - (())setInputAccessoryView:(id)view {
-    let old = env.objc.borrow::<UITextFieldHostObject>(this).input_accessory_view;
-    release(env, old);
     retain(env, view);
+    let old = env.objc.borrow::<UITextFieldHostObject>(this).input_accessory_view;
     env.objc.borrow_mut::<UITextFieldHostObject>(this).input_accessory_view = view;
+    release(env, old);
 }
 
 - (bool)adjustsFontSizeToFitWidth { env.objc.borrow::<UITextFieldHostObject>(this).adjusts_font_size_to_fit_width }

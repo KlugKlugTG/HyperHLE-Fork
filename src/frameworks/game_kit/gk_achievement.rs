@@ -80,10 +80,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setIdentifier:(id)identifier {
-    let old = env.objc.borrow::<GKAchievementHostObject>(this).identifier;
-    release(env, old);
     retain(env, identifier);
+    let old = env.objc.borrow::<GKAchievementHostObject>(this).identifier;
     env.objc.borrow_mut::<GKAchievementHostObject>(this).identifier = identifier;
+    release(env, old);
 }
 
 - (f64)percentComplete {

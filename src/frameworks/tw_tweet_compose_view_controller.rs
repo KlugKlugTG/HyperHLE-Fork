@@ -73,10 +73,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 // MARK: Настройка контента
 
 - (bool)setInitialText:(id)text {
-    let old = env.objc.borrow::<TWTweetComposeViewControllerHostObject>(this).initial_text;
-    release(env, old);
     retain(env, text);
+    let old = env.objc.borrow::<TWTweetComposeViewControllerHostObject>(this).initial_text;
     env.objc.borrow_mut::<TWTweetComposeViewControllerHostObject>(this).initial_text = text;
+    release(env, old);
     true
 }
 

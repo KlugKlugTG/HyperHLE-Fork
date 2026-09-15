@@ -135,12 +135,12 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setContentViewController:(id)view_controller animated:(bool)_animated {
+    retain(env, view_controller);
     let old = env.objc.borrow::<UIPopoverControllerHostObject>(this)
         .content_view_controller;
-    release(env, old);
-    retain(env, view_controller);
     env.objc.borrow_mut::<UIPopoverControllerHostObject>(this)
         .content_view_controller = view_controller;
+    release(env, old);
 }
 
 // =========================================================================
@@ -169,10 +169,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setDelegate:(id)delegate {
-    let old = env.objc.borrow::<UIPopoverControllerHostObject>(this).delegate;
-    release(env, old);
     retain(env, delegate);
+    let old = env.objc.borrow::<UIPopoverControllerHostObject>(this).delegate;
     env.objc.borrow_mut::<UIPopoverControllerHostObject>(this).delegate = delegate;
+    release(env, old);
 }
 
 // =========================================================================
@@ -184,10 +184,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setPassthroughViews:(id)views { // NSArray*
-    let old = env.objc.borrow::<UIPopoverControllerHostObject>(this).passthrough_views;
-    release(env, old);
     retain(env, views);
+    let old = env.objc.borrow::<UIPopoverControllerHostObject>(this).passthrough_views;
     env.objc.borrow_mut::<UIPopoverControllerHostObject>(this).passthrough_views = views;
+    release(env, old);
 }
 
 // =========================================================================
@@ -199,10 +199,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setBackgroundColor:(id)color { // UIColor*
-    let old = env.objc.borrow::<UIPopoverControllerHostObject>(this).background_color;
-    release(env, old);
     retain(env, color);
+    let old = env.objc.borrow::<UIPopoverControllerHostObject>(this).background_color;
     env.objc.borrow_mut::<UIPopoverControllerHostObject>(this).background_color = color;
+    release(env, old);
 }
 
 // =========================================================================

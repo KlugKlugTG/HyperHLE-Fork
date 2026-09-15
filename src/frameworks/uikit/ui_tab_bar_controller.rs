@@ -107,10 +107,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setItems:(id)items { // NSArray*
-    let old = env.objc.borrow::<UITabBarHostObject>(this).items;
-    release(env, old);
     retain(env, items);
+    let old = env.objc.borrow::<UITabBarHostObject>(this).items;
     env.objc.borrow_mut::<UITabBarHostObject>(this).items = items;
+    release(env, old);
     // Clear selected item — caller must set it again if desired.
     env.objc.borrow_mut::<UITabBarHostObject>(this).selected_item = nil;
 }
@@ -168,10 +168,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setDelegate:(id)delegate {
-    let old = env.objc.borrow::<UITabBarHostObject>(this).delegate;
-    release(env, old);
     retain(env, delegate);
+    let old = env.objc.borrow::<UITabBarHostObject>(this).delegate;
     env.objc.borrow_mut::<UITabBarHostObject>(this).delegate = delegate;
+    release(env, old);
 }
 
 // MARK: Appearance
@@ -181,10 +181,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setBarTintColor:(id)color { // UIColor*
-    let old = env.objc.borrow::<UITabBarHostObject>(this).bar_tint_color;
-    release(env, old);
     retain(env, color);
+    let old = env.objc.borrow::<UITabBarHostObject>(this).bar_tint_color;
     env.objc.borrow_mut::<UITabBarHostObject>(this).bar_tint_color = color;
+    release(env, old);
 }
 
 - (id)tintColor { // UIColor*
@@ -192,10 +192,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setTintColor:(id)color { // UIColor*
-    let old = env.objc.borrow::<UITabBarHostObject>(this).tint_color;
-    release(env, old);
     retain(env, color);
+    let old = env.objc.borrow::<UITabBarHostObject>(this).tint_color;
     env.objc.borrow_mut::<UITabBarHostObject>(this).tint_color = color;
+    release(env, old);
 }
 
 - (bool)isTranslucent {
@@ -216,10 +216,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 // simplified bar stores one image and uses it for every state, which matches
 // how apps actually use it (a single background image for the whole bar).
 - (())setBackgroundImage:(id)image {
-    let old = env.objc.borrow::<UITabBarHostObject>(this).background_image;
-    release(env, old);
     retain(env, image);
+    let old = env.objc.borrow::<UITabBarHostObject>(this).background_image;
     env.objc.borrow_mut::<UITabBarHostObject>(this).background_image = image;
+    release(env, old);
 }
 
 - (id)shadowImage { // UIImage*
@@ -227,10 +227,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setShadowImage:(id)image {
-    let old = env.objc.borrow::<UITabBarHostObject>(this).shadow_image;
-    release(env, old);
     retain(env, image);
+    let old = env.objc.borrow::<UITabBarHostObject>(this).shadow_image;
     env.objc.borrow_mut::<UITabBarHostObject>(this).shadow_image = image;
+    release(env, old);
 }
 
 - (id)selectionIndicatorImage { // UIImage*
@@ -427,10 +427,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setDelegate:(id)delegate {
-    let old = env.objc.borrow::<UITabBarControllerHostObject>(this).delegate;
-    release(env, old);
     retain(env, delegate);
+    let old = env.objc.borrow::<UITabBarControllerHostObject>(this).delegate;
     env.objc.borrow_mut::<UITabBarControllerHostObject>(this).delegate = delegate;
+    release(env, old);
 }
 
 // MARK: - Tab bar accessor

@@ -622,10 +622,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setEntities:(id)entities {
-    let old = env.objc.borrow::<NSManagedObjectModelHostObject>(this).entities;
-    release(env, old);
     retain(env, entities);
+    let old = env.objc.borrow::<NSManagedObjectModelHostObject>(this).entities;
     env.objc.borrow_mut::<NSManagedObjectModelHostObject>(this).entities = entities;
+    release(env, old);
 }
 
 - (id)entitiesByName {
@@ -685,12 +685,12 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setPersistentStoreCoordinator:(id)coordinator {
+    retain(env, coordinator);
     let old = env.objc.borrow::<NSManagedObjectContextHostObject>(this)
         .persistent_store_coordinator;
-    release(env, old);
-    retain(env, coordinator);
     env.objc.borrow_mut::<NSManagedObjectContextHostObject>(this)
         .persistent_store_coordinator = coordinator;
+    release(env, old);
 }
 
 - (id)parentContext {
@@ -707,10 +707,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setUndoManager:(id)undo_manager {
-    let old = env.objc.borrow::<NSManagedObjectContextHostObject>(this).undo_manager;
-    release(env, old);
     retain(env, undo_manager);
+    let old = env.objc.borrow::<NSManagedObjectContextHostObject>(this).undo_manager;
     env.objc.borrow_mut::<NSManagedObjectContextHostObject>(this).undo_manager = undo_manager;
+    release(env, old);
 }
 
 - (id)mergePolicy {
@@ -1038,10 +1038,10 @@ insertIntoManagedObjectContext:(id)context {           // NSManagedObjectContext
 }
 
 - (())setEntity:(id)entity {
-    let old = env.objc.borrow::<NSFetchRequestHostObject>(this).entity;
-    release(env, old);
     retain(env, entity);
+    let old = env.objc.borrow::<NSFetchRequestHostObject>(this).entity;
     env.objc.borrow_mut::<NSFetchRequestHostObject>(this).entity = entity;
+    release(env, old);
 }
 
 - (id)entityName {
@@ -1053,10 +1053,10 @@ insertIntoManagedObjectContext:(id)context {           // NSManagedObjectContext
 }
 
 - (())setPredicate:(id)predicate {
-    let old = env.objc.borrow::<NSFetchRequestHostObject>(this).predicate;
-    release(env, old);
     retain(env, predicate);
+    let old = env.objc.borrow::<NSFetchRequestHostObject>(this).predicate;
     env.objc.borrow_mut::<NSFetchRequestHostObject>(this).predicate = predicate;
+    release(env, old);
 }
 
 - (id)sortDescriptors {
@@ -1064,10 +1064,10 @@ insertIntoManagedObjectContext:(id)context {           // NSManagedObjectContext
 }
 
 - (())setSortDescriptors:(id)descs {
-    let old = env.objc.borrow::<NSFetchRequestHostObject>(this).sort_descriptors;
-    release(env, old);
     retain(env, descs);
+    let old = env.objc.borrow::<NSFetchRequestHostObject>(this).sort_descriptors;
     env.objc.borrow_mut::<NSFetchRequestHostObject>(this).sort_descriptors = descs;
+    release(env, old);
 }
 
 - (NSUInteger)fetchLimit {
@@ -1187,10 +1187,10 @@ insertIntoManagedObjectContext:(id)context {           // NSManagedObjectContext
 }
 
 - (())setUserInfo:(id)info {
-    let old = env.objc.borrow::<NSPropertyDescriptionHostObject>(this).user_info;
-    release(env, old);
     retain(env, info);
+    let old = env.objc.borrow::<NSPropertyDescriptionHostObject>(this).user_info;
     env.objc.borrow_mut::<NSPropertyDescriptionHostObject>(this).user_info = info;
+    release(env, old);
 }
 
 - (id)entity { nil }
@@ -1241,10 +1241,10 @@ insertIntoManagedObjectContext:(id)context {           // NSManagedObjectContext
 }
 
 - (())setDefaultValue:(id)value {
-    let old = env.objc.borrow::<NSAttributeDescriptionHostObject>(this).default_value;
-    release(env, old);
     retain(env, value);
+    let old = env.objc.borrow::<NSAttributeDescriptionHostObject>(this).default_value;
     env.objc.borrow_mut::<NSAttributeDescriptionHostObject>(this).default_value = value;
+    release(env, old);
 }
 
 - (id)attributeValueClassName { nil }

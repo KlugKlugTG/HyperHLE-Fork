@@ -834,10 +834,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setTitle:(id)title {
-    let old = env.objc.borrow::<UISegmentHostObject>(this).title;
-    release(env, old);
     retain(env, title);
+    let old = env.objc.borrow::<UISegmentHostObject>(this).title;
     env.objc.borrow_mut::<UISegmentHostObject>(this).title = title;
+    release(env, old);
 }
 
 - (id)title {
@@ -845,10 +845,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setImage:(id)image {
-    let old = env.objc.borrow::<UISegmentHostObject>(this).image;
-    release(env, old);
     retain(env, image);
+    let old = env.objc.borrow::<UISegmentHostObject>(this).image;
     env.objc.borrow_mut::<UISegmentHostObject>(this).image = image;
+    release(env, old);
 }
 
 - (id)image {

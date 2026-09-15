@@ -508,10 +508,10 @@ pub const CLASSES: ClassExports = objc_classes! {
     env.objc.borrow::<UIButtonHostObject>(this).tint_color
 }
 - (())setTintColor:(id)color {
-    let old = env.objc.borrow::<UIButtonHostObject>(this).tint_color;
-    release(env, old);
     retain(env, color);
+    let old = env.objc.borrow::<UIButtonHostObject>(this).tint_color;
     env.objc.borrow_mut::<UIButtonHostObject>(this).tint_color = color;
+    release(env, old);
 }
 
 - (())setTitleShadowOffset:(CGSize)_offset {

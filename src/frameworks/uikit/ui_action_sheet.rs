@@ -106,10 +106,10 @@ destructiveButtonTitle:(id)destructive_title // NSString*
 }
 
 - (())setDelegate:(id)delegate {
-    let old = env.objc.borrow::<UIActionSheetHostObject>(this).delegate;
-    release(env, old);
     retain(env, delegate);
+    let old = env.objc.borrow::<UIActionSheetHostObject>(this).delegate;
     env.objc.borrow_mut::<UIActionSheetHostObject>(this).delegate = delegate;
+    release(env, old);
 }
 
 // MARK: - Title
@@ -119,10 +119,10 @@ destructiveButtonTitle:(id)destructive_title // NSString*
 }
 
 - (())setTitle:(id)title {
-    let old = env.objc.borrow::<UIActionSheetHostObject>(this).title;
-    release(env, old);
     retain(env, title);
+    let old = env.objc.borrow::<UIActionSheetHostObject>(this).title;
     env.objc.borrow_mut::<UIActionSheetHostObject>(this).title = title;
+    release(env, old);
 }
 
 // MARK: - Tag

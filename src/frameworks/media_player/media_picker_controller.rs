@@ -104,10 +104,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setPrompt:(id)prompt { // NSString*
-    let old = env.objc.borrow::<MPMediaPickerControllerHostObject>(this).prompt;
-    release(env, old);
     retain(env, prompt);
+    let old = env.objc.borrow::<MPMediaPickerControllerHostObject>(this).prompt;
     env.objc.borrow_mut::<MPMediaPickerControllerHostObject>(this).prompt = prompt;
+    release(env, old);
 }
 
 // MARK: - Network / cloud items
@@ -128,10 +128,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setDelegate:(id)delegate {
-    let old = env.objc.borrow::<MPMediaPickerControllerHostObject>(this).delegate;
-    release(env, old);
     retain(env, delegate);
+    let old = env.objc.borrow::<MPMediaPickerControllerHostObject>(this).delegate;
     env.objc.borrow_mut::<MPMediaPickerControllerHostObject>(this).delegate = delegate;
+    release(env, old);
 }
 
 // MARK: - UIViewController overrides

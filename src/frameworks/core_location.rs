@@ -205,10 +205,10 @@ const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setDelegate:(id)delegate {
-    let old = env.objc.borrow::<CLLocationManagerHostObject>(this).delegate;
-    release(env, old);
     retain(env, delegate);
+    let old = env.objc.borrow::<CLLocationManagerHostObject>(this).delegate;
     env.objc.borrow_mut::<CLLocationManagerHostObject>(this).delegate = delegate;
+    release(env, old);
 }
 
 // MARK: Accuracy / filter
@@ -471,10 +471,10 @@ const CLASSES: ClassExports = objc_classes! {
 // Then expose a separate timestamp setter for callers that need it:
 
 - (())_setTimestamp:(id)ts { // NSDate* — private helper
-    let old = env.objc.borrow::<CLLocationHostObject>(this).timestamp;
-    release(env, old);
     retain(env, ts);
+    let old = env.objc.borrow::<CLLocationHostObject>(this).timestamp;
     env.objc.borrow_mut::<CLLocationHostObject>(this).timestamp = ts;
+    release(env, old);
 }
 
 - (CLLocationDistance)distanceFromLocation:(id)other { // CLLocation*

@@ -446,10 +446,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setCustomView:(id)custom_view {
-    let old = env.objc.borrow::<UIBarButtonItemHostObject>(this).custom_view;
-    release(env, old);
     retain(env, custom_view);
+    let old = env.objc.borrow::<UIBarButtonItemHostObject>(this).custom_view;
     env.objc.borrow_mut::<UIBarButtonItemHostObject>(this).custom_view = custom_view;
+    release(env, old);
 }
 
 - (id)label {
@@ -465,10 +465,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setImage:(id)image {
-    let old = env.objc.borrow::<UIBarButtonItemHostObject>(this).image;
-    release(env, old);
     retain(env, image);
+    let old = env.objc.borrow::<UIBarButtonItemHostObject>(this).image;
     env.objc.borrow_mut::<UIBarButtonItemHostObject>(this).image = image;
+    release(env, old);
 }
 
 - (())setTitle:(id)title {

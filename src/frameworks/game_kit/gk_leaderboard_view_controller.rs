@@ -113,10 +113,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setCategory:(id)category {
-    let old = env.objc.borrow::<GKLeaderboardViewControllerHostObject>(this).category;
-    release(env, old);
     retain(env, category);
+    let old = env.objc.borrow::<GKLeaderboardViewControllerHostObject>(this).category;
     env.objc.borrow_mut::<GKLeaderboardViewControllerHostObject>(this).category = category;
+    release(env, old);
 }
 
 // MARK: Time scope
@@ -210,10 +210,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setMessage:(id)message {
-    let old = env.objc.borrow::<GKFriendRequestComposeViewControllerHostObject>(this).message;
-    release(env, old);
     retain(env, message);
+    let old = env.objc.borrow::<GKFriendRequestComposeViewControllerHostObject>(this).message;
     env.objc.borrow_mut::<GKFriendRequestComposeViewControllerHostObject>(this).message = message;
+    release(env, old);
 }
 
 - (NSInteger)maxRecipients {

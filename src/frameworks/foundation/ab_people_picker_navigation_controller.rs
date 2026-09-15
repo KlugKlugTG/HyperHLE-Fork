@@ -97,12 +97,12 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setPeoplePickerDelegate:(id)delegate {
+    retain(env, delegate);
     let old = env.objc.borrow::<ABPeoplePickerNavigationControllerHostObject>(this)
         .people_picker_delegate;
-    release(env, old);
-    retain(env, delegate);
     env.objc.borrow_mut::<ABPeoplePickerNavigationControllerHostObject>(this)
         .people_picker_delegate = delegate;
+    release(env, old);
 }
 
 // =========================================================================
@@ -115,12 +115,12 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setDisplayedProperties:(id)properties { // NSArray*
+    retain(env, properties);
     let old = env.objc.borrow::<ABPeoplePickerNavigationControllerHostObject>(this)
         .displayed_properties;
-    release(env, old);
-    retain(env, properties);
     env.objc.borrow_mut::<ABPeoplePickerNavigationControllerHostObject>(this)
         .displayed_properties = properties;
+    release(env, old);
 }
 
 // =========================================================================
@@ -132,12 +132,12 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setAddressBook:(id)address_book {
+    retain(env, address_book);
     let old = env.objc.borrow::<ABPeoplePickerNavigationControllerHostObject>(this)
         .address_book;
-    release(env, old);
-    retain(env, address_book);
     env.objc.borrow_mut::<ABPeoplePickerNavigationControllerHostObject>(this)
         .address_book = address_book;
+    release(env, old);
 }
 
 // =========================================================================
@@ -150,12 +150,12 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setPredicateForEnablingSelection:(id)predicate {
+    retain(env, predicate);
     let old = env.objc.borrow::<ABPeoplePickerNavigationControllerHostObject>(this)
         .predicate_for_enabling_selection;
-    release(env, old);
-    retain(env, predicate);
     env.objc.borrow_mut::<ABPeoplePickerNavigationControllerHostObject>(this)
         .predicate_for_enabling_selection = predicate;
+    release(env, old);
 }
 
 - (id)predicateForSectionHeaderSelection {
@@ -164,12 +164,12 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setPredicateForSectionHeaderSelection:(id)predicate {
+    retain(env, predicate);
     let old = env.objc.borrow::<ABPeoplePickerNavigationControllerHostObject>(this)
         .predicate_for_section_header_selection;
-    release(env, old);
-    retain(env, predicate);
     env.objc.borrow_mut::<ABPeoplePickerNavigationControllerHostObject>(this)
         .predicate_for_section_header_selection = predicate;
+    release(env, old);
 }
 
 - (id)predicateForDisplayedResults {
@@ -178,12 +178,12 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setPredicateForDisplayedResults:(id)predicate {
+    retain(env, predicate);
     let old = env.objc.borrow::<ABPeoplePickerNavigationControllerHostObject>(this)
         .predicate_for_displayed_results;
-    release(env, old);
-    retain(env, predicate);
     env.objc.borrow_mut::<ABPeoplePickerNavigationControllerHostObject>(this)
         .predicate_for_displayed_results = predicate;
+    release(env, old);
 }
 
 // =========================================================================

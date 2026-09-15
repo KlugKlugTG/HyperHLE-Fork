@@ -151,10 +151,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setTintColor:(id)color {
-    let old = env.objc.borrow::<UINavigationBarHostObject>(this).tint_color;
-    release(env, old);
     retain(env, color);
+    let old = env.objc.borrow::<UINavigationBarHostObject>(this).tint_color;
     env.objc.borrow_mut::<UINavigationBarHostObject>(this).tint_color = color;
+    release(env, old);
 }
 
 - (id)barTintColor {
@@ -162,10 +162,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setBarTintColor:(id)color {
-    let old = env.objc.borrow::<UINavigationBarHostObject>(this).bar_tint_color;
-    release(env, old);
     retain(env, color);
+    let old = env.objc.borrow::<UINavigationBarHostObject>(this).bar_tint_color;
     env.objc.borrow_mut::<UINavigationBarHostObject>(this).bar_tint_color = color;
+    release(env, old);
 }
 
 // MARK: - Title attributes
@@ -175,10 +175,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setTitleTextAttributes:(id)attrs {
-    let old = env.objc.borrow::<UINavigationBarHostObject>(this).title_text_attributes;
-    release(env, old);
     retain(env, attrs);
+    let old = env.objc.borrow::<UINavigationBarHostObject>(this).title_text_attributes;
     env.objc.borrow_mut::<UINavigationBarHostObject>(this).title_text_attributes = attrs;
+    release(env, old);
 }
 
 // MARK: - Background / shadow images
@@ -188,10 +188,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setShadowImage:(id)image {
-    let old = env.objc.borrow::<UINavigationBarHostObject>(this).shadow_image;
-    release(env, old);
     retain(env, image);
+    let old = env.objc.borrow::<UINavigationBarHostObject>(this).shadow_image;
     env.objc.borrow_mut::<UINavigationBarHostObject>(this).shadow_image = image;
+    release(env, old);
 }
 
 - (id)backgroundImageForBarMetrics:(NSInteger)_metrics {
@@ -199,10 +199,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setBackgroundImage:(id)image forBarMetrics:(NSInteger)_metrics {
-    let old = env.objc.borrow::<UINavigationBarHostObject>(this).background_image;
-    release(env, old);
     retain(env, image);
+    let old = env.objc.borrow::<UINavigationBarHostObject>(this).background_image;
     env.objc.borrow_mut::<UINavigationBarHostObject>(this).background_image = image;
+    release(env, old);
 }
 
 - (())setBackgroundImage:(id)image
@@ -369,10 +369,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setTitle:(id)title {
-    let old = env.objc.borrow::<UINavigationItemHostObject>(this).title;
-    release(env, old);
     retain(env, title);
+    let old = env.objc.borrow::<UINavigationItemHostObject>(this).title;
     env.objc.borrow_mut::<UINavigationItemHostObject>(this).title = title;
+    release(env, old);
 }
 
 - (id)titleView {
@@ -380,10 +380,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setTitleView:(id)view {
-    let old = env.objc.borrow::<UINavigationItemHostObject>(this).title_view;
-    release(env, old);
     retain(env, view);
+    let old = env.objc.borrow::<UINavigationItemHostObject>(this).title_view;
     env.objc.borrow_mut::<UINavigationItemHostObject>(this).title_view = view;
+    release(env, old);
 }
 
 - (id)prompt {
@@ -391,10 +391,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setPrompt:(id)prompt {
-    let old = env.objc.borrow::<UINavigationItemHostObject>(this).prompt;
-    release(env, old);
     retain(env, prompt);
+    let old = env.objc.borrow::<UINavigationItemHostObject>(this).prompt;
     env.objc.borrow_mut::<UINavigationItemHostObject>(this).prompt = prompt;
+    release(env, old);
 }
 
 - (id)backBarButtonItem {
@@ -402,10 +402,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setBackBarButtonItem:(id)item {
-    let old = env.objc.borrow::<UINavigationItemHostObject>(this).back_button;
-    release(env, old);
     retain(env, item);
+    let old = env.objc.borrow::<UINavigationItemHostObject>(this).back_button;
     env.objc.borrow_mut::<UINavigationItemHostObject>(this).back_button = item;
+    release(env, old);
 }
 
 - (id)leftBarButtonItem {
@@ -413,10 +413,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setLeftBarButtonItem:(id)item {
-    let old = env.objc.borrow::<UINavigationItemHostObject>(this).left_button;
-    release(env, old);
     retain(env, item);
+    let old = env.objc.borrow::<UINavigationItemHostObject>(this).left_button;
     env.objc.borrow_mut::<UINavigationItemHostObject>(this).left_button = item;
+    release(env, old);
 }
 
 - (())setLeftBarButtonItem:(id)item animated:(bool)_animated {
@@ -428,10 +428,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setRightBarButtonItem:(id)item {
-    let old = env.objc.borrow::<UINavigationItemHostObject>(this).right_button;
-    release(env, old);
     retain(env, item);
+    let old = env.objc.borrow::<UINavigationItemHostObject>(this).right_button;
     env.objc.borrow_mut::<UINavigationItemHostObject>(this).right_button = item;
+    release(env, old);
 }
 
 - (())setRightBarButtonItem:(id)item animated:(bool)_animated {
@@ -443,10 +443,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setLeftBarButtonItems:(id)items {
-    let old = env.objc.borrow::<UINavigationItemHostObject>(this).left_items;
-    release(env, old);
     retain(env, items);
+    let old = env.objc.borrow::<UINavigationItemHostObject>(this).left_items;
     env.objc.borrow_mut::<UINavigationItemHostObject>(this).left_items = items;
+    release(env, old);
     // Sync single-item accessor to first element.
     if items != nil {
         let count: u32 = msg![env; items count];
@@ -460,10 +460,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setRightBarButtonItems:(id)items {
-    let old = env.objc.borrow::<UINavigationItemHostObject>(this).right_items;
-    release(env, old);
     retain(env, items);
+    let old = env.objc.borrow::<UINavigationItemHostObject>(this).right_items;
     env.objc.borrow_mut::<UINavigationItemHostObject>(this).right_items = items;
+    release(env, old);
     if items != nil {
         let count: u32 = msg![env; items count];
         let first: id = if count > 0 { msg![env; items objectAtIndex:0u32] } else { nil };

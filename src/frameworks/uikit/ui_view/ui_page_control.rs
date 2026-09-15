@@ -139,10 +139,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setPageIndicatorTintColor:(id)color { // UIColor*
-    let old = env.objc.borrow::<UIPageControlHostObject>(this).page_indicator_tint_color;
-    release(env, old);
     retain(env, color);
+    let old = env.objc.borrow::<UIPageControlHostObject>(this).page_indicator_tint_color;
     env.objc.borrow_mut::<UIPageControlHostObject>(this).page_indicator_tint_color = color;
+    release(env, old);
 }
 
 - (id)currentPageIndicatorTintColor { // UIColor*
@@ -150,12 +150,12 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setCurrentPageIndicatorTintColor:(id)color { // UIColor*
+    retain(env, color);
     let old = env.objc.borrow::<UIPageControlHostObject>(this)
         .current_page_indicator_tint_color;
-    release(env, old);
-    retain(env, color);
     env.objc.borrow_mut::<UIPageControlHostObject>(this)
         .current_page_indicator_tint_color = color;
+    release(env, old);
 }
 
 // MARK: - Description

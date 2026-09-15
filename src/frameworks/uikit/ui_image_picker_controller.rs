@@ -132,10 +132,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setDelegate:(id)delegate {
-    let old = env.objc.borrow::<UIImagePickerControllerHostObject>(this).delegate;
-    release(env, old);
     retain(env, delegate);
+    let old = env.objc.borrow::<UIImagePickerControllerHostObject>(this).delegate;
     env.objc.borrow_mut::<UIImagePickerControllerHostObject>(this).delegate = delegate;
+    release(env, old);
 }
 
 // MARK: - Media types
@@ -145,10 +145,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setMediaTypes:(id)media_types {
-    let old = env.objc.borrow::<UIImagePickerControllerHostObject>(this).media_types;
-    release(env, old);
     retain(env, media_types);
+    let old = env.objc.borrow::<UIImagePickerControllerHostObject>(this).media_types;
     env.objc.borrow_mut::<UIImagePickerControllerHostObject>(this).media_types = media_types;
+    release(env, old);
 }
 
 // MARK: - Editing
@@ -220,10 +220,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setCameraOverlayView:(id)view {
-    let old = env.objc.borrow::<UIImagePickerControllerHostObject>(this).camera_overlay_view;
-    release(env, old);
     retain(env, view);
+    let old = env.objc.borrow::<UIImagePickerControllerHostObject>(this).camera_overlay_view;
     env.objc.borrow_mut::<UIImagePickerControllerHostObject>(this).camera_overlay_view = view;
+    release(env, old);
 }
 
 // MARK: - Camera actions (stubs)

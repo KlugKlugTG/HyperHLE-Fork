@@ -542,10 +542,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setCollectionViewLayout:(id)layout {
-    let old = env.objc.borrow::<UICollectionViewHostObject>(this).layout;
-    release(env, old);
     retain(env, layout);
+    let old = env.objc.borrow::<UICollectionViewHostObject>(this).layout;
     env.objc.borrow_mut::<UICollectionViewHostObject>(this).layout = layout;
+    release(env, old);
 }
 
 - (())setCollectionViewLayout:(id)layout animated:(bool)_animated {
@@ -559,10 +559,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setBackgroundView:(id)view {
-    let old = env.objc.borrow::<UICollectionViewHostObject>(this).background_view;
-    release(env, old);
     retain(env, view);
+    let old = env.objc.borrow::<UICollectionViewHostObject>(this).background_view;
     env.objc.borrow_mut::<UICollectionViewHostObject>(this).background_view = view;
+    release(env, old);
 }
 
 // MARK: - Selection

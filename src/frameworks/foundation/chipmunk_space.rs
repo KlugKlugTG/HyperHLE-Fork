@@ -189,10 +189,10 @@ pub const CLASSES: ClassExports = objc_classes! {
     env.objc.borrow::<ChipmunkSpaceHostObject>(this).delegate
 }
 - (())setDelegate:(id)delegate {
-    let old = env.objc.borrow::<ChipmunkSpaceHostObject>(this).delegate;
-    release(env, old);
     retain(env, delegate);
+    let old = env.objc.borrow::<ChipmunkSpaceHostObject>(this).delegate;
     env.objc.borrow_mut::<ChipmunkSpaceHostObject>(this).delegate = delegate;
+    release(env, old);
 }
 
 // MARK: Add / remove objects

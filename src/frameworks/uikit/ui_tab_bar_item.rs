@@ -102,10 +102,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setTitle:(id)title {
-    let old = env.objc.borrow::<UITabBarItemHostObject>(this).title;
-    release(env, old);
     retain(env, title);
+    let old = env.objc.borrow::<UITabBarItemHostObject>(this).title;
     env.objc.borrow_mut::<UITabBarItemHostObject>(this).title = title;
+    release(env, old);
 }
 
 - (id)image {
@@ -113,10 +113,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setImage:(id)image {
-    let old = env.objc.borrow::<UITabBarItemHostObject>(this).image;
-    release(env, old);
     retain(env, image);
+    let old = env.objc.borrow::<UITabBarItemHostObject>(this).image;
     env.objc.borrow_mut::<UITabBarItemHostObject>(this).image = image;
+    release(env, old);
 }
 
 - (id)selectedImage {
@@ -124,10 +124,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setSelectedImage:(id)image {
-    let old = env.objc.borrow::<UITabBarItemHostObject>(this).selected_image;
-    release(env, old);
     retain(env, image);
+    let old = env.objc.borrow::<UITabBarItemHostObject>(this).selected_image;
     env.objc.borrow_mut::<UITabBarItemHostObject>(this).selected_image = image;
+    release(env, old);
 }
 
 - (id)badgeValue {
@@ -135,10 +135,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setBadgeValue:(id)value {
-    let old = env.objc.borrow::<UITabBarItemHostObject>(this).badge_value;
-    release(env, old);
     retain(env, value);
+    let old = env.objc.borrow::<UITabBarItemHostObject>(this).badge_value;
     env.objc.borrow_mut::<UITabBarItemHostObject>(this).badge_value = value;
+    release(env, old);
 }
 
 - (NSInteger)tag {

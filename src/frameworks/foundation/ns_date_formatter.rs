@@ -274,40 +274,40 @@ pub const CLASSES: ClassExports = objc_classes! {
     env.objc.borrow::<NSDateFormatterHostObject>(this).short_month_symbols
 }
 - (())setShortMonthSymbols:(id)symbols {
-    let old = env.objc.borrow::<NSDateFormatterHostObject>(this).short_month_symbols;
-    release(env, old);
     retain(env, symbols);
+    let old = env.objc.borrow::<NSDateFormatterHostObject>(this).short_month_symbols;
     env.objc.borrow_mut::<NSDateFormatterHostObject>(this).short_month_symbols = symbols;
+    release(env, old);
 }
 
 - (id)monthSymbols {
     env.objc.borrow::<NSDateFormatterHostObject>(this).month_symbols
 }
 - (())setMonthSymbols:(id)symbols {
-    let old = env.objc.borrow::<NSDateFormatterHostObject>(this).month_symbols;
-    release(env, old);
     retain(env, symbols);
+    let old = env.objc.borrow::<NSDateFormatterHostObject>(this).month_symbols;
     env.objc.borrow_mut::<NSDateFormatterHostObject>(this).month_symbols = symbols;
+    release(env, old);
 }
 
 - (id)shortWeekdaySymbols {
     env.objc.borrow::<NSDateFormatterHostObject>(this).short_weekday_symbols
 }
 - (())setShortWeekdaySymbols:(id)symbols {
-    let old = env.objc.borrow::<NSDateFormatterHostObject>(this).short_weekday_symbols;
-    release(env, old);
     retain(env, symbols);
+    let old = env.objc.borrow::<NSDateFormatterHostObject>(this).short_weekday_symbols;
     env.objc.borrow_mut::<NSDateFormatterHostObject>(this).short_weekday_symbols = symbols;
+    release(env, old);
 }
 
 - (id)weekdaySymbols {
     env.objc.borrow::<NSDateFormatterHostObject>(this).weekday_symbols
 }
 - (())setWeekdaySymbols:(id)symbols {
-    let old = env.objc.borrow::<NSDateFormatterHostObject>(this).weekday_symbols;
-    release(env, old);
     retain(env, symbols);
+    let old = env.objc.borrow::<NSDateFormatterHostObject>(this).weekday_symbols;
     env.objc.borrow_mut::<NSDateFormatterHostObject>(this).weekday_symbols = symbols;
+    release(env, old);
 }
 
 // MARK: - Locale / TimeZone / Calendar
@@ -318,10 +318,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setLocale:(id)locale {
-    let old = env.objc.borrow::<NSDateFormatterHostObject>(this).locale;
-    release(env, old);
     retain(env, locale);
+    let old = env.objc.borrow::<NSDateFormatterHostObject>(this).locale;
     env.objc.borrow_mut::<NSDateFormatterHostObject>(this).locale = locale;
+    release(env, old);
 }
 
 - (id)timeZone {
@@ -329,10 +329,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setTimeZone:(id)tz {
-    let old = env.objc.borrow::<NSDateFormatterHostObject>(this).time_zone;
-    release(env, old);
     retain(env, tz);
+    let old = env.objc.borrow::<NSDateFormatterHostObject>(this).time_zone;
     env.objc.borrow_mut::<NSDateFormatterHostObject>(this).time_zone = tz;
+    release(env, old);
 }
 
 - (id)calendar {
@@ -340,10 +340,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setCalendar:(id)cal {
-    let old = env.objc.borrow::<NSDateFormatterHostObject>(this).calendar;
-    release(env, old);
     retain(env, cal);
+    let old = env.objc.borrow::<NSDateFormatterHostObject>(this).calendar;
     env.objc.borrow_mut::<NSDateFormatterHostObject>(this).calendar = cal;
+    release(env, old);
 }
 
 // MARK: - Misc properties
@@ -366,20 +366,20 @@ pub const CLASSES: ClassExports = objc_classes! {
     env.objc.borrow::<NSDateFormatterHostObject>(this).two_digit_start_date
 }
 - (())setTwoDigitStartDate:(id)date {
-    let old = env.objc.borrow::<NSDateFormatterHostObject>(this).two_digit_start_date;
-    release(env, old);
     retain(env, date);
+    let old = env.objc.borrow::<NSDateFormatterHostObject>(this).two_digit_start_date;
     env.objc.borrow_mut::<NSDateFormatterHostObject>(this).two_digit_start_date = date;
+    release(env, old);
 }
 
 - (id)defaultDate {
     env.objc.borrow::<NSDateFormatterHostObject>(this).default_date
 }
 - (())setDefaultDate:(id)date {
-    let old = env.objc.borrow::<NSDateFormatterHostObject>(this).default_date;
-    release(env, old);
     retain(env, date);
+    let old = env.objc.borrow::<NSDateFormatterHostObject>(this).default_date;
     env.objc.borrow_mut::<NSDateFormatterHostObject>(this).default_date = date;
+    release(env, old);
 }
 
 - (id)stringFromDate:(id)date { // NSDate*

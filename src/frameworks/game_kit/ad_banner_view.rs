@@ -168,12 +168,12 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setRequiredContentSizeIdentifiers:(id)identifiers {
+    retain(env, identifiers);
     let old = env.objc.borrow::<ADBannerViewHostObject>(this)
         .required_content_size_identifiers;
-    release(env, old);
-    retain(env, identifiers);
     env.objc.borrow_mut::<ADBannerViewHostObject>(this)
         .required_content_size_identifiers = identifiers;
+    release(env, old);
 }
 
 - (id)currentContentSizeIdentifier {
@@ -181,12 +181,12 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setCurrentContentSizeIdentifier:(id)identifier {
+    retain(env, identifier);
     let old = env.objc.borrow::<ADBannerViewHostObject>(this)
         .current_content_size_identifier;
-    release(env, old);
-    retain(env, identifier);
     env.objc.borrow_mut::<ADBannerViewHostObject>(this)
         .current_content_size_identifier = identifier;
+    release(env, old);
 }
 
 // MARK: - Size helpers

@@ -140,10 +140,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setSubject:(id)subject {
-    let old = env.objc.borrow::<MFMailComposeViewControllerHostObject>(this).subject;
-    release(env, old);
     retain(env, subject);
+    let old = env.objc.borrow::<MFMailComposeViewControllerHostObject>(this).subject;
     env.objc.borrow_mut::<MFMailComposeViewControllerHostObject>(this).subject = subject;
+    release(env, old);
 }
 
 // MARK: Recipients
@@ -153,10 +153,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setToRecipients:(id)recipients {
-    let old = env.objc.borrow::<MFMailComposeViewControllerHostObject>(this).to_recipients;
-    release(env, old);
     retain(env, recipients);
+    let old = env.objc.borrow::<MFMailComposeViewControllerHostObject>(this).to_recipients;
     env.objc.borrow_mut::<MFMailComposeViewControllerHostObject>(this).to_recipients = recipients;
+    release(env, old);
 }
 
 - (id)ccRecipients {
@@ -164,10 +164,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setCcRecipients:(id)recipients {
-    let old = env.objc.borrow::<MFMailComposeViewControllerHostObject>(this).cc_recipients;
-    release(env, old);
     retain(env, recipients);
+    let old = env.objc.borrow::<MFMailComposeViewControllerHostObject>(this).cc_recipients;
     env.objc.borrow_mut::<MFMailComposeViewControllerHostObject>(this).cc_recipients = recipients;
+    release(env, old);
 }
 
 - (id)bccRecipients {
@@ -175,10 +175,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setBccRecipients:(id)recipients {
-    let old = env.objc.borrow::<MFMailComposeViewControllerHostObject>(this).bcc_recipients;
-    release(env, old);
     retain(env, recipients);
+    let old = env.objc.borrow::<MFMailComposeViewControllerHostObject>(this).bcc_recipients;
     env.objc.borrow_mut::<MFMailComposeViewControllerHostObject>(this).bcc_recipients = recipients;
+    release(env, old);
 }
 
 // MARK: Body
@@ -337,12 +337,12 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setMessageComposeDelegate:(id)delegate {
+    retain(env, delegate);
     let old = env.objc.borrow::<MFMessageComposeViewControllerHostObject>(this)
         .message_compose_delegate;
-    release(env, old);
-    retain(env, delegate);
     env.objc.borrow_mut::<MFMessageComposeViewControllerHostObject>(this)
         .message_compose_delegate = delegate;
+    release(env, old);
 }
 
 // MARK: Recipients
@@ -352,10 +352,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setRecipients:(id)recipients {
-    let old = env.objc.borrow::<MFMessageComposeViewControllerHostObject>(this).recipients;
-    release(env, old);
     retain(env, recipients);
+    let old = env.objc.borrow::<MFMessageComposeViewControllerHostObject>(this).recipients;
     env.objc.borrow_mut::<MFMessageComposeViewControllerHostObject>(this).recipients = recipients;
+    release(env, old);
 }
 
 // MARK: Body
@@ -365,10 +365,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setBody:(id)body {
-    let old = env.objc.borrow::<MFMessageComposeViewControllerHostObject>(this).body;
-    release(env, old);
     retain(env, body);
+    let old = env.objc.borrow::<MFMessageComposeViewControllerHostObject>(this).body;
     env.objc.borrow_mut::<MFMessageComposeViewControllerHostObject>(this).body = body;
+    release(env, old);
 }
 
 // MARK: Subject (MMS)
@@ -378,10 +378,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())setSubject:(id)subject {
-    let old = env.objc.borrow::<MFMessageComposeViewControllerHostObject>(this).subject;
-    release(env, old);
     retain(env, subject);
+    let old = env.objc.borrow::<MFMessageComposeViewControllerHostObject>(this).subject;
     env.objc.borrow_mut::<MFMessageComposeViewControllerHostObject>(this).subject = subject;
+    release(env, old);
 }
 
 // MARK: Attachments (stubs)
