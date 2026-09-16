@@ -861,6 +861,26 @@ impl Window {
 
         let event_pump = sdl_ctx.event_pump().unwrap();
 
+        // --- Host microphone probe: SDL2's capture device enumeration is only
+        //     reliable when called from the SDL thread that owns the audio
+        //     subsystem (same thread that will later service the app). Doing
+        //     it here, right after sdl2::init() and before any guest code
+        //     runs on a coroutine stack, gives the most accurate count and
+        //     avoids the double-SDL_Init hazard that would come from a lazy
+        //     probe later.
+        if let Ok(audio_subsys) = sdl_ctx.audio() {
+            match audio_subsys.num_audio_capture_devices() {
+                Ok(n) => crate::microphone::note_window_probe(n),
+                Err(e) => {
+                    log!("Host microphone: SDL2 capture query failed ({}), will fallback to filesystem/cpal probe", e);
+                }
+            }
+        } else {
+            log!("Host microphone: SDL2 AudioSubsystem unavailable, will fallback to filesystem/cpal probe");
+        }
+        // Also log host camera status early so the startup banner is complete.
+        log!("Host hardware: {} | {}", crate::camera::status_string(), crate::microphone::status_string());
+
         let controller_ctx = sdl_ctx.game_controller().unwrap();
 
         let sensor_ctx = sdl_ctx.sensor().unwrap();

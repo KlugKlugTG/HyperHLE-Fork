@@ -1896,6 +1896,18 @@ pub fn AudioQueueNewInput(
         return crate::frameworks::carbon_core::paramErr;
     }
 
+    // If no host microphone is present, we still vend a queue but it will
+    // produce silence / synthetic tone via the microphone shim — this is the
+    // "их нету" fallback: the app is told no input device exists via
+    // AVAudioSession/AudioSession (aiav/chic), but if it directly asks for
+    // an input queue we don't crash; we just give it a stub that yields
+    // silence so that voice-chat apps can at least boot.
+    if !crate::microphone::is_available() {
+        log!("AudioQueueNewInput: no host microphone detected ({}) — creating stub input queue that will produce silence", crate::microphone::status_string());
+    } else {
+        log!("AudioQueueNewInput: host microphone available ({}) — creating input queue", crate::microphone::status_string());
+    }
+
     let in_callback_run_loop = if in_callback_run_loop.is_null() {
         CFRunLoopGetMain(env)
     } else {

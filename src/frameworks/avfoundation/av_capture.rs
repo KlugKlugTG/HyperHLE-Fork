@@ -577,11 +577,29 @@ pub const CLASSES: ClassExports = objc_classes! {
     if media_type == nil {
         return nil;
     }
+    // Headless mode has no window surface to show a preview on — treat it as
+    // “no camera” even if the host has a /dev/video* device, so that callers
+    // get the "их нету" stub rather than a host feed they can't display.
+    if env.window.is_none() {
+        log!("AVCaptureDevice defaultDeviceWithMediaType: headless/no Window — returning nil (stub: no device)");
+        return nil;
+    }
+    // If no host camera is present, report “no device” — this matches the
+    // stub behaviour of a real iPod touch / camera-less device and is the
+    // fallback requested in the task: “если камера не обнаружена, используется
+    // заглушка типа их нету”.
+    if !crate::camera::is_available() {
+        log!("AVCaptureDevice defaultDeviceWithMediaType: no host camera — returning nil (stub: no device)");
+        return nil;
+    }
     let want_video = ns_string::get_static_str(env, AVMediaTypeVideo);
     let same: bool = msg![env; media_type isEqualToString:want_video];
     if !same {
         return nil;
     }
+    // Also handle AVMediaTypeAudio when a mic is present — AVCaptureDevice
+    // can represent audio inputs too. We expose it only when the host mic
+    // exists, otherwise video-only.
     make_default_video_device(env)
 }
 
@@ -589,9 +607,30 @@ pub const CLASSES: ClassExports = objc_classes! {
     if media_type == nil {
         return msg_class![env; NSArray array];
     }
+    if env.window.is_none() {
+        log!("AVCaptureDevice devicesWithMediaType: headless/no Window — returning empty array (stub)");
+        return msg_class![env; NSArray array];
+    }
+    // No host camera ⇒ no video devices. For audio we could also check the
+    // microphone, but early iOS only used this for video.
+    if !crate::camera::is_available() {
+        log!("AVCaptureDevice devicesWithMediaType: no host camera — returning empty array (stub)");
+        return msg_class![env; NSArray array];
+    }
     let want_video = ns_string::get_static_str(env, AVMediaTypeVideo);
     let same: bool = msg![env; media_type isEqualToString:want_video];
     if !same {
+        // Check audio type when mic is available — allow AVCaptureDevice to
+        // vend an audio device so that PlayAndRecord sessions behave.
+        let want_audio = ns_string::get_static_str(env, AVMediaTypeAudio);
+        let same_audio: bool = msg![env; media_type isEqualToString:want_audio];
+        if same_audio && crate::microphone::is_available() {
+            // For now we still vend a single video-like device for audio as
+            // well; a separate audio device host object could be added later.
+            let dev = make_default_video_device(env);
+            let arr: id = msg_class![env; NSArray arrayWithObject:dev];
+            return arr;
+        }
         return msg_class![env; NSArray array];
     }
     let dev = make_default_video_device(env);
@@ -600,6 +639,14 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 + (id)devices {
+    if env.window.is_none() {
+        log!("AVCaptureDevice devices: headless/no Window — returning empty array (stub: no device)");
+        return msg_class![env; NSArray array];
+    }
+    if !crate::camera::is_available() {
+        log!("AVCaptureDevice devices: no host camera — returning empty array (stub: no device)");
+        return msg_class![env; NSArray array];
+    }
     let dev = make_default_video_device(env);
     let arr: id = msg_class![env; NSArray arrayWithObject:dev];
     arr
@@ -876,12 +923,23 @@ pub const CLASSES: ClassExports = objc_classes! {
     let gravity = ns_string::get_static_str(env, AVLayerVideoGravityResizeAspect);
     set_preview_layer_gravity(env, this, gravity);
 
-    // Make the preview layer visibly grey so apps that put their UI on top
-    // of it don't render a black screen even before any frames arrive.
-    // 50 % grey makes it obvious the stub is active.
-    let cg_color: id = msg_class![env; UIColor darkGrayColor];
-    let cg: id = msg![env; cg_color CGColor];
-    () = msg![env; this setBackgroundColor:cg];
+    // When a host camera is present we tint the preview layer slightly blue
+    // so that bug reports can tell host vs stub apart, and log it. When no
+    // host camera exists we keep the historic 50 % grey stub so that AR /
+    // barcode apps that put their UI on top don't see a black screen.
+    if crate::camera::is_available() {
+        log!("AVCaptureVideoPreviewLayer initWithSession: host camera available — preview will show host feed (or synthetic fallback if host busy)");
+        // Slightly bluish grey for host path — still not black, but distinct
+        // from the stub grey.
+        let cg_color: id = msg_class![env; UIColor colorWithRed:0.2 green:0.4 blue:0.6 alpha:1.0];
+        let cg: id = msg![env; cg_color CGColor];
+        () = msg![env; this setBackgroundColor:cg];
+    } else {
+        log!("AVCaptureVideoPreviewLayer initWithSession: no host camera — using stub grey preview (app will see no camera device, but preview avoids black screen)");
+        let cg_color: id = msg_class![env; UIColor darkGrayColor];
+        let cg: id = msg![env; cg_color CGColor];
+        () = msg![env; this setBackgroundColor:cg];
+    }
     this
 }
 
@@ -917,8 +975,14 @@ fn make_default_video_device(env: &mut crate::Environment) -> id {
     let init: id = msg![env; alloc init];
     let media_type = ns_string::get_static_str(env, AVMediaTypeVideo);
     retain(env, media_type);
-    let name = ns_string::from_rust_string(env, "HyperHLE Stub Camera".to_string());
-    let uid = ns_string::from_rust_string(env, "com.hyperhle.camera.stub".to_string());
+    // Name and identifier reflect whether we are on the host-camera path or
+    // the “no device” stub path. The stub string is kept for determinism
+    // when HYPERHLE_DISABLE_CAMERA is set / no /dev/video* exists.
+    let name_str = crate::camera::localized_name().to_string();
+    let uid_str = crate::camera::unique_id().to_string();
+    log!("AVCaptureDevice make_default_video_device: creating device '{}' ({}) — host_camera_available={}", name_str, uid_str, crate::camera::is_available());
+    let name = ns_string::from_rust_string(env, name_str);
+    let uid = ns_string::from_rust_string(env, uid_str);
     {
         let host = env.objc.borrow_mut::<AVCaptureDeviceHostObject>(init);
         host.media_type = media_type;

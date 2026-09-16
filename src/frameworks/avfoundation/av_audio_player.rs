@@ -535,6 +535,11 @@ pub const CLASSES: ClassExports = objc_classes! {
         }
         return nil;
     }
+    if !crate::microphone::is_available() {
+        log!("[(AVAudioRecorder*){:?} initWithURL: host mic unavailable ({}) — recorder will fail to record (stub)", this, crate::microphone::status_string());
+    } else {
+        log!("[(AVAudioRecorder*){:?} initWithURL: host mic available ({})", this, crate::microphone::status_string());
+    }
     retain(env, url);
     env.objc
         .borrow_mut::<AVAudioRecorderHostObject>(this)
@@ -546,10 +551,19 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (bool)record {
+    if !crate::microphone::is_available() {
+        log!(
+            "[(AVAudioRecorder *){:?} record] — no host microphone ({}) — stub: not recording (returning NO)",
+            this, crate::microphone::status_string()
+        );
+        env.objc
+            .borrow_mut::<AVAudioRecorderHostObject>(this)
+            .is_recording = false;
+        return false;
+    }
     log!(
-        "[(AVAudioRecorder *){:?} record] — stub, recording not \
-         supported",
-        this
+        "[(AVAudioRecorder *){:?} record] — host mic available ({}) — stub recording (no actual file written)",
+        this, crate::microphone::status_string()
     );
     env.objc
         .borrow_mut::<AVAudioRecorderHostObject>(this)
@@ -562,9 +576,16 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (bool)prepareToRecord {
+    if !crate::microphone::is_available() {
+        log!(
+            "[(AVAudioRecorder *){:?} prepareToRecord] — no host mic ({}) — returning NO (stub: no mic)",
+            this, crate::microphone::status_string()
+        );
+        return false;
+    }
     log_dbg!(
-        "[(AVAudioRecorder *){:?} prepareToRecord] — stub",
-        this
+        "[(AVAudioRecorder *){:?} prepareToRecord] — host mic available ({}) — stub success",
+        this, crate::microphone::status_string()
     );
     true
 }

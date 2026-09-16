@@ -326,6 +326,24 @@ pub(super) struct AVAudioSessionHostObject {
 }
 impl HostObject for AVAudioSessionHostObject {}
 
+/// Host object for AVAudioSessionPortDescription — tracks whether this
+/// instance represents a built-in mic or speaker. This lets the same class
+/// vend both "MicrophoneBuiltIn" and "Speaker" depending on whether the
+/// port was created for an input or output slot. Without per-instance state,
+/// -portType would have to guess from global mic availability and would
+/// mis-attribute output ports when a mic is present.
+pub(super) struct AVAudioSessionPortDescriptionHostObject {
+    port_type: id,
+    port_name: id,
+    uid: id,
+}
+impl Default for AVAudioSessionPortDescriptionHostObject {
+    fn default() -> Self {
+        Self { port_type: nil, port_name: nil, uid: nil }
+    }
+}
+impl HostObject for AVAudioSessionPortDescriptionHostObject {}
+
 pub const CLASSES: ClassExports = objc_classes! {
 
 (env, this, _cmd);
@@ -511,7 +529,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (NSInteger)maximumInputNumberOfChannels {
-    0
+    if crate::microphone::is_available() { 1 } else { 0 }
 }
 
 - (NSInteger)maximumOutputNumberOfChannels {
@@ -519,11 +537,11 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (f32)inputGain {
-    1.0
+    if crate::microphone::is_available() { 1.0 } else { 0.0 }
 }
 
 - (bool)isInputGainSettable {
-    false
+    crate::microphone::is_available()
 }
 
 - (bool)setInputGain:(f32)_gain error:(MutPtr<id>)_error {
@@ -537,7 +555,9 @@ pub const CLASSES: ClassExports = objc_classes! {
 // MARK: - Input / output availability
 
 - (bool)isInputAvailable {
-    false
+    let avail = crate::microphone::is_available();
+    log!("AVAudioSession -isInputAvailable -> {} ({})", avail, crate::microphone::status_string());
+    avail
 }
 
 - (bool)isOtherAudioPlaying {
@@ -551,13 +571,28 @@ pub const CLASSES: ClassExports = objc_classes! {
 // MARK: - Route
 
 - (id)currentRoute { // AVAudioSessionRouteDescription*
-    // Return a stub route description.
     let route: id = msg_class![env; AVAudioSessionRouteDescription new];
+    // AVAudioSessionRouteDescription internally reports empty inputs when no mic.
+    // Our inputs/outputs implementations already branch on microphone availability,
+    // so the route will correctly reflect host hardware. Log for debugging.
+    if crate::microphone::is_available() {
+        log!("AVAudioSession -currentRoute -> route with mic input available");
+    } else {
+        log!("AVAudioSession -currentRoute -> route with no input (stub: no mic)");
+    }
     autorelease(env, route)
 }
 
 - (id)availableInputs { // NSArray<AVAudioSessionPortDescription*>*
-    msg_class![env; NSArray new]
+    if !crate::microphone::is_available() {
+        log!("AVAudioSession -availableInputs -> empty (no host mic, stub: no input)");
+        return msg_class![env; NSArray new];
+    }
+    let port = make_mic_port_description(env);
+    log!("AVAudioSession -availableInputs -> 1 input (host mic: {})", crate::microphone::status_string());
+    let arr: id = msg_class![env; NSArray arrayWithObject:port];
+    release(env, port);
+    arr
 }
 
 - (bool)setPreferredInput:(id)_input error:(MutPtr<id>)_error {
@@ -596,12 +631,20 @@ pub const CLASSES: ClassExports = objc_classes! {
 @implementation AVAudioSessionRouteDescription: NSObject
 
 - (id)inputs {
-    msg_class![env; NSArray new]
+    if !crate::microphone::is_available() {
+        return msg_class![env; NSArray new];
+    }
+    // Host mic present — vend a mic port description. The port object itself
+    // remembers it is a mic so that -portType returns MicrophoneBuiltIn.
+    let port = make_mic_port_description(env);
+    let arr: id = msg_class![env; NSArray arrayWithObject:port];
+    release(env, port);
+    arr
 }
 
 - (id)outputs {
-    // Report built-in speaker as the sole output.
-    let port: id = msg_class![env; AVAudioSessionPortDescription new];
+    // Report built-in speaker as the sole output (always available).
+    let port = make_speaker_port_description(env);
     let arr: id  = msg_class![env; NSArray arrayWithObject:port];
     release(env, port);
     arr
@@ -613,16 +656,57 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 @implementation AVAudioSessionPortDescription: NSObject
 
++ (id)allocWithZone:(crate::objc::NSZonePtr)_zone {
+    let host = Box::new(AVAudioSessionPortDescriptionHostObject::default());
+    env.objc.alloc_object(this, host, &mut env.mem)
+}
+
+- (id)init {
+    // Default to speaker if created via plain -init / +new. We must not hold
+    // the host borrow while calling get_static_str/retain (they touch env.objc).
+    let needs_init = {
+        let host = env.objc.borrow::<AVAudioSessionPortDescriptionHostObject>(this);
+        host.port_type == nil
+    };
+    if needs_init {
+        let pt = ns_string::get_static_str(env, AVAudioSessionPortBuiltInSpeaker);
+        let pn = ns_string::get_static_str(env, "Speaker");
+        let uid = ns_string::get_static_str(env, "Built-In Speaker");
+        retain(env, pt);
+        retain(env, pn);
+        retain(env, uid);
+        let host = env.objc.borrow_mut::<AVAudioSessionPortDescriptionHostObject>(this);
+        host.port_type = pt;
+        host.port_name = pn;
+        host.uid = uid;
+    }
+    this
+}
+
+- (())dealloc {
+    let host = {
+        let mut borrow = env.objc.borrow_mut::<AVAudioSessionPortDescriptionHostObject>(this);
+        std::mem::replace(&mut *borrow, AVAudioSessionPortDescriptionHostObject::default())
+    };
+    if host.port_type != nil { release(env, host.port_type); }
+    if host.port_name != nil { release(env, host.port_name); }
+    if host.uid != nil { release(env, host.uid); }
+    env.objc.dealloc_object(this, &mut env.mem);
+}
+
 - (id)portType {
-    ns_string::get_static_str(env, AVAudioSessionPortBuiltInSpeaker)
+    let host = env.objc.borrow::<AVAudioSessionPortDescriptionHostObject>(this);
+    if host.port_type != nil { host.port_type } else { ns_string::get_static_str(env, AVAudioSessionPortBuiltInSpeaker) }
 }
 
 - (id)portName {
-    ns_string::get_static_str(env, "Speaker")
+    let host = env.objc.borrow::<AVAudioSessionPortDescriptionHostObject>(this);
+    if host.port_name != nil { host.port_name } else { ns_string::get_static_str(env, "Speaker") }
 }
 
 - (id)UID {
-    ns_string::get_static_str(env, "Built-In Speaker")
+    let host = env.objc.borrow::<AVAudioSessionPortDescriptionHostObject>(this);
+    if host.uid != nil { host.uid } else { ns_string::get_static_str(env, "Built-In Speaker") }
 }
 
 - (id)channels { // NSArray<AVAudioSessionChannelDescription*>*
@@ -648,3 +732,51 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
+
+// ============================================================================
+// MARK: - Helpers (port description factories)
+// ============================================================================
+
+fn make_speaker_port_description(env: &mut crate::Environment) -> crate::objc::id {
+    let cls: crate::objc::Class = env.objc.get_known_class("AVAudioSessionPortDescription", &mut env.mem);
+    let alloc: crate::objc::id = msg![env; cls alloc];
+    let obj: crate::objc::id = msg![env; alloc init];
+    // init already set to speaker, but ensure correct in case allocWithZone path was bypassed.
+    // The host was set in -init; no extra work needed.
+    obj
+}
+
+fn make_mic_port_description(env: &mut crate::Environment) -> crate::objc::id {
+    let cls: crate::objc::Class = env.objc.get_known_class("AVAudioSessionPortDescription", &mut env.mem);
+    let alloc: crate::objc::id = msg![env; cls alloc];
+    // We call allocWithZone path which gives us a host object with nil fields, then
+    // replace them with mic strings after -init has set speaker defaults.
+    let obj: crate::objc::id = msg![env; alloc init];
+    // Prepare mic strings before borrowing host (they may touch env.objc).
+    let pt = ns_string::get_static_str(env, AVAudioSessionPortBuiltInMic);
+    let pn = ns_string::get_static_str(env, "Built-In Microphone");
+    let uid = ns_string::get_static_str(env, "Built-In Microphone");
+    // Retain before storing (get_static_str returns a retained? No, it returns
+    // an autoreleased? Actually get_static_str returns a globally retained
+    // NSString, but retain/release dance keeps refcounting correct for our host
+    // object's owned references, matching the pattern used in -init.
+    retain(env, pt);
+    retain(env, pn);
+    retain(env, uid);
+    // Now swap into host, releasing the old speaker strings.
+    let (old_pt, old_pn, old_uid) = {
+        let host = env.objc.borrow::<AVAudioSessionPortDescriptionHostObject>(obj);
+        (host.port_type, host.port_name, host.uid)
+    };
+    if old_pt != nil { release(env, old_pt); }
+    if old_pn != nil { release(env, old_pn); }
+    if old_uid != nil { release(env, old_uid); }
+    {
+        let host = env.objc.borrow_mut::<AVAudioSessionPortDescriptionHostObject>(obj);
+        host.port_type = pt;
+        host.port_name = pn;
+        host.uid = uid;
+    }
+    log!("AVAudioSession helper: created mic port description (host mic: {})", crate::microphone::status_string());
+    obj
+}

@@ -226,7 +226,10 @@ pub fn AudioSessionGetProperty(
             );
         }
         kAudioSessionProperty_CurrentHardwareInputNumberChannels => {
-            env.mem.write(out_data.cast::<u32>(), 0);
+            // “ic” — number of input channels. Return 1 when a host microphone
+            // is detected, otherwise 0 (stub: no mic → “их нету” fallback).
+            let chic: u32 = if crate::microphone::is_available() { 1 } else { 0 };
+            env.mem.write(out_data.cast::<u32>(), chic);
         }
         kAudioSessionProperty_CurrentHardwareOutputNumberChannels => {
             env.mem.write(
@@ -241,9 +244,11 @@ pub fn AudioSessionGetProperty(
             );
         }
         kAudioSessionProperty_AudioInputAvailable => {
-            // touchHLE currently does not emulate microphone input.
-            let value: u32 = 0;
-            env.mem.write(out_data.cast(), value);
+            // Map to host microphone probe: 1 if a host capture device exists
+            // (SDL2 / cpal / ALSA), else 0 — the “no mic” stub behaviour.
+            let avail: u32 = if crate::microphone::is_available() { 1 } else { 0 };
+            log_dbg!("AudioSessionGetProperty aiav -> {} ({})", avail, crate::microphone::status_string());
+            env.mem.write(out_data.cast(), avail);
         }
         kAudioSessionProperty_CurrentHardwareIOBufferDuration => {
             env.mem.write(
@@ -259,10 +264,16 @@ pub fn AudioSessionGetProperty(
         }
         kAudioSessionProperty_AudioRoute => {
             // Per the Audio Session Services Reference this property is a
-            // read-only CFStringRef describing the current route, e.g.
-            // "SpeakerAndMicrophone" (the default iPhone route). Returning
-            // NULL made apps that parse the route string misbehave.
-            let route: id = ns_string::get_static_str(env, "SpeakerAndMicrophone");
+            // read-only CFStringRef describing the current route. When no
+            // host microphone exists we report "Speaker" alone; otherwise the
+            // default iPhone route "SpeakerAndMicrophone". Returning NULL made
+            // apps that parse the route string misbehave.
+            let route_str = if crate::microphone::is_available() {
+                "SpeakerAndMicrophone"
+            } else {
+                "Speaker"
+            };
+            let route: id = ns_string::get_static_str(env, route_str);
             env.mem.write(out_data.cast(), route.to_bits() as u32);
         }
         kAudioSessionProperty_OverrideCategoryMixWithOthers => {

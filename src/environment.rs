@@ -451,6 +451,11 @@ impl Environment {
         options.device_family = Some(device_family);
 
         let window = if options.headless {
+            // Headless run — no Window, but still probe host hardware so that
+            // logs / framework stubs can report the correct "no mic / no camera"
+            // state. The probe itself is cached, so this is cheap.
+            log!("Host hardware (headless): {} | {}", crate::camera::status_string(), crate::microphone::status_string());
+            log!("Headless mode: AVCaptureDevice will report no camera and AVAudioSession / AudioSession will report no mic when no host device is present (stub: их нету)");
             None
         } else {
             let icon = bundle.load_icon(&fs);
@@ -474,7 +479,7 @@ impl Environment {
             } else {
                 None
             };
-            Some(Box::new(window::Window::new(
+            let win = Box::new(window::Window::new(
                 &format!(
                     "{} (touchHLE {}{}{})",
                     bundle.display_name(),
@@ -489,7 +494,13 @@ impl Environment {
                 icon.ok(),
                 launch_image.map(|image| (image, false)),
                 &options,
-            )))
+            ));
+            // Window::new already probed SDL audio devices and logged
+            // "Host hardware: ...", but also emit a second line here so that
+            // headless vs windowed startup is obvious in the log even when
+            // the Window constructor's log is filtered.
+            log!("Host hardware (windowed): {} | {}", crate::camera::status_string(), crate::microphone::status_string());
+            Some(win)
         };
 
         let mut mem = mem::Mem::new();

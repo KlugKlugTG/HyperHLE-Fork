@@ -79,25 +79,94 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // MARK: - Source type
 
-+ (bool)isSourceTypeAvailable:(UIImagePickerControllerSourceType)_source_type {
++ (bool)isSourceTypeAvailable:(UIImagePickerControllerSourceType)source_type {
+    // Photo Library / Saved Photos Album are always logically "available" as
+    // file sources even though HyperHLE has no Photos UI. Camera availability
+    // follows the host camera probe: if a host camera is present we report
+    // true, otherwise false — this is the "их нету" stub when hardware is
+    // missing. Apps often branch on this to decide whether to show the camera
+    // button.
+    // In headless mode (no Window) we also report no camera even if the host
+    // has one, because there is no preview surface to render to.
+    let is_camera = source_type == UIImagePickerControllerSourceTypeCamera;
+    if is_camera {
+        if env.window.is_none() {
+            log!("UIImagePickerController +isSourceTypeAvailable:Camera -> false (headless/no Window, host_camera={})", crate::camera::status_string());
+            return false;
+        }
+        let avail = crate::camera::is_available();
+        log!("UIImagePickerController +isSourceTypeAvailable:Camera -> {} (host_camera={})", avail, crate::camera::status_string());
+        return avail;
+    }
+    // PhotoLibrary / SavedPhotosAlbum: report available so that file pickers
+    // don't hit an unconditional stub. Returning true here is harmless and
+    // matches iOS devices that always have a photo library even without a camera.
+    if source_type == UIImagePickerControllerSourceTypePhotoLibrary
+        || source_type == UIImagePickerControllerSourceTypeSavedPhotosAlbum
+    {
+        return true;
+    }
     false
 }
 
-+ (id)availableMediaTypesForSourceType:(UIImagePickerControllerSourceType)_source_type {
-    // Return an empty array — no sources are available.
++ (id)availableMediaTypesForSourceType:(UIImagePickerControllerSourceType)source_type {
+    if source_type == UIImagePickerControllerSourceTypeCamera && !crate::camera::is_available() {
+        log!("UIImagePickerController +availableMediaTypesForSourceType:Camera with no host camera -> empty array (stub)");
+        return msg_class![env; NSArray new];
+    }
+    if env.window.is_some() && source_type == UIImagePickerControllerSourceTypeCamera && crate::camera::is_available() {
+        // Host camera present and windowed — vend the usual image type so that
+        // `-[UIImagePickerController mediaTypes]` round-trips.
+        let t = crate::frameworks::foundation::ns_string::get_static_str(env, "public.image");
+        let arr: id = msg_class![env; NSArray arrayWithObject:t];
+        return arr;
+    }
+    if source_type == UIImagePickerControllerSourceTypeCamera {
+        // Headless or no mic path still vend? If camera unavailable we already returned empty.
+        // If headless with camera available we still report empty to match "no device".
+        if env.window.is_none() {
+            log!("UIImagePickerController +availableMediaTypesForSourceType:Camera headless -> empty array (stub)");
+            return msg_class![env; NSArray new];
+        }
+        let t = crate::frameworks::foundation::ns_string::get_static_str(env, "public.image");
+        let arr: id = msg_class![env; NSArray arrayWithObject:t];
+        return arr;
+    }
+    // For library sources, vend public.image as well.
+    if source_type == UIImagePickerControllerSourceTypePhotoLibrary
+        || source_type == UIImagePickerControllerSourceTypeSavedPhotosAlbum
+    {
+        let t = crate::frameworks::foundation::ns_string::get_static_str(env, "public.image");
+        let arr: id = msg_class![env; NSArray arrayWithObject:t];
+        return arr;
+    }
     msg_class![env; NSArray new]
 }
 
 + (bool)isCameraDeviceAvailable:(UIImagePickerControllerCameraDevice)_device {
-    false
+    if env.window.is_none() {
+        log!("UIImagePickerController +isCameraDeviceAvailable: -> false (headless/no Window, {})", crate::camera::status_string());
+        return false;
+    }
+    let avail = crate::camera::is_available();
+    log!("UIImagePickerController +isCameraDeviceAvailable: -> {} ({})", avail, crate::camera::status_string());
+    avail
 }
 
 + (bool)isFlashAvailableForCameraDevice:(UIImagePickerControllerCameraDevice)_device {
+    // No flash on host webcams / stub, report false regardless.
     false
 }
 
 + (id)availableCaptureModesForCameraDevice:(UIImagePickerControllerCameraDevice)_device {
-    msg_class![env; NSArray new]
+    if env.window.is_none() || !crate::camera::is_available() {
+        return msg_class![env; NSArray new];
+    }
+    // Host camera can do photo capture at least. We could vend photo+video,
+    // but photo is the safe minimal set.
+    let mode_photo = crate::frameworks::foundation::ns_string::get_static_str(env, "public.image");
+    let arr: id = msg_class![env; NSArray arrayWithObject:mode_photo];
+    arr
 }
 
 - (id)init {
