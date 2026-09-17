@@ -2788,7 +2788,7 @@ pub fn to_rust_string(env: &mut Environment, string: id) -> Cow<'static, str> {
         return Cow::Borrowed("");
     }
     env.objc
-        .borrow_mut::<StringHostObject>(string)
+        .borrow::<StringHostObject>(string)
         .to_utf8()
         .unwrap()
 }

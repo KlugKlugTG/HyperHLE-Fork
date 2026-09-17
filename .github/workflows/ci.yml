@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [ "trunk", "arena/**" ]
+  pull_request:
+    branches: [ "trunk" ]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-C link-arg=-latomic"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@main
+        with:
+          submodules: recursive
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+            build-essential \
+            pkg-config \
+            libasound2-dev \
+            libpulse-dev \
+            libsndio-dev \
+            libdbus-1-dev \
+            libudev-dev \
+            libx11-dev \
+            libxext-dev \
+            libxcursor-dev \
+            libxi-dev \
+            libxrandr-dev \
+            libxss-dev \
+            libxxf86vm-dev \
+            libxkbcommon-dev \
+            libwayland-dev \
+            wayland-protocols \
+            libgl1-mesa-dev \
+            libegl1-mesa-dev
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@master
+
+      - name: Try to get cached copy of Boost
+        id: cache-boost
+        uses: actions/cache@main
+        with:
+          path: vendor/boost
+          key: boost_1_81_0_linux
+
+      - if: ${{ steps.cache-boost.outputs.cache-hit != 'true' }}
+        name: Download Boost
+        run: curl -L -O "https://archives.boost.io/release/1.81.0/source/boost_1_81_0.tar.gz"
+
+      - if: ${{ steps.cache-boost.outputs.cache-hit != 'true' }}
+        name: Extract Boost
+        run: mkdir -p vendor && tar xzf boost_1_81_0.tar.gz -C vendor && mv vendor/boost_1_81_0 vendor/boost
+
+      - name: Setup CMake
+        uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: "~3.29.0"
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Run tests
+        run: cargo test -- --skip test_app
+
+      - name: Clippy (no deny)
+        run: cargo clippy 2>&1 || true

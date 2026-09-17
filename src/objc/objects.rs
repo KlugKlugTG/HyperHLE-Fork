@@ -338,6 +338,22 @@ impl super::ObjC {
                 "borrow_mut on nil receiver of type {} — returning zero-initialized phantom",
                 std::any::type_name::<T>()
             );
+        } else if let Some(entry) = self.objects.get(&object) {
+            // The object exists but its host object is a different type than
+            // requested. Reporting the actual type makes these mismatches
+            // diagnosable — it's usually either a guest pointer/type confusion
+            // or a host class that forgot to embed its superclass host object
+            // (see `impl_HostObject_with_superclass!`).
+            if self.warn_fake_borrow_once(object, std::any::TypeId::of::<T>()) {
+                log!(
+                    "Warning: SUPER HACK! Faking borrow_mut for wrong-type object {:?}: \
+                     requested {}, actual host type {} (suppressing further warnings \
+                     for this object/type pair)",
+                    object,
+                    std::any::type_name::<T>(),
+                    entry.host_object.type_name(),
+                );
+            }
         } else if self.warn_fake_borrow_once(object, std::any::TypeId::of::<T>()) {
             log!(
                 "Warning: SUPER HACK! Faking borrow_mut for missing object {:?} of type {} \
