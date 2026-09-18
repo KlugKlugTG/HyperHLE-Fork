@@ -102,6 +102,29 @@ impl GLESContext for GLES3OnGL3Context {
         })
     }
 
+    fn with_current(&mut self, window: &mut Window, f: &mut dyn FnMut(&mut dyn GLES)) {
+        if !self.gl_ctx.is_current() || !self.is_loaded {
+            unsafe {
+                window.make_gl_context_current(&self.gl_ctx);
+            }
+            gl33::load_with(|s| window.gl_get_proc_address(s));
+            super::gles2_raw::load_with(|s| window.gl_get_proc_address(s));
+            gles11::load_with(|s| window.gl_get_proc_address(s));
+            self.is_loaded = true;
+            if !self.pvrtc_native_checked {
+                self.pvrtc_native = unsafe { detect_pvrtc_support() };
+                self.pvrtc_native_checked = true;
+            }
+            unsafe { self.init_default_vao() };
+        }
+        let mut gles = GLES3OnGL3 {
+            _gl_lifetime: PhantomData,
+            pvrtc_native: self.pvrtc_native,
+            advertise_es3: self.advertise_es3,
+        };
+        f(&mut gles);
+    }
+
     unsafe fn make_current_unchecked_for_window<'gl_ctx>(
         &'gl_ctx mut self,
         make_current_fn: &mut dyn FnMut(&GLContext),

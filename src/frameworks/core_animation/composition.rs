@@ -339,7 +339,12 @@ pub fn recomposite_if_necessary(env: &mut Environment, force: bool) -> Option<In
                     gles11::GENERATE_MIPMAP,
                     gles11::TRUE as _,
                 );
-                upload_rgba8_pixels(gles.as_mut(), image.pixels(), (dimension as _, dimension as _));
+                upload_rgba8_pixels(
+                    gles.as_mut(),
+                    image.pixels(),
+                    (dimension as _, dimension as _),
+                    /* storage_is_compatible: */ false,
+                );
                 gles.TexParameteri(
                     gles11::TEXTURE_2D,
                     gles11::TEXTURE_MIN_FILTER,
@@ -531,7 +536,8 @@ unsafe fn composite_layer_recursive(
 
     // This is both acting as the presentationLayer and the private render layer
     // It might need to be reworked in the future into a guest presentationLayer
-    let host_obj = animation_state.create_presentation_layer(env, layer);
+    let (host_obj, has_presented_pixels) =
+        animation_state.create_presentation_layer(env, layer);
 
     if host_obj.hidden {
         return;
@@ -562,8 +568,11 @@ unsafe fn composite_layer_recursive(
         cumulative_transform
     };
 
+    let have_background =
+        host_obj.background_color.is_some() || host_obj.background_pattern_cg_image != nil;
+
     // Draw background color, if any
-    let have_background = if let Some(background_color) = host_obj.background_color {
+    if let Some(background_color) = host_obj.background_color {
         let misc = env
             .framework_state
             .core_animation
@@ -634,14 +643,10 @@ unsafe fn composite_layer_recursive(
                 0 as *const GLvoid,
             );
         };
-
-        true
-    } else {
-        false
-    };
+    }
 
     // Draw background pattern image (tiled), if any
-    let have_background = if host_obj.background_pattern_cg_image != nil {
+    if host_obj.background_pattern_cg_image != nil {
         let pattern_cg = host_obj.background_pattern_cg_image;
         let image = cg_image::borrow_image(&env.objc, pattern_cg);
         let (img_w, img_h) = image.dimensions();
@@ -658,7 +663,12 @@ unsafe fn composite_layer_recursive(
             gles.GenTextures(1, &mut t);
             gles.BindTexture(gles11::TEXTURE_2D, t);
             let pixels = image.pixels();
-            upload_rgba8_pixels(gles.as_mut(), pixels, (img_w, img_h));
+            upload_rgba8_pixels(
+                gles.as_mut(),
+                pixels,
+                (img_w, img_h),
+                /* storage_is_compatible: */ false,
+            );
             gles.TexParameteri(
                 gles11::TEXTURE_2D,
                 gles11::TEXTURE_WRAP_S,
@@ -718,15 +728,9 @@ unsafe fn composite_layer_recursive(
             gles11::UNSIGNED_BYTE,
             0 as *const GLvoid,
         );
+    }
 
-        true
-    } else {
-        have_background
-    };
-
-    let need_texture = host_obj.presented_pixels.is_some()
-        || host_obj.contents != nil
-        || host_obj.cg_context.is_some();
+    let need_texture = has_presented_pixels || host_obj.contents != nil || host_obj.cg_context.is_some();
     let need_update = need_texture && !host_obj.gles_texture_is_up_to_date;
 
     if need_texture {
@@ -737,18 +741,30 @@ unsafe fn composite_layer_recursive(
             let mut texture = 0;
             gles.GenTextures(1, &mut texture);
             gles.BindTexture(gles11::TEXTURE_2D, texture);
-            // Update original layer texture
-            env.objc.borrow_mut::<CALayerHostObject>(layer).gles_texture = Some(texture);
+            // Update original layer texture. Its backing storage is allocated
+            // by the first upload below, so it cannot be reused yet.
+            let original_host_obj = env.objc.borrow_mut::<CALayerHostObject>(layer);
+            original_host_obj.gles_texture = Some(texture);
+            original_host_obj.gles_texture_size = None;
         }
     }
 
-    // Update original layer texture with CAEAGLLayer pixels (slow path), if any
+    // Update original layer texture with CAEAGLLayer pixels (slow path), if any.
+    // This path is particularly performance-sensitive: it receives a freshly
+    // read-back full frame on every present.  Retain matching GPU storage and
+    // update it with TexSubImage2D rather than forcing a driver-side texture
+    // reallocation for every frame.
     if need_update {
         let original_host_obj = env.objc.borrow_mut::<CALayerHostObject>(layer);
         if let Some((ref mut pixels, width, height)) = original_host_obj.presented_pixels {
+            let dimensions = (width, height);
+            let storage_is_compatible = original_host_obj.gles_texture_size == Some(dimensions);
             // The pixels are always RGBA, but if the layer is opaque then the
-            // alpha channel is meant to be ignored. glTexImage2D() has no
-            // option to ignore it, so let's manually set them to 255.
+            // alpha channel is meant to be ignored. `glTexImage2D` and
+            // `glTexSubImage2D` cannot ignore it, so normalize it before every
+            // upload. This remains necessary even when the current frame does
+            // not blend: a later opacity/background animation can reuse this
+            // texture without triggering another pixel upload.
             if original_host_obj.opaque {
                 let mut i = 3;
                 while i < pixels.len() {
@@ -757,7 +773,8 @@ unsafe fn composite_layer_recursive(
                 }
             }
 
-            upload_rgba8_pixels(gles.as_mut(), pixels, (width, height));
+            upload_rgba8_pixels(gles.as_mut(), pixels, dimensions, storage_is_compatible);
+            original_host_obj.gles_texture_size = Some(dimensions);
         }
     }
 
@@ -765,17 +782,36 @@ unsafe fn composite_layer_recursive(
     if need_update {
         if host_obj.contents != nil {
             let image = cg_image::borrow_image(&env.objc, host_obj.contents);
+            let dimensions = image.dimensions();
+            let storage_is_compatible = env
+                .objc
+                .borrow::<CALayerHostObject>(layer)
+                .gles_texture_size
+                == Some(dimensions);
 
             // No special handling for opacity is needed here: the alpha channel
             // on an image is meaningful and won't be ignored.
-            upload_rgba8_pixels(gles.as_mut(), image.pixels(), image.dimensions());
+            upload_rgba8_pixels(
+                gles.as_mut(),
+                image.pixels(),
+                dimensions,
+                storage_is_compatible,
+            );
+            env.objc.borrow_mut::<CALayerHostObject>(layer).gles_texture_size = Some(dimensions);
         } else if let Some(cg_context) = host_obj.cg_context {
             // Make sure this is in sync with the code in ca_layer.rs that
             // sets up the context!
             let (width, height, data) = cg_bitmap_context::get_data(&env.objc, cg_context);
+            let dimensions = (width, height);
+            let storage_is_compatible = env
+                .objc
+                .borrow::<CALayerHostObject>(layer)
+                .gles_texture_size
+                == Some(dimensions);
             let size = width * height * 4;
             let pixels = env.mem.bytes_at(data.cast(), size);
-            upload_rgba8_pixels(gles.as_mut(), pixels, (width, height));
+            upload_rgba8_pixels(gles.as_mut(), pixels, dimensions, storage_is_compatible);
+            env.objc.borrow_mut::<CALayerHostObject>(layer).gles_texture_size = Some(dimensions);
         }
     }
 
@@ -916,7 +952,33 @@ unsafe fn upload_slice<T: SafeWrite>(
     )
 }
 
-unsafe fn upload_rgba8_pixels(gles: &mut dyn GLES, pixels: &[u8], dimensions: (u32, u32)) {
+/// Upload RGBA8 pixels to the currently-bound texture.
+///
+/// When matching storage has already been allocated, `TexSubImage2D` preserves
+/// that allocation and avoids a driver-side texture redefinition. This matters
+/// for the EAGL readback compositor, which updates a full-screen texture every
+/// presented frame.
+unsafe fn upload_rgba8_pixels(
+    gles: &mut dyn GLES,
+    pixels: &[u8],
+    dimensions: (u32, u32),
+    storage_is_compatible: bool,
+) {
+    if storage_is_compatible {
+        gles.TexSubImage2D(
+            gles11::TEXTURE_2D,
+            0,
+            0,
+            0,
+            dimensions.0 as _,
+            dimensions.1 as _,
+            gles11::RGBA,
+            gles11::UNSIGNED_BYTE,
+            pixels.as_ptr() as *const _,
+        );
+        return;
+    }
+
     gles.TexImage2D(
         gles11::TEXTURE_2D,
         0,

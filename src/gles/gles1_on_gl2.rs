@@ -568,6 +568,20 @@ impl GLESContext for GLES1OnGL2Context {
         })
     }
 
+    fn with_current(&mut self, window: &mut Window, f: &mut dyn FnMut(&mut dyn GLES)) {
+        if !self.gl_ctx.is_current() || !self.is_loaded {
+            unsafe {
+                window.make_gl_context_current(&self.gl_ctx);
+            }
+            gl21::load_with(|s| window.gl_get_proc_address(s));
+            self.is_loaded = true;
+        }
+        let mut gles = GLES1OnGL2 {
+            state: &mut self.state,
+        };
+        f(&mut gles);
+    }
+
     unsafe fn make_current_unchecked_for_window<'gl_ctx>(
         &'gl_ctx mut self,
         make_current_fn: &mut dyn FnMut(&GLContext),

@@ -64,49 +64,56 @@ where
     }
     let trace = env.options.trace_gl_errors;
     let caller = std::panic::Location::caller();
-    // `sync_context` now returns None when no GL context is bound to the
-    // calling thread. The guard above already short-circuits the common
-    // case where the *guest* never made a context current, but on edge
-    // cases (e.g. context destroyed mid-call, headless GLES driver missing,
-    // see HyperHLE log #5) we may still hit None here. Treat it the same
-    // as the no-context branch above: log once and return the default.
-    let Some(mut gles) = super::sync_context(
-        &mut env.framework_state.opengles,
-        &mut env.objc,
-        env.window
-            .as_mut()
-            .expect("OpenGL ES is not supported in headless mode"),
-        env.current_thread,
-    ) else {
+    // Keep the transient GLES wrapper on the stack.  A busy frame can issue
+    // thousands of guest gl* exports; the old sync_context() path allocated
+    // and freed one Box<dyn GLES> for each of those calls even when the same
+    // host context was already current.
+    let current_thread = env.current_thread;
+    // Split the Environment borrows before creating the callback. Besides
+    // making the synchronous ownership boundary explicit, this avoids relying
+    // on closure-capture precision for `env.mem` versus the EAGL state.
+    let state = &mut env.framework_state.opengles;
+    let objc = &mut env.objc;
+    let window = env
+        .window
+        .as_mut()
+        .expect("OpenGL ES is not supported in headless mode");
+    let mem = &mut env.mem;
+    let mut operation = Some(f);
+    let mut result = U::default();
+    let mut invoke = |gles: &mut dyn GLES| {
+        // Clear any sticky host-GL error before the call so that the post-call
+        // trace report only reflects errors raised by *this* dispatch, not
+        // leftovers from untraced internal code paths (EAGL present, context
+        // sync, etc.). Without this, one bad call makes every later traced
+        // call report the same code at the wrong line.
+        if trace {
+            unsafe { gles.GetError() };
+        }
+        result = operation
+            .take()
+            .expect("GLES context invoked a guest operation more than once")(gles, mem);
+        if trace {
+            let err = unsafe { gles.GetError() };
+            if err != 0 {
+                log!(
+                    "[--trace-gl-errors] glGetError() = {:#x} raised by host GLES call \
+                     dispatched from {}:{}",
+                    err,
+                    caller.file(),
+                    caller.line()
+                );
+            }
+        }
+    };
+    if !super::with_current_context(state, objc, window, current_thread, &mut invoke) {
         log_dbg!(
-            "Skipping GLES call after sync_context returned None (line {})",
+            "Skipping GLES call after with_current_context returned None (line {})",
             caller.line()
         );
         return U::default();
-    };
-    // Clear any sticky host-GL error before the call so that the post-call
-    // trace report only reflects errors raised by *this* dispatch, not
-    // leftovers from untraced internal code paths (EAGL present, context
-    // sync, etc.). Without this, one bad call makes every later traced
-    // call report the same code at the wrong line.
-    if trace {
-        unsafe { gles.GetError() };
     }
-    let res = f(gles.as_mut(), &mut env.mem);
-    if trace {
-        let err = unsafe { gles.GetError() };
-        if err != 0 {
-            log!(
-                "[--trace-gl-errors] glGetError() = {:#x} raised by host GLES call \
-                 dispatched from {}:{}",
-                err,
-                caller.file(),
-                caller.line()
-            );
-        }
-    }
-    #[allow(clippy::let_and_return)]
-    res
+    result
 }
 
 #[track_caller]
@@ -124,14 +131,37 @@ where
     // emulator. The trade-off vs. with_ctx_and_mem is unchanged: we still
     // attempt the call when a context exists, even if it isn't the one
     // the guest expects.
-    let Some(mut gles) = super::sync_context(
-        &mut env.framework_state.opengles,
-        &mut env.objc,
-        env.window
-            .as_mut()
-            .expect("OpenGL ES is not supported in headless mode"),
-        env.current_thread,
-    ) else {
+    let current_thread = env.current_thread;
+    // Split the Environment borrows before creating the callback. Besides
+    // making the synchronous ownership boundary explicit, this avoids relying
+    // on closure-capture precision for `env.mem` versus the EAGL state.
+    let state = &mut env.framework_state.opengles;
+    let objc = &mut env.objc;
+    let window = env
+        .window
+        .as_mut()
+        .expect("OpenGL ES is not supported in headless mode");
+    let mem = &mut env.mem;
+    let mut operation = Some(f);
+    let mut result = U::default();
+    let mut invoke = |gles: &mut dyn GLES| {
+        result = operation
+            .take()
+            .expect("GLES context invoked a guest operation more than once")(gles, mem);
+        if trace {
+            let err = unsafe { gles.GetError() };
+            if err != 0 {
+                log!(
+                    "[--trace-gl-errors] glGetError() = {:#x} raised by host GLES call \
+                     dispatched from {}:{}",
+                    err,
+                    caller.file(),
+                    caller.line()
+                );
+            }
+        }
+    };
+    if !super::with_current_context(state, objc, window, current_thread, &mut invoke) {
         log!(
             "Warning: with_ctx_and_mem_no_skip dispatched from {}:{} found \
              no current GL context; returning default.",
@@ -139,22 +169,8 @@ where
             caller.line()
         );
         return U::default();
-    };
-    let res = f(gles.as_mut(), &mut env.mem);
-    if trace {
-        let err = unsafe { gles.GetError() };
-        if err != 0 {
-            log!(
-                "[--trace-gl-errors] glGetError() = {:#x} raised by host GLES call \
-                 dispatched from {}:{}",
-                err,
-                caller.file(),
-                caller.line()
-            );
-        }
     }
-    #[allow(clippy::let_and_return)]
-    res
+    result
 }
 
 fn glGetError(env: &mut Environment) -> GLenum {

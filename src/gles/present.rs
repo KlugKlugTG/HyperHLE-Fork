@@ -28,6 +28,17 @@ static GLYPH_TEXTURES: OnceLock<Mutex<Option<Vec<u32>>>> = OnceLock::new();
 // from other parts of the runtime (e.g., the app picker or window input).
 use std::sync::atomic::{AtomicBool, Ordering};
 static ONSCREEN_FPS_ENABLED: OnceLock<AtomicBool> = OnceLock::new();
+fn onscreen_fps_enabled() -> bool {
+    // Seed the runtime-controlled value from the process environment once.
+    // All in-process users that change this setting go through
+    // `set_onscreen_fps_enabled`, so app-picker and keyboard toggles remain
+    // immediately observable without a host environment lookup per frame.
+    ONSCREEN_FPS_ENABLED
+        .get_or_init(|| {
+            AtomicBool::new(std::env::var_os("TOUCHHLE_ONSCREEN_FPS").is_some())
+        })
+        .load(Ordering::Relaxed)
+}
 
 impl FpsCounter {
     pub fn start() -> Self {
@@ -47,14 +58,9 @@ impl FpsCounter {
             self.time = now;
             let fps = std::mem::take(&mut self.frames) as f32 / duration.as_secs_f32();
             echo!("touchHLE: {} FPS: {:.2}", label, fps);
-            // Update global text cache for on-screen overlay if enabled via
-            // environment variable or the runtime flag.
-            let onscreen_env = std::env::var_os("TOUCHHLE_ONSCREEN_FPS").is_some();
-            let onscreen_runtime = ONSCREEN_FPS_ENABLED
-                .get()
-                .map(|b| b.load(Ordering::SeqCst))
-                .unwrap_or(false);
-            if onscreen_env || onscreen_runtime {
+            // Update global text cache for the on-screen overlay only when it
+            // is enabled via process configuration or the runtime toggle.
+            if onscreen_fps_enabled() {
                 let text = format!("FPS: {:.1}", fps);
                 if let Some(mutex) = LAST_FPS_TEXT.get() {
                     if let Ok(mut s) = mutex.lock() {
@@ -68,9 +74,11 @@ impl FpsCounter {
 
 /// Runtime API: enable/disable the on-screen FPS overlay at runtime.
 pub fn set_onscreen_fps_enabled(enabled: bool) {
+    // Preserve an externally supplied initial setting if this is the first
+    // access, then let the explicit runtime toggle take precedence.
     ONSCREEN_FPS_ENABLED
-        .get_or_init(|| AtomicBool::new(false))
-        .store(enabled, Ordering::SeqCst);
+        .get_or_init(|| AtomicBool::new(std::env::var_os("TOUCHHLE_ONSCREEN_FPS").is_some()))
+        .store(enabled, Ordering::Relaxed);
 }
 
 /// Present the the latest frame (e.g. the app's splash screen or rendering
@@ -112,6 +120,8 @@ pub unsafe fn present_frame(
     // sampled from normal 0..1 texture coordinates and mapped to a full-screen
     // quad. This is the correct "fill the current window" behavior for
     // PotatoGold-style landscape tests.
+    // This is set and cleared by per-app compatibility setup in the same
+    // process, so unlike the FPS preference it must remain dynamically read.
     if std::env::var_os("TOUCHHLE_PRESENT_STRETCH_TO_VIEWPORT").is_some() {
         log_once!(
             "TOUCHHLE_PRESENT_STRETCH_TO_VIEWPORT=1: stretching full rendered frame to the active viewport [this log will only be shown once]"
@@ -181,12 +191,7 @@ pub unsafe fn present_frame(
     // On-screen FPS overlay (simple bitmap font). Enabled by env var
     // TOUCHHLE_ONSCREEN_FPS=1 or by the runtime flag set via
     // crate::gles::present::set_onscreen_fps_enabled(true).
-    let onscreen_env = std::env::var_os("TOUCHHLE_ONSCREEN_FPS").is_some();
-    let onscreen_runtime = ONSCREEN_FPS_ENABLED
-        .get()
-        .map(|b| b.load(Ordering::SeqCst))
-        .unwrap_or(false);
-    if onscreen_env || onscreen_runtime {
+    if onscreen_fps_enabled() {
         if let Some(mutex) = LAST_FPS_TEXT.get() {
             if let Ok(s) = mutex.lock() {
                 if !s.is_empty() {

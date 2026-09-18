@@ -239,14 +239,26 @@ pub fn find_fullscreen_eagl_layer(env: &mut Environment) -> id {
 // MARK: - Pixel buffer helpers (used by EAGLContext)
 // =========================================================================
 
-/// Takes the pixel buffer out of the layer so it can be refilled by
-/// `EAGLContext presentRenderBuffer:`. Pass the buffer back via
-/// [present_pixels] once it is filled.
-pub fn get_pixels_vec_for_presenting(env: &mut Environment, layer: id) -> Vec<u8> {
+/// Takes the complete prior frame out of a layer for a new EAGL readback.
+///
+/// Keeping the dimensions lets the caller restore the prior frame if the GL
+/// context disappears before it can produce a replacement. Reusing the vector
+/// avoids allocating and freeing a full-screen RGBA buffer every frame.
+pub fn take_presented_pixels_for_reuse(
+    env: &mut Environment,
+    layer: id,
+) -> Option<(Vec<u8>, u32, u32)> {
     env.objc
         .borrow_mut::<CALayerHostObject>(layer)
         .presented_pixels
         .take()
+}
+
+/// Takes the pixel buffer out of the layer so it can be refilled by
+/// `EAGLContext presentRenderBuffer:`. Pass the buffer back via
+/// [present_pixels] once it is filled.
+pub fn get_pixels_vec_for_presenting(env: &mut Environment, layer: id) -> Vec<u8> {
+    take_presented_pixels_for_reuse(env, layer)
         .map(|(vec, _w, _h)| vec)
         .unwrap_or_default()
 }

@@ -2471,6 +2471,13 @@ impl Environment {
             return;
         }
 
+        // The bundle cannot change during an Environment's lifetime. Keep this
+        // compatibility selector out of the host-call hot loop below.
+        let is_asphalt8 = self
+            .bundle
+            .bundle_identifier()
+            .starts_with("com.gameloft.asphalt8");
+
         loop {
             while self
                 .remaining_ticks
@@ -2509,11 +2516,7 @@ impl Environment {
                 // ported from the touchHLE-XaView fork. The game deliberately
                 // calls abort() when its DRM/network checks fail, which looks
                 // like a silent emulator crash. These unwinds skip the checks.
-                if self
-                    .bundle
-                    .bundle_identifier()
-                    .starts_with("com.gameloft.asphalt8")
-                {
+                if is_asphalt8 {
                     let pc = self.cpu.regs()[Cpu::PC];
                     // BypassAsphaltDRM: deep stack unwind past the license check
                     if pc == 0x00600ac4 {

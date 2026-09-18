@@ -36,14 +36,29 @@ pub struct State {
     finished_animations: Vec<(id, id, bool, bool, Option<String>)>,
 }
 impl State {
+    /// Builds the animated presentation snapshot and reports whether the
+    /// persistent layer has an EAGL readback buffer. The snapshot deliberately
+    /// omits that potentially multi-megabyte buffer, but the compositor still
+    /// needs to know that it is the texture source.
     pub fn create_presentation_layer(
         &mut self,
         env: &mut Environment,
         layer: id,
-    ) -> CALayerHostObject {
-        // Clone given layer
-        let original = env.objc.borrow::<CALayerHostObject>(layer);
-        let mut presentation = original.clone();
+    ) -> (CALayerHostObject, bool) {
+        // Clone the layer for animation interpolation. `presented_pixels` is a
+        // full RGBA frame for CAEAGLLayer's readback path, so a derived Clone
+        // would memcpy several MiB on every compositor tick. It is not an
+        // animatable property and the compositor always uploads from the real
+        // layer below, so temporarily take it out while cloning. The returned
+        // presentation snapshot intentionally has no pixel payload.
+        let (mut presentation, has_presented_pixels) = {
+            let original = env.objc.borrow_mut::<CALayerHostObject>(layer);
+            let presented_pixels = original.presented_pixels.take();
+            let has_presented_pixels = presented_pixels.is_some();
+            let presentation = original.clone();
+            original.presented_pixels = presented_pixels;
+            (presentation, has_presented_pixels)
+        };
 
         // Loop over all animations and set the presentation layer's values
         let named_animations: Vec<(Option<String>, id)> = presentation
@@ -273,7 +288,7 @@ impl State {
             }
         }
 
-        presentation
+        (presentation, has_presented_pixels)
     }
 
     pub fn update_started_and_finished_animations(self, env: &mut Environment) {

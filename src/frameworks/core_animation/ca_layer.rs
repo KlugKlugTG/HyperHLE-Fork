@@ -84,6 +84,11 @@ pub(crate) struct CALayerHostObject {
     pub(super) presented_pixels: Option<(Vec<u8>, u32, u32)>,
     pub(super) cg_context: Option<CGContextRef>,
     pub(super) gles_texture: Option<crate::gles::gles11_raw::types::GLuint>,
+    /// Dimensions of the allocation currently backing `gles_texture`.
+    /// Keeping this alongside the texture lets the compositor use
+    /// `glTexSubImage2D` for same-size updates instead of reallocating a
+    /// full-size texture every frame.
+    pub(super) gles_texture_size: Option<(u32, u32)>,
     pub(super) gles_texture_is_up_to_date: bool,
     pub(super) animations: HashMap<String, id>,
     pub(super) anonymous_animations: HashSet<id>,
@@ -404,6 +409,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         presented_pixels: None,
         cg_context: None,
         gles_texture: None,
+        gles_texture_size: None,
         gles_texture_is_up_to_date: false,
         animations: HashMap::new(),
         anonymous_animations: HashSet::new(),

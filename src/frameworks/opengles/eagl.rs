@@ -8,6 +8,7 @@
 use crate::dyld::{export_c_func, ConstantExports, FunctionExports, HostConstant};
 use crate::frameworks::core_animation::ca_eagl_layer::{
     find_fullscreen_eagl_layer, get_pixels_vec_for_presenting, present_pixels,
+    take_presented_pixels_for_reuse,
 };
 use crate::frameworks::core_graphics::{CGRect, CGSize};
 use crate::frameworks::foundation::ns_string::get_static_str;
@@ -878,6 +879,18 @@ pub const CLASSES: ClassExports = objc_classes! {
 };
 
 unsafe fn present_renderbuffer_readback(env: &mut Environment, renderbuffer: GLuint, drawable: id) {
+    // A native-ES1 / translator fullscreen present reaches this path every
+    // frame. Reuse the last frame's allocation instead of allocating and
+    // freeing an RGBA screen-sized Vec for every glReadPixels call. Keep its
+    // dimensions separately so a rare lost context leaves the prior frame on
+    // screen rather than turning the drawable blank.
+    let previous_frame = take_presented_pixels_for_reuse(env, drawable);
+    let previous_dimensions = previous_frame.as_ref().map(|(_, width, height)| (*width, *height));
+    let mut reusable_pixels = Some(
+        previous_frame
+            .map(|(pixels, _width, _height)| pixels)
+            .unwrap_or_default(),
+    );
     let read_result = {
         let maybe_gles = super::sync_context(
             &mut env.framework_state.opengles,
@@ -886,11 +899,20 @@ unsafe fn present_renderbuffer_readback(env: &mut Environment, renderbuffer: GLu
             env.current_thread,
         );
         match maybe_gles {
-            Some(mut gles) => Some(read_renderbuffer(gles.as_mut(), renderbuffer, Vec::new())),
+            Some(mut gles) => Some(read_renderbuffer(
+                gles.as_mut(),
+                renderbuffer,
+                reusable_pixels
+                    .take()
+                    .expect("readback buffer was unexpectedly consumed"),
+            )),
             None => None,
         }
     };
     let Some((pixels, width, height)) = read_result else {
+        if let (Some(pixels), Some((width, height))) = (reusable_pixels, previous_dimensions) {
+            present_pixels(env, drawable, pixels, width, height);
+        }
         log!("Native ES1 readback skipped because the GL context disappeared.");
         return;
     };

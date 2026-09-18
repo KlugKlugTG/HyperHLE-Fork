@@ -71,6 +71,10 @@ impl GLESContext for GLES2OnGL3Context {
         self.inner.make_current(window)
     }
 
+    fn with_current(&mut self, window: &mut Window, f: &mut dyn FnMut(&mut dyn GLES)) {
+        self.inner.with_current(window, f)
+    }
+
     unsafe fn make_current_unchecked_for_window<'gl_ctx>(
         &'gl_ctx mut self,
         make_current_fn: &mut dyn FnMut(&crate::window::GLContext),

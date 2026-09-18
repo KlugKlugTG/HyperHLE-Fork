@@ -37,8 +37,9 @@ pub struct State {
 }
 impl State {
     fn current_ctx_for_thread(&mut self, thread: crate::ThreadId) -> &mut Option<crate::objc::id> {
-        self.current_ctxs.entry(thread).or_insert(None);
-        self.current_ctxs.get_mut(&thread).unwrap()
+        // `Entry::or_insert` already returns the mutable value. Avoid a second
+        // hash-table lookup: this is on every guest GL export's context path.
+        self.current_ctxs.entry(thread).or_insert(None)
     }
 }
 
@@ -66,6 +67,27 @@ fn sync_context<'objc, 'win: 'objc>(
 ) -> Option<Box<dyn crate::gles::GLES + 'objc>> {
     let gles_ctx = get_thread_context(state, objc, current_thread)?;
     Some(gles_ctx.make_current(window))
+}
+
+/// Invoke one short GL operation against the current EAGL context.
+///
+/// Guest GL calls arrive one at a time through C exports, and the former path
+/// constructs a boxed trait object for each one. This lets native/translation
+/// backends keep their lightweight GLES wrapper on the stack instead. It
+/// deliberately accepts a `()` callback: callers can capture a return slot,
+/// preserving object safety for [`GLESContext`].
+pub(super) fn with_current_context(
+    state: &mut State,
+    objc: &mut crate::objc::ObjC,
+    window: &mut crate::window::Window,
+    current_thread: crate::ThreadId,
+    f: &mut dyn FnMut(&mut dyn crate::gles::GLES),
+) -> bool {
+    let Some(gles_ctx) = get_thread_context(state, objc, current_thread) else {
+        return false;
+    };
+    gles_ctx.with_current(window, f);
+    true
 }
 
 /// Look up the current [`crate::gles::GLESContext`] for the given thread.

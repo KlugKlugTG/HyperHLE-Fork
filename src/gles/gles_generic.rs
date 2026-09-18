@@ -49,6 +49,22 @@ pub trait GLESContext {
         window: &'win mut Window,
     ) -> Box<dyn GLES + 'gl_ctx>;
 
+    /// Run one operation with this context current.
+    ///
+    /// This is the allocation-free counterpart to [`Self::make_current`] for
+    /// very short-lived operations such as one guest `gl*` dispatch.  The
+    /// default preserves the old behavior for unusual wrappers, while normal
+    /// backends override it to keep their temporary [`GLES`] implementation on
+    /// the stack instead of allocating a `Box` for every GL command.
+    fn with_current(
+        &mut self,
+        window: &mut Window,
+        f: &mut dyn FnMut(&mut dyn GLES),
+    ) {
+        let mut gles = self.make_current(window);
+        f(gles.as_mut());
+    }
+
     /// Make this context (and any underlying context) the active OpenGL
     /// context, without checking if it is the only context. You shouldn't use
     /// this outside of [crate::window::Window], as this is function exists to

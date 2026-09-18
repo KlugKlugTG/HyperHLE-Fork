@@ -155,6 +155,26 @@ impl GLESContext for GLES1NativeContext {
         })
     }
 
+    fn with_current(&mut self, window: &mut Window, f: &mut dyn FnMut(&mut dyn GLES)) {
+        if !self.gl_ctx.is_current() || !self.is_loaded {
+            unsafe {
+                window.make_gl_context_current(&self.gl_ctx);
+            }
+            gles11::load_with(|s| window.gl_get_proc_address(s));
+            self.is_loaded = true;
+            if !self.pvrtc_native_checked {
+                self.pvrtc_native = unsafe { detect_pvrtc_support() };
+                self.pvrtc_native_checked = true;
+            }
+        }
+        let mut gles = GLES1Native {
+            _gl_lifetime: PhantomData,
+            pending_synthetic_error: std::cell::Cell::new(gles11::NO_ERROR),
+            pvrtc_native: self.pvrtc_native,
+        };
+        f(&mut gles);
+    }
+
     unsafe fn make_current_unchecked_for_window<'gl_ctx>(
         &'gl_ctx mut self,
         make_current_fn: &mut dyn FnMut(&GLContext),

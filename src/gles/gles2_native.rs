@@ -88,6 +88,31 @@ impl GLESContext for GLES2NativeContext {
         })
     }
 
+    fn with_current(&mut self, window: &mut Window, f: &mut dyn FnMut(&mut dyn GLES)) {
+        if !self.gl_ctx.is_current() || !self.is_loaded {
+            unsafe {
+                window.make_gl_context_current(&self.gl_ctx);
+            }
+            gles2::load_with(|s| window.gl_get_proc_address(s));
+            // Some symbols (e.g. glGetString) are technically also part of ES
+            // 1.1 and are referenced via gles11:: in shared helpers.
+            gles11::load_with(|s| window.gl_get_proc_address(s));
+            self.is_loaded = true;
+            if !self.pvrtc_native_checked {
+                self.pvrtc_native = unsafe { detect_pvrtc_support() };
+                self.texture_lod_ext_supported = unsafe { detect_texture_lod_ext_support() };
+                self.pvrtc_native_checked = true;
+            }
+        }
+        let mut gles = GLES2Native {
+            _gl_lifetime: PhantomData,
+            pvrtc_native: self.pvrtc_native,
+            texture_lod_ext_supported: self.texture_lod_ext_supported,
+            map_buffer_stagings: Vec::new(),
+        };
+        f(&mut gles);
+    }
+
     unsafe fn make_current_unchecked_for_window<'gl_ctx>(
         &'gl_ctx mut self,
         make_current_fn: &mut dyn FnMut(&GLContext),
