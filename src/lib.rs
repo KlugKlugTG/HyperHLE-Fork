@@ -129,6 +129,45 @@ pub fn main<T: Iterator<Item = String>>(mut args: T) -> Result<(), String> {
     crash_handler::install();
     crash_handler::install_panic_hook();
 
+    // Session bookkeeping for diagnosing hard kills (SIGKILL from Android's
+    // LMK/ANR watchdog cannot run any handler, so the only evidence is the
+    // ABSENCE of a session-end marker in the log from the previous run).
+    //
+    // The marker guard writes "=== session end ===" via Drop, which covers
+    // every normal return path *and* unwinding panics caught in this
+    // function. A log whose last session marker is a start marker therefore
+    // proves the previous process died without running any of our code.
+    struct SessionEndMarker;
+    impl Drop for SessionEndMarker {
+        fn drop(&mut self) {
+            echo!("=== session end (clean) ===");
+        }
+    }
+    {
+        let log_path = paths::user_data_base_path().join("touchHLE_log.txt");
+        if let Ok(prev) = std::fs::read_to_string(&log_path) {
+            let last_marker = prev
+                .lines()
+                .rev()
+                .find(|l| l.contains("=== session"))
+                .unwrap_or("");
+            if last_marker.contains("session start") {
+                echo!(
+                    "WARNING: the previous session ended WITHOUT a clean-exit marker — \
+                     the process was hard-killed (Android SIGKILL: LMK/ANR) or died in \
+                     native code before any handler could run. Use 'adb logcat' for the \
+                     killer's identity."
+                );
+            }
+        }
+        echo!(
+            "=== session start (pid {}, rust {})===",
+            std::process::id(),
+            VERSION
+        );
+    }
+    let _session_end_marker = SessionEndMarker;
+
     #[cfg(target_os = "android")]
     {
         // PERF: raise the scheduling priority of the thread that runs the

@@ -349,6 +349,13 @@ pub struct Mem {
     /// See [crate::Environment] for more info.
     pub(super) zero_memory_on_free: bool,
 
+    /// Total guest heap bytes currently allocated (alloc - free).
+    /// Logged at 128 MiB thresholds to diagnose runaway allocations
+    /// (e.g. Android SIGKILL by lmkd after an RSS spike).
+    heap_live_bytes: u64,
+    /// Next threshold (in bytes) at which to log the live-heap size.
+    heap_log_threshold: u64,
+
     /// HACK: stub page for null-page READ accesses.
     /// Filled with zeros so that reading *(void**)NULL returns NULL.
     /// This page is NEVER written to by guest code — writes go to
@@ -432,6 +439,8 @@ impl Mem {
             null_segment_size: 0,
             allocator,
             zero_memory_on_free: true,
+            heap_live_bytes: 0,
+            heap_log_threshold: 128 * 1024 * 1024,
             null_stub_page,
             null_write_sink,
         }
@@ -881,6 +890,16 @@ impl Mem {
         if !self.zero_memory_on_free {
             self.bytes_at_mut(ptr.cast(), size).fill(0);
         }
+        self.heap_live_bytes += size as u64;
+        if self.heap_live_bytes >= self.heap_log_threshold {
+            echo!(
+                "guest heap: {:.0} MiB live after malloc({:#x} bytes) at {:#x}",
+                self.heap_live_bytes as f64 / (1024.0 * 1024.0),
+                size,
+                ptr.to_bits()
+            );
+            self.heap_log_threshold += 128 * 1024 * 1024;
+        }
 
         log_dbg!("Allocated {:?} ({:#x} bytes)", ptr, size);
         ptr
@@ -1002,6 +1021,7 @@ impl Mem {
         if self.zero_memory_on_free {
             self.bytes_at_mut(ptr.cast(), size).fill(0);
         }
+        self.heap_live_bytes = self.heap_live_bytes.saturating_sub(size as u64);
 
         log_dbg!("Freed {:?} ({:#x} bytes)", ptr, size);
     }
