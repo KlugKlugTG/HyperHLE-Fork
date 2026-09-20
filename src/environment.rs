@@ -1662,7 +1662,49 @@ impl Environment {
         let mut stepping = false;
         let run_started = Instant::now();
         let mut last_heartbeat = run_started;
+        // Watchdog: an independent host thread that keeps logging every 3 s
+        // even when the emulator loop is stuck inside a single call. The gap
+        // between the last watchdog line and the last emulator-loop line
+        // distinguishes "process killed" (watchdog also stops) from
+        // "emulator loop wedged in a driver/JIT/lock call" (watchdog keeps
+        // going and reports growing loop-idle time).
+        let loop_tick_ms = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let loop_running = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+        {
+            let tick = loop_tick_ms.clone();
+            let running = loop_running.clone();
+            let _ = std::thread::Builder::new()
+                .name("touchHLE-watchdog".into())
+                .spawn(move || {
+                    let start = Instant::now();
+                    while running.load(std::sync::atomic::Ordering::Relaxed) {
+                        std::thread::sleep(Duration::from_secs(3));
+                        let last = tick.load(std::sync::atomic::Ordering::Relaxed);
+                        let idle_ms = if last == 0 {
+                            0
+                        } else {
+                            (start.elapsed().as_millis() as u64).saturating_sub(last)
+                        };
+                        let idle_s = idle_ms as f32 / 1000.0;
+                        if idle_s > 10.0 {
+                            echo_no_panic!(
+                                "touchHLE::watchdog: up {:.0}s, EMULATOR LOOP STUCK for {:.1}s (no iteration — likely wedged inside one host call: GPU driver, JIT or lock), host RSS {} KiB",
+                                start.elapsed().as_secs_f32(), idle_s, host_rss_kib()
+                            );
+                        } else {
+                            echo_no_panic!(
+                                "touchHLE::watchdog: up {:.0}s, emulator loop alive (idle {:.1}s), host RSS {} KiB",
+                                start.elapsed().as_secs_f32(), idle_s, host_rss_kib()
+                            );
+                        }
+                    }
+                });
+        }
         loop {
+            loop_tick_ms.store(
+                run_started.elapsed().as_millis() as u64,
+                std::sync::atomic::Ordering::Relaxed,
+            );
             // Heartbeat: log liveness + host RSS every 5 s. If the process is
             // hard-killed (Android LMK/ANR SIGKILL) or dies inside a single
             // long host call (e.g. a driver/JIT wedge), the gap between the
@@ -1816,6 +1858,7 @@ impl Environment {
 
             if kill_current_thread && self.guest_termination_requested {
                 echo!("Guest session ended through the controlled return-to-host path.");
+                loop_running.store(false, std::sync::atomic::Ordering::Relaxed);
                 return;
             }
             if kill_current_thread && self.current_thread == 0 && !self.guest_termination_requested {
@@ -1826,6 +1869,7 @@ impl Environment {
                 echo!(
                     "Main thread (thread 0) has exited — ending the guest session (iOS would exit the process here)."
                 );
+                loop_running.store(false, std::sync::atomic::Ordering::Relaxed);
                 return;
             }
             if self.guest_termination_requested {
@@ -1835,6 +1879,7 @@ impl Environment {
                 // then stop before the scheduler resumes another guest thread.
                 self.threads[self.current_thread].host_context = old_context.take();
                 echo!("Guest session ended while returning from a host callback.");
+                loop_running.store(false, std::sync::atomic::Ordering::Relaxed);
                 return;
             }
 
