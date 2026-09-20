@@ -21,6 +21,31 @@ pub fn apple_epoch() -> SystemTime {
     SystemTime::UNIX_EPOCH.add(Duration::from_secs(SECS_FROM_UNIX_TO_APPLE_EPOCHS))
 }
 
+/// Largest |CFAbsoluteTime| accepted before `SystemTime` arithmetic. ±2.5e9 s
+/// ≈ years 1891–2149, far outside anything a sane program passes but well
+/// inside what `SystemTime` can represent, so conversions can't overflow.
+const CF_ABSOLUTE_TIME_CLAMP: f64 = 2.5e9;
+
+/// Convert a possibly-invalid `CFAbsoluteTime` to seconds since the Unix
+/// epoch without ever panicking. NaN/±inf are treated as the epoch itself;
+/// extreme values are clamped; pre-1970 results are returned as negatives.
+pub fn cf_absolute_time_to_unix_secs(at: CFAbsoluteTime) -> i64 {
+    let at = if at.is_finite() {
+        at.clamp(-CF_ABSOLUTE_TIME_CLAMP, CF_ABSOLUTE_TIME_CLAMP)
+    } else {
+        0.0
+    };
+    let duration = crate::frameworks::foundation::ns_time_interval_to_duration_or_zero(at);
+    // `add` panics on overflow; the clamp above guarantees it can't.
+    let time = apple_epoch().add(duration);
+    match time.duration_since(SystemTime::UNIX_EPOCH) {
+        Ok(d) => d.as_secs() as i64,
+        // Before the Unix epoch: return the negative offset instead of
+        // panicking, the way a real C library handles such a date.
+        Err(e) => -(e.duration().as_secs() as i64),
+    }
+}
+
 pub type CFTimeInterval = NSTimeInterval;
 pub type CFAbsoluteTime = CFTimeInterval;
 
@@ -55,10 +80,14 @@ pub type CFTimeZoneRef = CFTypeRef;
 // MARK: - Current time
 
 fn CFAbsoluteTimeGetCurrent(env: &mut Environment) -> CFAbsoluteTime {
-    env.guest_clock.system_time()
+    // The guest clock can be set to any value (including one before the Apple
+    // epoch) via settimeofday, so never panic here: fall back to 0 (= the
+    // Apple epoch itself) for out-of-range hosts.
+    env.guest_clock
+        .system_time()
         .duration_since(apple_epoch())
-        .unwrap()
-        .as_secs_f64()
+        .map(|d| d.as_secs_f64())
+        .unwrap_or(0.0)
 }
 
 // MARK: - Time zone
@@ -114,11 +143,7 @@ pub fn CFAbsoluteTimeGetGregorianDate(
     if !tz.is_null() {
         log!("Warning: CFAbsoluteTimeGetGregorianDate: non-GMT timezone ignored");
     }
-    let time64 = apple_epoch()
-        .add(crate::frameworks::foundation::ns_time_interval_to_duration_or_zero(at))
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
+    let time64 = cf_absolute_time_to_unix_secs(at);
     let tm = timestamp_to_calendar_date(time64 as time_t);
     CFGregorianDate {
         year: 1900 + tm.tm_year,

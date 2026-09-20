@@ -2195,8 +2195,10 @@ impl GLES for GLES1OnGL2<'_> {
             self.state.pointer_is_fixed_point[2] = true;
             gl21::TexCoordPointer(size, gl21::FLOAT, stride, pointer)
         } else {
-            // TODO: byte
-            assert!(type_ == gl21::SHORT || type_ == gl21::FLOAT);
+            // GL_BYTE is a valid ES 1.1 pointer type and GL 2.1 accepts it
+            // directly (e.g. Exploration Lite / Kiloblocks passes GL_BYTE
+            // texture coordinates), so forward it instead of asserting.
+            assert!(type_ == gl21::BYTE || type_ == gl21::SHORT || type_ == gl21::FLOAT);
             self.state.fixed_point_texture_units.remove(&active_texture);
             if self.state.fixed_point_texture_units.is_empty() {
                 self.state.pointer_is_fixed_point[2] = false;
@@ -2217,8 +2219,10 @@ impl GLES for GLES1OnGL2<'_> {
             self.state.pointer_is_fixed_point[3] = true;
             gl21::VertexPointer(size, gl21::FLOAT, stride, pointer)
         } else {
-            // TODO: byte
-            assert!(type_ == gl21::SHORT || type_ == gl21::FLOAT);
+            // GL_BYTE is a valid ES 1.1 pointer type and GL 2.1 accepts it
+            // directly (e.g. Exploration Lite / Kiloblocks passes GL_BYTE
+            // texture coordinates), so forward it instead of asserting.
+            assert!(type_ == gl21::BYTE || type_ == gl21::SHORT || type_ == gl21::FLOAT);
             self.state.pointer_is_fixed_point[3] = false;
             gl21::VertexPointer(size, type_, stride, pointer)
         }
