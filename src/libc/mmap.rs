@@ -157,8 +157,12 @@ fn munmap(env: &mut Environment, addr: MutVoidPtr, len: GuestUSize) -> i32 {
         env.libc_state.mmap.allocations.remove(&addr);
         0 // success
     } else {
-        log!(
-            "Warning: munmap({:?}, {}): unknown mapping, returning -1",
+        // BioShock's engine probes munmap() on addresses it did not mmap
+        // (likely ASLR-guessing from a forked helper) and ignores the result.
+        // Keep the POSIX-correct -1/EINVAL but log at debug level so the log
+        // stays readable.
+        log_dbg!(
+            "munmap({:?}, {}): unknown mapping, returning -1",
             addr,
             len
         );
