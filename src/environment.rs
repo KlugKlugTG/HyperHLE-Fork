@@ -1657,6 +1657,17 @@ impl Environment {
     /// Run the emulator. This is the main loop and won't return until app exit.
     /// Only `main.rs` should call this.
     pub fn run(mut self) {
+        // Emergency dump before the Android low-memory killer SIGKILLs us:
+        // if host RSS crosses the limit (TOUCHHLE_RSS_LIMIT_KIB, default
+        // 1_400_000 KiB; 0 disables), the watchdog raises a flag and this loop
+        // dumps registers/stacks, logs the guest-heap share, and ends the
+        // session through the clean return-to-host path so the next log shows
+        // a proper "session end" marker instead of silence.
+        let rss_limit_kib: u64 = std::env::var("TOUCHHLE_RSS_LIMIT_KIB")
+            .ok()
+            .and_then(|v| v.trim().parse().ok())
+            .unwrap_or(1_400_000);
+        let emergency_dump = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let mut curr_host_context = self.threads[0].host_context.take().unwrap();
         let panic_cell = self.panic_cell.clone();
         let mut stepping = false;
@@ -1673,6 +1684,8 @@ impl Environment {
         {
             let tick = loop_tick_ms.clone();
             let running = loop_running.clone();
+            let emergency = emergency_dump.clone();
+            let rss_limit = rss_limit_kib;
             let _ = std::thread::Builder::new()
                 .name("touchHLE-watchdog".into())
                 .spawn(move || {
@@ -1686,10 +1699,22 @@ impl Environment {
                             (start.elapsed().as_millis() as u64).saturating_sub(last)
                         };
                         let idle_s = idle_ms as f32 / 1000.0;
+                        let rss = host_rss_kib();
+                        if rss > 0
+                            && rss_limit > 0
+                            && rss > rss_limit
+                            && !emergency
+                                .swap(true, std::sync::atomic::Ordering::Relaxed)
+                        {
+                            echo_no_panic!(
+                                "touchHLE::watchdog: HOST RSS {} KiB exceeds limit {} KiB — raising emergency dump flag",
+                                rss, rss_limit
+                            );
+                        }
                         if idle_s > 10.0 {
                             echo_no_panic!(
                                 "touchHLE::watchdog: up {:.0}s, EMULATOR LOOP STUCK for {:.1}s (no iteration — likely wedged inside one host call: GPU driver, JIT or lock), host RSS {} KiB",
-                                start.elapsed().as_secs_f32(), idle_s, host_rss_kib()
+                                start.elapsed().as_secs_f32(), idle_s, rss
                             );
                         } else {
                             echo_no_panic!(
@@ -1883,6 +1908,21 @@ impl Environment {
                 return;
             }
 
+            if emergency_dump.load(std::sync::atomic::Ordering::Relaxed) {
+                self.threads[self.current_thread].host_context = old_context.take();
+                echo!(
+                    "touchHLE::environment: EMERGENCY: host RSS {} KiB reached the limit ({} KiB) — Android OOM killer would SIGKILL us imminently. Guest heap: {:.0} MiB live. Dumping state and ending the session cleanly.",
+                    host_rss_kib(),
+                    rss_limit_kib,
+                    self.mem.heap_live_bytes() as f64 / (1024.0 * 1024.0)
+                );
+                self.dump_all_regs();
+                self.stack_trace_all();
+                self.guest_termination_requested = true;
+                loop_running
+                    .store(false, std::sync::atomic::Ordering::Relaxed);
+                return;
+            }
             let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 // To maintain responsiveness when moving the window and so on,
                 // we need to poll for events occasionally, even if the app

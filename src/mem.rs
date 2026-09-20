@@ -1026,6 +1026,11 @@ impl Mem {
         log_dbg!("Freed {:?} ({:#x} bytes)", ptr, size);
     }
 
+    /// Total size of currently-live guest heap allocations (bytes).
+    pub fn heap_live_bytes(&self) -> u64 {
+        self.heap_live_bytes
+    }
+
     /// Allocate memory large enough for a value of type `T` and write the value
     /// to it.
     /// Equivalent to [Self::alloc] + [Self::write].
