@@ -17,6 +17,7 @@ use super::util::{try_decode_pvrtc, PalettedTextureFormat};
 use super::GLESContext;
 use crate::window::{GLContext, GLVersion, Window};
 use std::ffi::CStr;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::marker::PhantomData;
 
 pub struct GLES2NativeContext {
@@ -1267,7 +1268,8 @@ impl GLES for GLES2Native<'_> {
         gles2::ShaderSource(shader, 1, &ptr, std::ptr::null());
     }
     unsafe fn CompileShader(&mut self, shader: GLuint) {
-        gles2::CompileShader(shader)
+        gles2::CompileShader(shader);
+        shader_diag_compiled(shader);
     }
     unsafe fn GetShaderPrecisionFormat(
         &mut self,
@@ -1332,7 +1334,8 @@ impl GLES for GLES2Native<'_> {
         gles2::DetachShader(program, shader)
     }
     unsafe fn LinkProgram(&mut self, program: GLuint) {
-        gles2::LinkProgram(program)
+        gles2::LinkProgram(program);
+        shader_diag_linked(program);
     }
     unsafe fn UseProgram(&mut self, program: GLuint) {
         gles2::UseProgram(program)
@@ -1801,3 +1804,73 @@ impl GLES for GLES2Native<'_> {
     ) {
     }
 }
+
+fn shader_diag_compiled(shader: GLuint) {
+        static FAILS: AtomicUsize = AtomicUsize::new(0);
+        static OKS: AtomicUsize = AtomicUsize::new(0);
+        let mut ok: GLint = 0;
+        unsafe { gles2::GetShaderiv(shader, gles2::COMPILE_STATUS, &mut ok) };
+        if ok == 1 {
+            let n = OKS.fetch_add(1, Ordering::Relaxed);
+            if n == 0 {
+                log!("gles2_native: [shader-diag] first shader compiled OK");
+            }
+            return;
+        }
+        let n = FAILS.fetch_add(1, Ordering::Relaxed);
+        if n >= 8 {
+            return;
+        }
+        let mut log_len: GLint = 0;
+        unsafe { gles2::GetShaderiv(shader, gles2::INFO_LOG_LENGTH, &mut log_len) };
+        let mut buf = vec![0u8; (log_len.max(0) as usize) + 1];
+        unsafe {
+        gles2::GetShaderInfoLog(
+            shader,
+            buf.len() as GLint,
+            std::ptr::null_mut(),
+            buf.as_mut_ptr() as *mut GLchar,
+        );
+        let msg = String::from_utf8_lossy(&buf);
+        log!(
+            "gles2_native: [shader-diag] SHADER COMPILE FAILED (#{}) driver said: {}",
+            n + 1,
+            msg.trim_end()
+        );
+        }
+    }
+
+fn shader_diag_linked(program: GLuint) {
+        static FAILS: AtomicUsize = AtomicUsize::new(0);
+        static OKS: AtomicUsize = AtomicUsize::new(0);
+        let mut ok: GLint = 0;
+        unsafe { gles2::GetProgramiv(program, gles2::LINK_STATUS, &mut ok) };
+        if ok == 1 {
+            let n = OKS.fetch_add(1, Ordering::Relaxed);
+            if n == 0 {
+                log!("gles2_native: [shader-diag] first program linked OK");
+            }
+            return;
+        }
+        let n = FAILS.fetch_add(1, Ordering::Relaxed);
+        if n >= 8 {
+            return;
+        }
+        let mut log_len: GLint = 0;
+        unsafe { gles2::GetProgramiv(program, gles2::INFO_LOG_LENGTH, &mut log_len) };
+        let mut buf = vec![0u8; (log_len.max(0) as usize) + 1];
+        unsafe {
+        gles2::GetProgramInfoLog(
+            program,
+            buf.len() as GLint,
+            std::ptr::null_mut(),
+            buf.as_mut_ptr() as *mut GLchar,
+        );
+        let msg = String::from_utf8_lossy(&buf);
+        log!(
+            "gles2_native: [shader-diag] PROGRAM LINK FAILED (#{}) driver said: {}",
+            n + 1,
+            msg.trim_end()
+        );
+        }
+    }
