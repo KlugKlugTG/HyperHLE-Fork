@@ -878,6 +878,18 @@ impl Window {
         // remove this (https://github.com/touchHLE/touchHLE/issues/85).
         sdl2::hint::set("SDL_JOYSTICK_HIDAPI", "0");
 
+        // On Android, SDL's default event pump (Android_PumpEvents_Blocking)
+        // parks the emulator thread inside SDL_SemWait(ResumeSem) the moment
+        // the Activity pauses (Home button / incoming call / screen off).
+        // From the outside that is indistinguishable from a wedged host call,
+        // so the watchdog used to SIGABRT the process ~30s later (the silent
+        // "black screen then gone" kills). The non-blocking pump pauses audio
+        // and backs up the EGL context the same way, but never blocks, so the
+        // run loop keeps spinning while backgrounded.
+        if env::consts::OS == "android" {
+            sdl2::hint::set("SDL_ANDROID_BLOCK_ON_PAUSE", "0");
+        }
+
         if env::consts::OS == "android" {
             // It's important to set context version BEFORE window creation
             // ref. https://wiki.libsdl.org/SDL2/SDL_GLattr
