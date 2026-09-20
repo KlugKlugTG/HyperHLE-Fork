@@ -1663,10 +1663,21 @@ impl Environment {
         // dumps registers/stacks, logs the guest-heap share, and ends the
         // session through the clean return-to-host path so the next log shows
         // a proper "session end" marker instead of silence.
+        // Default is set above the healthy steady-state RSS of the heaviest
+        // known app (BioShock via ANGLE plateaus at ~1.56 GiB) so the guard
+        // only fires when the process is genuinely about to be LMK-killed.
         let rss_limit_kib: u64 = std::env::var("TOUCHHLE_RSS_LIMIT_KIB")
             .ok()
             .and_then(|v| v.trim().parse().ok())
-            .unwrap_or(1_400_000);
+            .unwrap_or(2_500_000);
+        // After the emulator loop has been wedged inside a single host call
+        // for this long, self-raise SIGABRT so the crash handler prints a
+        // native backtrace of the wedged call. 0 disables.
+        let hang_abort_secs: u64 = std::env::var("TOUCHHLE_HANG_ABORT_SECS")
+            .ok()
+            .and_then(|v| v.trim().parse().ok())
+            .unwrap_or(30);
+        let hang_aborted = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let emergency_dump = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let mut curr_host_context = self.threads[0].host_context.take().unwrap();
         let panic_cell = self.panic_cell.clone();
@@ -1686,6 +1697,7 @@ impl Environment {
             let running = loop_running.clone();
             let emergency = emergency_dump.clone();
             let rss_limit = rss_limit_kib;
+            let hang_aborted = hang_aborted.clone();
             let _ = std::thread::Builder::new()
                 .name("touchHLE-watchdog".into())
                 .spawn(move || {
@@ -1716,6 +1728,23 @@ impl Environment {
                                 "touchHLE::watchdog: up {:.0}s, EMULATOR LOOP STUCK for {:.1}s (no iteration — likely wedged inside one host call: GPU driver, JIT or lock), host RSS {} KiB",
                                 start.elapsed().as_secs_f32(), idle_s, rss
                             );
+                            if hang_abort_secs > 0
+                                && idle_ms > hang_abort_secs.saturating_mul(1000)
+                                && !hang_aborted.swap(true, std::sync::atomic::Ordering::Relaxed)
+                            {
+                                echo_no_panic!(
+                                    "touchHLE::watchdog: loop wedged for >{}s — raising SIGABRT to capture a native backtrace of the wedged call",
+                                    hang_abort_secs
+                                );
+                                #[allow(unused_unsafe)]
+                                unsafe {
+                                    extern "C" {
+                                        fn raise(sig: std::ffi::c_int) -> std::ffi::c_int;
+                                    }
+                                    const SIGABRT: std::ffi::c_int = 6;
+                                    raise(SIGABRT);
+                                }
+                            }
                         } else {
                             echo_no_panic!(
                                 "touchHLE::watchdog: up {:.0}s, emulator loop alive (idle {:.1}s), host RSS {} KiB",
