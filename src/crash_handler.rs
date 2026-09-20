@@ -321,13 +321,32 @@ mod imp {
         }
     }
 
+    /// Alternate signal stack. Without this, a host stack overflow (SIGSEGV
+    /// on the guard page) kills the process silently: the handler itself
+    /// faults because it has no stack to run on.
+    static ALT_STACK: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
     /// Install the diagnostic handlers for the fatal native signals.
     pub fn install() {
         resolve_backtrace();
+        // Set up the alternate stack for the handler.
+        const ALT_STACK_SIZE: usize = 1024 * 64;
+        unsafe {
+            let buf = libc::malloc(ALT_STACK_SIZE);
+            if !buf.is_null() {
+                ALT_STACK.store(buf as usize, Ordering::SeqCst);
+                let ss = libc::stack_t {
+                    ss_sp: buf,
+                    ss_flags: 0,
+                    ss_size: ALT_STACK_SIZE,
+                };
+                libc::sigaltstack(&ss, std::ptr::null_mut());
+            }
+        }
         let mut act: libc::sigaction = unsafe { std::mem::zeroed() };
-        act.sa_flags = libc::SA_SIGINFO | libc::SA_NODEFER;
+        act.sa_flags = libc::SA_SIGINFO | libc::SA_NODEFER | libc::SA_ONSTACK;
         act.sa_sigaction = handler as usize;
-        for &sig in &[libc::SIGSEGV, libc::SIGBUS, libc::SIGILL, libc::SIGABRT] {
+        for &sig in &[libc::SIGSEGV, libc::SIGBUS, libc::SIGILL, libc::SIGABRT, libc::SIGFPE] {
             unsafe {
                 libc::sigaction(sig, &act, std::ptr::null_mut());
             }

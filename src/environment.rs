@@ -1660,7 +1660,21 @@ impl Environment {
         let mut curr_host_context = self.threads[0].host_context.take().unwrap();
         let panic_cell = self.panic_cell.clone();
         let mut stepping = false;
+        let run_started = Instant::now();
+        let mut last_heartbeat = run_started;
         loop {
+            // Heartbeat: log liveness + host RSS every 5 s. If the process is
+            // hard-killed (Android LMK/ANR SIGKILL) or dies inside a single
+            // long host call (e.g. a driver/JIT wedge), the gap between the
+            // last heartbeat and the last log line identifies which happened.
+            if last_heartbeat.elapsed() >= Duration::from_secs(5) {
+                last_heartbeat = Instant::now();
+                echo_no_panic!(
+                    "touchHLE::environment: heartbeat: up {:.0}s, host RSS {} KiB",
+                    run_started.elapsed().as_secs_f32(),
+                    host_rss_kib()
+                );
+            }
             if stepping {
                 self.remaining_ticks = None;
             } else {
@@ -3306,4 +3320,18 @@ mod dylib_sorting_tests {
             "Sort should detect self-dependency as a cycle and return an error"
         );
     }
+}
+
+/// Host process resident memory in KiB (Linux/Android), for the heartbeat log.
+fn host_rss_kib() -> u64 {
+    #[cfg(unix)]
+    {
+        let statm = std::fs::read_to_string("/proc/self/statm").unwrap_or_default();
+        if let Some(rss_pages) = statm.split_whitespace().nth(1) {
+            if let Ok(pages) = rss_pages.parse::<u64>() {
+                return pages * 4096 / 1024;
+            }
+        }
+    }
+    0
 }
