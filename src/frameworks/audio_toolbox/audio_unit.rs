@@ -1706,6 +1706,45 @@ pub fn render_audio_unit(env: &mut Environment, audio_unit: AudioUnit) {
 
         let (al_fmt, _, processed) =
             decode_buffer(&env.mem, &stream_format, buffer1_data.cast(), buffer_size);
+        // Audio diagnostic: is the guest actually producing non-silent audio,
+        // and does OpenAL accept/play it? Peak = max |sample| (0 => silence).
+        {
+            use std::sync::atomic::{AtomicU64, Ordering};
+            static PASS_COUNT: AtomicU64 = AtomicU64::new(0);
+            static FMT_LOGGED: AtomicU64 = AtomicU64::new(0);
+            let pass = PASS_COUNT.fetch_add(1, Ordering::Relaxed);
+            if FMT_LOGGED.swap(1, Ordering::Relaxed) == 0 {
+                let sr = { stream_format.sample_rate };
+                let ch = { stream_format.channels_per_frame };
+                let bits = { stream_format.bits_per_channel };
+                log!(
+                    "[audio-diag] unit render started: sr={} ch={} bits={} frames={} has_input={}",
+                    sr, ch, bits, frames, has_input_format
+                );
+            }
+            if pass % 200 == 0 {
+                let peak = processed
+                    .chunks_exact(2)
+                    .map(|s| i16::from_le_bytes([s[0], s[1]]).unsigned_abs() as u32)
+                    .max()
+                    .unwrap_or(0);
+                let context = env
+                    .framework_state
+                    .audio_toolbox
+                    .al_context
+                    .make_al_context_current(&mut env.openal_manager);
+                let mut state = 0;
+                unsafe {
+                    context.GetSourcei(al_source, AL_SOURCE_STATE, &mut state);
+                }
+                log!(
+                    "[audio-diag] render pass {}: peak={} source_state={}",
+                    pass,
+                    peak,
+                    if state == 0x1012 { "PLAYING" } else { "STOPPED" }
+                );
+            }
+        }
         {
             let context = env
                 .framework_state

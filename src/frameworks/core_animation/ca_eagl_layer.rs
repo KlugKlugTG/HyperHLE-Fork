@@ -254,6 +254,39 @@ pub fn get_pixels_vec_for_presenting(env: &mut Environment, layer: id) -> Vec<u8
 /// Stores the new rendered frame in the layer and marks the GLES texture as
 /// stale. Data must be in RGBA8 format.
 pub fn present_pixels(env: &mut Environment, layer: id, pixels: Vec<u8>, width: u32, height: u32) {
+    // Black-frame diagnostic: count consecutive all-black frames so a
+    // "compositor draws but the game renders nothing" situation becomes
+    // visible in the log (every 120 consecutive black frames).
+    {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static BLACK_STREAK: AtomicU64 = AtomicU64::new(0);
+        static FRAMES_TOTAL: AtomicU64 = AtomicU64::new(0);
+        let all_black = pixels.chunks_exact(4).all(|px| px[0] == 0 && px[1] == 0 && px[2] == 0);
+        let total = FRAMES_TOTAL.fetch_add(1, Ordering::Relaxed) + 1;
+        if all_black {
+            let streak = BLACK_STREAK.fetch_add(1, Ordering::Relaxed) + 1;
+            if streak % 120 == 0 {
+                log!(
+                    "[black-frame-diag] frame {} ({}x{}): {} consecutive BLACK frames presented to compositor",
+                    total,
+                    width,
+                    height,
+                    streak
+                );
+            }
+        } else {
+            let streak = BLACK_STREAK.swap(0, Ordering::Relaxed);
+            if streak >= 60 {
+                log!(
+                    "[black-frame-diag] frame {} ({}x{}): black streak of {} ended — first non-black frame",
+                    total,
+                    width,
+                    height,
+                    streak
+                );
+            }
+        }
+    }
     let host_obj = env.objc.borrow_mut::<CALayerHostObject>(layer);
     host_obj.presented_pixels = Some((pixels, width, height));
     host_obj.gles_texture_is_up_to_date = false;
