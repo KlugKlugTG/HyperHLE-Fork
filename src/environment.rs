@@ -1804,6 +1804,16 @@ impl Environment {
                 echo!("Guest session ended through the controlled return-to-host path.");
                 return;
             }
+            if kill_current_thread && self.current_thread == 0 && !self.guest_termination_requested {
+                // On iOS, main() returning ends the process; the emulator must
+                // not keep scheduling orphaned worker threads afterwards (the
+                // alternative is a frozen window or a later "deadlocked"
+                // panic that hides the real cause).
+                echo!(
+                    "Main thread (thread 0) has exited — ending the guest session (iOS would exit the process here)."
+                );
+                return;
+            }
             if self.guest_termination_requested {
                 // A host callback may have yielded before its linked-function
                 // dispatch reached the return-to-host check. Put this live
@@ -2510,7 +2520,11 @@ impl Environment {
                     }
                     dyld::Dyld::SVC_THREAD_EXIT => {
                         if self.current_thread == 0 {
-                            log_no_panic!("Main thread exited normally (or crashed early). Returning to host.");
+                            echo!(
+                                "Main thread exited (main() returned or pthread_exit on the main thread). Guest CPU state at exit:"
+                            );
+                            self.dump_all_regs();
+                            self.stack_trace_current();
                             ThreadNextAction::ReturnToHost
                         } else {
                             log_dbg!(
