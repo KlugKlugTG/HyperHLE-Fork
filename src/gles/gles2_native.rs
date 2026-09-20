@@ -419,6 +419,63 @@ pub struct GLES2Native<'gl_ctx> {
 /// use shaders (see `--prefer-gles2-context`) — those apps still
 /// boilerplate-call e.g. `glEnable(GL_TEXTURE_2D)` even though it has no
 /// effect on a shader pipeline.
+// ---------------------------------------------------------------------------
+// [draw-diag] First draw calls + framebuffer binds, to chase black-screen
+// rendering on native ES2 drivers (BioShock presents black frames despite
+// shaders compiling and linking).
+// ---------------------------------------------------------------------------
+
+static DRAW_DIAG_CALLS: AtomicUsize = AtomicUsize::new(0);
+static FB_BIND_DIAG_CALLS: AtomicUsize = AtomicUsize::new(0);
+
+fn draw_diag_pre(name: &str) {
+    let n = DRAW_DIAG_CALLS.fetch_add(1, Ordering::Relaxed);
+    if n >= 8 {
+        return;
+    }
+    let mut fb: GLint = 0;
+    unsafe {
+        gles2::GetIntegerv(gles2::FRAMEBUFFER_BINDING, &mut fb);
+    }
+    let mut err: GLenum = 0;
+    unsafe {
+        err = gles2::GetError();
+    }
+    log!(
+        "gles2_native: [draw-diag] {} #{}: framebuffer={:#x} pre-error={:#x}",
+        name,
+        n,
+        fb,
+        err
+    );
+}
+
+fn draw_diag_post() {
+    let n = DRAW_DIAG_CALLS.load(Ordering::Relaxed);
+    if n > 8 {
+        return;
+    }
+    let err = unsafe { gles2::GetError() };
+    if err != 0 {
+        log!("gles2_native: [draw-diag] call #{} raised GL error {:#x}", n, err);
+    }
+}
+
+fn fb_bind_diag(target: GLenum, framebuffer: GLuint) {
+    let n = FB_BIND_DIAG_CALLS.fetch_add(1, Ordering::Relaxed);
+    if n >= 8 {
+        return;
+    }
+    let status = unsafe { gles2::CheckFramebufferStatus(gles2::FRAMEBUFFER) };
+    log!(
+        "gles2_native: [fb-diag] BindFramebuffer #{}: target={:#x} fb={:#x} status_after_prev={:#x}",
+        n,
+        target,
+        framebuffer,
+        status
+    );
+}
+
 fn is_es1_only_capability(cap: GLenum) -> bool {
     matches!(
         cap,
@@ -611,7 +668,9 @@ impl GLES for GLES2Native<'_> {
 
     // Drawing
     unsafe fn DrawArrays(&mut self, mode: GLenum, first: GLint, count: GLsizei) {
-        gles2::DrawArrays(mode, first, count)
+        draw_diag_pre("DrawArrays");
+        gles2::DrawArrays(mode, first, count);
+        draw_diag_post();
     }
     unsafe fn DrawElements(
         &mut self,
@@ -620,7 +679,9 @@ impl GLES for GLES2Native<'_> {
         type_: GLenum,
         indices: *const GLvoid,
     ) {
-        gles2::DrawElements(mode, count, type_, indices)
+        draw_diag_pre("DrawElements");
+        gles2::DrawElements(mode, count, type_, indices);
+        draw_diag_post();
     }
     unsafe fn Clear(&mut self, mask: GLbitfield) {
         gles2::Clear(mask)
@@ -1108,6 +1169,7 @@ impl GLES for GLES2Native<'_> {
         gles2::DeleteFramebuffers(n, framebuffers)
     }
     unsafe fn BindFramebufferOES(&mut self, target: GLenum, framebuffer: GLuint) {
+        fb_bind_diag(target, framebuffer);
         gles2::BindFramebuffer(target, framebuffer)
     }
     unsafe fn IsFramebufferOES(&mut self, framebuffer: GLuint) -> GLboolean {
