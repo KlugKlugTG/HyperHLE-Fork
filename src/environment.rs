@@ -470,6 +470,35 @@ impl Environment {
         log!("{:?} device family is chosen.", device_family);
         options.device_family = Some(device_family);
 
+        // --- Retina / 4-inch compatibility: detect whether the app bundle
+        // actually supports Retina (@2x) and iPhone5 (568h). Old apps (e.g.
+        // Real Racing 2009) don't, and on Retina devices iOS runs them in
+        // 1x / 3.5-inch letterbox mode. Without this, touchHLE would allocate
+        // a 640x960 or 640x1136 renderbuffer but the app renders 320x480 into
+        // the bottom-left, leaving white/black bars (reported for iPhone4/5/5c,
+        // iPod Touch 4/5, iPad Retina).
+        // We set env vars that are checked by window.rs and ui_screen.rs.
+        // This runs before Window::new so screen_size() is correct from start.
+        if device_family.is_phone_568() && !bundle.supports_iphone5(&fs) {
+            log!(
+                "Compatibility: app does not support 4-inch (no Default-568h@2x.png), forcing 3.5-inch (320x480) mode even on {:?}",
+                device_family
+            );
+            // SAFETY: called during startup, single-threaded.
+            unsafe {
+                std::env::set_var("TOUCHHLE_FORCE_3_5_INCH", "1");
+            }
+        }
+        if device_family.is_retina() && !bundle.supports_retina(&fs) {
+            log!(
+                "Compatibility: app does not support Retina (no @2x), forcing 1x renderbuffer even on Retina {:?}",
+                device_family
+            );
+            unsafe {
+                std::env::set_var("TOUCHHLE_FORCE_1X", "1");
+            }
+        }
+
         // Read the executable before the window exists: which OpenGL ES API
         // generation the app can use decides which host GL driver the window
         // should load on Android (see `Window::new`). The same bytes are
@@ -1701,11 +1730,15 @@ impl Environment {
                     };
                     deadline.is_some_and(|due| due < Instant::now() + Duration::from_millis(10))
                 });
-                self.remaining_ticks = Some(if imminent_wakeup {
-                    100_000
-                } else {
-                    1_000_000
-                });
+                // PERF: increased batch to 5M/500k (from 1M/100k) to reduce dynarmic Run() overhead.
+                // 5M ticks ~ 2-5ms on modern hosts, still within 16ms frame budget.
+                // Env var TOUCHHLE_JIT_BATCH allows tuning without recompiling.
+                let default_batch = if imminent_wakeup { 500_000 } else { 5_000_000 };
+                let batch = std::env::var("TOUCHHLE_JIT_BATCH")
+                    .ok()
+                    .and_then(|v| v.parse::<u64>().ok())
+                    .unwrap_or(default_batch);
+                self.remaining_ticks = Some(batch);
             }
             // RTCV-style game corruption: once per main-loop iteration, give the
             // corruption engine a chance to mangle live guest memory. This is a

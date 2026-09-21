@@ -196,10 +196,25 @@ fn init_common(env: &mut Environment, this: id) -> id {
     // retina ones). EAGL derives the renderbuffer size from the layer's
     // bounds * contentsScale, so without this retina-aware apps would
     // allocate a half-size framebuffer and render zoomed / cropped.
-    let screen_scale: crate::frameworks::core_graphics::CGFloat = {
+    let mut screen_scale: crate::frameworks::core_graphics::CGFloat = {
         let screen: id = msg_class![env; UIScreen mainScreen];
         msg![env; screen scale]
     };
+    // Retina compat: non-Retina apps on Retina devices should stay 1x
+    if screen_scale > 1.0 {
+        let supports_retina = env.bundle.supports_retina(&env.fs);
+        if !supports_retina {
+            static LOGGED_RETINA: std::sync::Once = std::sync::Once::new();
+            LOGGED_RETINA.call_once(|| {
+                log!(
+                    "UIView: app does not support Retina (no @2x), forcing contentsScale 1.0 even on Retina {:?} (was {})",
+                    env.window().device_family(),
+                    screen_scale
+                );
+            });
+            screen_scale = 1.0;
+        }
+    }
     env.objc
         .borrow_mut::<UIViewHostObject>(this)
         .content_scale_factor = screen_scale;

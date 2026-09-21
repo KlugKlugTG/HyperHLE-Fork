@@ -19,7 +19,26 @@ pub struct State {
 }
 
 fn screen_size_for_current_orientation(env: &mut crate::Environment) -> (u32, u32) {
-    let (portrait_width, portrait_height) = env.window().device_family().portrait_size();
+    let device_family = env.window().device_family();
+    let mut portrait_size = device_family.portrait_size();
+
+    // iOS 4-inch compatibility: apps without Default-568h@2x.png run in
+    // 3.5-inch letterbox mode even on iPhone 5/5c (320x480 points).
+    if device_family.is_phone_568() {
+        let supports_5 = env.bundle.supports_iphone5(&env.fs);
+        if !supports_5 {
+            portrait_size = (320, 480);
+            static LOGGED: std::sync::Once = std::sync::Once::new();
+            LOGGED.call_once(|| {
+                log!(
+                    "UIScreen: app does not support 4-inch (no Default-568h@2x.png), reporting 320x480 bounds even on {:?}",
+                    device_family
+                );
+            });
+        }
+    }
+
+    let (portrait_width, portrait_height) = portrait_size;
 
     if crate::env_flag_cached!("TOUCHHLE_LANDSCAPE_UISCREEN_BOUNDS") {
         let is_landscape = !matches!(

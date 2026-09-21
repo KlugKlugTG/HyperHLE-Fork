@@ -224,6 +224,117 @@ impl Bundle {
         self.path.join("Default.png")
     }
 
+    /// Whether the app bundle contains a launch image that indicates
+    /// support for the 4-inch iPhone 5/5c screen (1136x640).
+    /// iOS uses presence of `Default-568h@2x.png` to decide whether to
+    /// run in 4-inch mode or letterbox to 3.5-inch (480).
+    pub fn supports_iphone5(&self, fs: &Fs) -> bool {
+        let base_name = self
+            .plist
+            .get("UILaunchImageFile")
+            .map(|v| v.as_string().unwrap())
+            .unwrap_or("Default");
+        let candidates = [
+            format!("{}-568h@2x.png", base_name),
+            "Default-568h@2x.png".to_string(),
+            "Default-568h@2x~iphone.png".to_string(),
+        ];
+        for cand in &candidates {
+            if fs.is_file(&self.path.join(cand)) {
+                return true;
+            }
+        }
+        if let Some(arr) = self
+            .plist
+            .get("UILaunchImages")
+            .and_then(|v| v.as_array())
+        {
+            for dict in arr {
+                if let Some(d) = dict.as_dictionary() {
+                    if let Some(size_str) = d
+                        .get("UILaunchImageSize")
+                        .and_then(|v| v.as_string())
+                    {
+                        if size_str.contains("568") {
+                            return true;
+                        }
+                    }
+                    if let Some(name) = d
+                        .get("UILaunchImageName")
+                        .and_then(|v| v.as_string())
+                    {
+                        if name.contains("568h") {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    /// Heuristic whether the app supports Retina (@2x) displays.
+    /// Old non-Retina apps (e.g. Real Racing 2009) were built before iOS 4
+    /// and have no @2x launch images. On Retina devices iOS runs them in
+    /// pixel-doubled 1x mode with a 320x480 renderbuffer, not 640x960.
+    pub fn supports_retina(&self, fs: &Fs) -> bool {
+        let base_name = self
+            .plist
+            .get("UILaunchImageFile")
+            .map(|v| v.as_string().unwrap())
+            .unwrap_or("Default");
+        let candidates = [
+            format!("{}@2x.png", base_name),
+            format!("{}-568h@2x.png", base_name),
+            format!("{}@2x~ipad.png", base_name),
+            format!("{}-Portrait@2x~ipad.png", base_name),
+            format!("{}-Landscape@2x~ipad.png", base_name),
+            "Default@2x.png".to_string(),
+            "Default-568h@2x.png".to_string(),
+            "Default@2x~ipad.png".to_string(),
+            "Default-Portrait@2x~ipad.png".to_string(),
+            "Default-Landscape@2x~ipad.png".to_string(),
+            "Icon@2x.png".to_string(),
+            "Icon-72@2x.png".to_string(),
+        ];
+        for cand in &candidates {
+            if fs.is_file(&self.path.join(cand)) {
+                return true;
+            }
+        }
+        if let Some(files) = self.plist.get("CFBundleIconFiles") {
+            if let Some(arr) = files.as_array() {
+                for entry in arr {
+                    if let Some(s) = entry.as_string() {
+                        if s.contains("@2x") {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(icons) = self.plist.get("CFBundleIcons") {
+            if let Some(dict) = icons.as_dictionary() {
+                if let Some(primary) = dict.get("CFBundlePrimaryIcon") {
+                    if let Some(primary_dict) = primary.as_dictionary() {
+                        if let Some(files) = primary_dict.get("CFBundleIconFiles") {
+                            if let Some(arr) = files.as_array() {
+                                for entry in arr {
+                                    if let Some(s) = entry.as_string() {
+                                        if s.contains("@2x") {
+                                            return true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        false
+    }
+
     pub fn status_bar_hidden(&self) -> bool {
         self.plist
             .get("UIStatusBarHidden")

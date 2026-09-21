@@ -805,6 +805,10 @@ pub struct Window {
     /// Host scheduling / power-management hints for the emulator thread
     /// (Android). Fed once per presented frame from [Window::swap_window].
     perf_hints: crate::perf_hints::PerfHints,
+    /// Cached inverse of the rotation matrix, to avoid per-touch inverse().
+    /// Computed at creation and on rotate_device(). Safe: rotation matrices
+    /// are always invertible, but we fallback to identity if not.
+    cached_inv_rotation: Matrix<2>,
     /// Whether or not we are on the "main" environment stack (rather than
     /// a coroutine stack). Checked in various functions to make sure that
     /// certain SDL functions (that call JNI functions) are on the main
@@ -868,6 +872,40 @@ impl Window {
             }
         }
 
+        // --- ANGLE / shader cache hardening (Android crash fix) ---
+        // ANGLE on Android tries to create a shader disk cache and may call
+        // std::filesystem operations that throw filesystem_error [/data] when
+        // HOME/TMPDIR are not set to a writable location. This was observed as
+        // SIGABRT in libangle's system_utils_posix.cpp GetTempDirectory().
+        // Disable all shader disk caches and force writable HOME/TMPDIR early,
+        // before SDL/ANGLE loads.
+        {
+            // Disable ANGLE and Mesa shader caches - safe, only affects host driver caching
+            std::env::set_var("ANGLE_SHADER_DUMP_PATH", "0");
+            std::env::set_var("MESA_SHADER_CACHE_DISABLE", "1");
+            std::env::set_var("__GL_SHADER_DISK_CACHE", "0");
+            std::env::set_var("__GL_SHADER_DISK_CACHE_PATH", "/dev/null");
+            std::env::set_var("MESA_GLSL_CACHE_DISABLE", "1");
+            // On Android, ensure TMPDIR and HOME are set to writable locations.
+            // We set them to /data/local/tmp as a safe fallback; after SDL init we
+            // will try to use the app's external storage path if available.
+            if std::env::consts::OS == "android" {
+                if std::env::var_os("TMPDIR").is_none() {
+                    std::env::set_var("TMPDIR", "/data/local/tmp");
+                }
+                // HOME may be "/" on some Android builds - override if "/" or unset
+                let home_needs_override = std::env::var_os("HOME").map_or(true, |h| h == "/" || h.is_empty());
+                if home_needs_override {
+                    // Try pref_path first, fallback to /data/local/tmp
+                    let writable = sdl2::filesystem::pref_path("org.touchhle", "touchHLE")
+                        .unwrap_or_else(|_| "/data/local/tmp".to_string());
+                    std::env::set_var("HOME", &writable);
+                    std::env::set_var("XDG_CACHE_HOME", &writable);
+                    std::env::set_var("XDG_CONFIG_HOME", &writable);
+                }
+            }
+        }
+
         let sdl_ctx = sdl2::init().unwrap();
         let video_ctx = sdl_ctx.video().unwrap();
 
@@ -919,6 +957,35 @@ impl Window {
         // the idle timer that triggers sleep by default, so we turn it back on
         // here, and then the app can disable it if it wants to.
         video_ctx.enable_screen_saver();
+
+        // Second-stage ANGLE hardening: after SDL init, try to get a truly writable
+        // external storage path and override HOME/TMPDIR/XDG_* again. This is the
+        // path that user_data_base_path() uses, which is guaranteed writable on
+        // Android. Doing it here ensures ANGLE's GetTempDirectory() never sees "/" or "/data".
+        #[cfg(target_os = "android")]
+        {
+            // Try to get external storage path via SDL_AndroidGetExternalStoragePath
+            // This is safe after SDL init.
+            unsafe {
+                extern "C" {
+                    fn SDL_AndroidGetExternalStoragePath() -> *const std::ffi::c_char;
+                }
+                let ptr = SDL_AndroidGetExternalStoragePath();
+                if !ptr.is_null() {
+                    if let Ok(cstr) = std::ffi::CStr::from_ptr(ptr).to_str() {
+                        if !cstr.is_empty() && cstr != "/" {
+                            log!("ANGLE hardening: overriding HOME/TMPDIR/XDG_CACHE_HOME to writable path: {}", cstr);
+                            std::env::set_var("HOME", cstr);
+                            std::env::set_var("TMPDIR", cstr);
+                            std::env::set_var("XDG_CACHE_HOME", cstr);
+                            std::env::set_var("XDG_CONFIG_HOME", cstr);
+                            // Also ensure shader cache disabled vars still set
+                            std::env::set_var("ANGLE_SHADER_DUMP_PATH", "0");
+                        }
+                    }
+                }
+            }
+        }
 
         // PERF: never request depth or stencil buffers for the window's own
         // framebuffer. The only things ever drawn to it are flat,
@@ -1097,6 +1164,17 @@ impl Window {
                     .map(|fps| Duration::from_secs_f64(1.0 / fps))
                     .unwrap_or(Duration::from_micros(16_667)),
             ),
+            cached_inv_rotation: {
+                // Compute inverse rotation once at startup. Rotation matrices are always
+                // invertible, but fallback to identity to avoid unwrap panic.
+                let rot = match device_orientation {
+                    DeviceOrientation::Portrait => Matrix::identity(),
+                    DeviceOrientation::PortraitUpsideDown => Matrix::z_rotation(PI),
+                    DeviceOrientation::LandscapeLeft => Matrix::z_rotation(-FRAC_PI_2),
+                    DeviceOrientation::LandscapeRight => Matrix::z_rotation(FRAC_PI_2),
+                };
+                rot.inverse().unwrap_or_else(|| Matrix::identity())
+            },
             on_main_stack: true,
         };
 
@@ -1297,8 +1375,8 @@ impl Window {
                 );
                 [x, y]
             } else {
-                let matrix = window.rotation_matrix().inverse().unwrap();
-                matrix.transform([x, y])
+                // Use cached inverse rotation to avoid per-touch matrix inversion and unwrap().
+                window.cached_inv_rotation.transform([x, y])
             };
 
             // back to pixels
@@ -1957,8 +2035,8 @@ impl Window {
             (x, y)
         };
 
-        // Correct for window rotation
-        let [x, y] = self.rotation_matrix().inverse().unwrap().transform([x, y]);
+        // Correct for window rotation - use cached inverse to avoid per-frame inversion
+        let [x, y] = self.cached_inv_rotation.transform([x, y]);
         let (x, y) = (x.clamp(-1.0, 1.0), y.clamp(-1.0, 1.0)); // just in case
 
         // Let's simulate tilting the device based on the analog stick inputs.
@@ -2246,7 +2324,7 @@ impl Window {
         let rotation = if self.splash_image_is_orientation_specific {
             Matrix::identity()
         } else if is_landscape && image_height > image_width {
-            self.rotation_matrix().inverse().unwrap()
+            self.cached_inv_rotation
         } else {
             self.rotation_matrix()
         };
@@ -2410,6 +2488,8 @@ impl Window {
         }
 
         self.device_orientation = new_orientation;
+        // Update cached inverse rotation to avoid per-touch inverse().unwrap()
+        self.cached_inv_rotation = self.rotation_matrix().inverse().unwrap_or_else(|| Matrix::identity());
 
         if self.splash_image.is_some() {
             self.display_splash();
@@ -2421,12 +2501,24 @@ impl Window {
     }
 
     pub fn screen_size(&self) -> (u32, u32) {
-        self.host_screen_size
-            .unwrap_or_else(|| self.device_family.portrait_size())
+        // host_screen_size is the host window's pixel size (e.g. 1080x2400)
+        // when --device-family=auto is used. It must NOT be returned as the
+        // guest logical size (which is in points, e.g. 320x480). Returning host
+        // pixels here mixes points vs pixels and breaks viewport aspect math
+        // (reported as black bars / half-screen on iPhone5c and all Retina
+        // devices). The host size is only used for the SDL window creation.
+        if self.device_family.is_phone_568() && crate::env_flag_cached!("TOUCHHLE_FORCE_3_5_INCH") {
+            return (320, 480);
+        }
+        self.device_family.portrait_size()
     }
 
     pub fn screen_scale(&self) -> f32 {
+        if crate::env_flag_cached!("TOUCHHLE_FORCE_1X") {
+            return 1.0;
+        }
         if self.host_screen_size.is_some() {
+            // auto mode: host pixels already match screen, so logical scale 1.0
             1.0
         } else {
             self.device_family.scale_factor()

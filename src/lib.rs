@@ -86,6 +86,29 @@ pub extern "C" fn SDL_main(
     _argc: std::ffi::c_int,
     _argv: *const *const std::ffi::c_char,
 ) -> std::ffi::c_int {
+    // --- Early ANGLE hardening: must run before any SDL/ANGLE loading ---
+    // Disable shader disk caches that may try to write to /data and throw filesystem_error
+    std::env::set_var("ANGLE_SHADER_DUMP_PATH", "0");
+    std::env::set_var("MESA_SHADER_CACHE_DISABLE", "1");
+    std::env::set_var("__GL_SHADER_DISK_CACHE", "0");
+    std::env::set_var("__GL_SHADER_DISK_CACHE_PATH", "/dev/null");
+    std::env::set_var("MESA_GLSL_CACHE_DISABLE", "1");
+    // Ensure HOME/TMPDIR are writable - override if "/" or unset
+    {
+        let home_needs_override = std::env::var_os("HOME").map_or(true, |h| h == "/" || h.is_empty());
+        if home_needs_override {
+            // Try pref_path, fallback to /data/local/tmp
+            let writable = sdl2::filesystem::pref_path("org.touchhle", "touchHLE")
+                .unwrap_or_else(|_| "/data/local/tmp".to_string());
+            std::env::set_var("HOME", &writable);
+            std::env::set_var("XDG_CACHE_HOME", &writable);
+            std::env::set_var("XDG_CONFIG_HOME", &writable);
+        }
+        if std::env::var_os("TMPDIR").is_none() {
+            std::env::set_var("TMPDIR", "/data/local/tmp");
+        }
+    }
+
     // Rust's default panic handler prints to stderr, but on Android that just
     // gets discarded, so we set a custom hook to make debugging easier.
     std::panic::set_hook(Box::new(|info| {
@@ -126,6 +149,13 @@ Special options:
         Print basic information about the app bundle without running the app.
 ";
 pub fn main<T: Iterator<Item = String>>(mut args: T) -> Result<(), String> {
+    // Early ANGLE hardening for all platforms (especially Android)
+    std::env::set_var("ANGLE_SHADER_DUMP_PATH", "0");
+    std::env::set_var("MESA_SHADER_CACHE_DISABLE", "1");
+    std::env::set_var("__GL_SHADER_DISK_CACHE", "0");
+    std::env::set_var("__GL_SHADER_DISK_CACHE_PATH", "/dev/null");
+    std::env::set_var("MESA_GLSL_CACHE_DISABLE", "1");
+
     crash_handler::install();
     crash_handler::install_panic_hook();
 
