@@ -3086,14 +3086,54 @@ fn glBindAttribLocation(
 fn glGetAttribLocation(env: &mut Environment, program: GLuint, name: ConstPtr<GLubyte>) -> GLint {
     with_ctx_and_mem_no_skip(env, |gles, mem| unsafe {
         let cstr = read_guest_cstring(mem, name);
-        gles.GetAttribLocation(program, cstr.as_ptr())
+        let loc = gles.GetAttribLocation(program, cstr.as_ptr());
+        attrib_loc_diag(program, cstr.to_string_lossy().as_ref(), loc);
+        loc
     })
+}
+
+/// [attrib-diag] Log the first attribute-location queries (see uniform_loc_diag).
+fn attrib_loc_diag(program: GLuint, name: &str, loc: GLint) {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static COUNT: AtomicUsize = AtomicUsize::new(0);
+    let n = COUNT.fetch_add(1, Ordering::Relaxed);
+    if n >= 16 {
+        return;
+    }
+    log!(
+        "gles2_native: [attrib-diag] #{} glGetAttribLocation(program={}, name={:?}) = {}",
+        n,
+        program,
+        name,
+        loc
+    );
 }
 fn glGetUniformLocation(env: &mut Environment, program: GLuint, name: ConstPtr<GLubyte>) -> GLint {
     with_ctx_and_mem_no_skip(env, |gles, mem| unsafe {
         let cstr = read_guest_cstring(mem, name);
-        gles.GetUniformLocation(program, cstr.as_ptr())
+        let loc = gles.GetUniformLocation(program, cstr.as_ptr());
+        uniform_loc_diag(program, cstr.to_string_lossy().as_ref(), loc);
+        loc
     })
+}
+
+/// [uniform-diag] Log the first uniform-location queries so a shader/program
+/// mismatch (or a silently-failing GetUniformLocation) becomes visible even
+/// when the game never issues a draw call afterwards.
+fn uniform_loc_diag(program: GLuint, name: &str, loc: GLint) {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static COUNT: AtomicUsize = AtomicUsize::new(0);
+    let n = COUNT.fetch_add(1, Ordering::Relaxed);
+    if n >= 32 {
+        return;
+    }
+    log!(
+        "gles2_native: [uniform-diag] #{} glGetUniformLocation(program={}, name={:?}) = {}",
+        n,
+        program,
+        name,
+        loc
+    );
 }
 fn glUniformMatrix2fv(
     env: &mut Environment,
@@ -3135,7 +3175,20 @@ fn glUniformMatrix4fv(
     });
 }
 fn glUseProgram(env: &mut Environment, program: GLuint) {
+    use_prog_diag(program);
     with_ctx_and_mem(env, |gles, _mem| unsafe { gles.UseProgram(program) });
+}
+
+/// [useprogram-diag] Log the first UseProgram switches; a program id of 0
+/// right before presentRenderbuffer would explain black output.
+fn use_prog_diag(program: GLuint) {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static COUNT: AtomicUsize = AtomicUsize::new(0);
+    let n = COUNT.fetch_add(1, Ordering::Relaxed);
+    if n >= 16 {
+        return;
+    }
+    log!("gles2_native: [useprogram-diag] #{} glUseProgram({})", n, program);
 }
 fn glDeleteProgram(env: &mut Environment, program: GLuint) {
     with_ctx_and_mem(env, |gles, _mem| unsafe { gles.DeleteProgram(program) });
@@ -3785,7 +3838,25 @@ fn glVertexAttrib4fv(env: &mut Environment, index: GLuint, values: ConstPtr<GLfl
     });
 }
 fn glUniform1i(env: &mut Environment, location: GLint, v0: GLint) {
+    glUniform_diag("Uniform1i", location);
     with_ctx_and_mem(env, |gles, _mem| unsafe { gles.Uniform1i(location, v0) });
+}
+
+/// [gluniform-diag] Log the first uniform uploads; location=-1 means the game
+/// is writing to a uniform the driver could not resolve (name mismatch).
+fn glUniform_diag(api: &str, location: GLint) {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static COUNT: AtomicUsize = AtomicUsize::new(0);
+    let n = COUNT.fetch_add(1, Ordering::Relaxed);
+    if n >= 24 {
+        return;
+    }
+    log!(
+        "gles2_native: [gluniform-diag] #{} {}(location={})",
+        n,
+        api,
+        location
+    );
 }
 fn glUniform2i(env: &mut Environment, location: GLint, v0: GLint, v1: GLint) {
     with_ctx_and_mem(env, |gles, _mem| unsafe {
