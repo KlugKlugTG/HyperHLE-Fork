@@ -804,6 +804,11 @@ pub const CLASSES: ClassExports = objc_classes! {
     // No real playback to seek in.
 }
 
+- (())setCurrentPlaybackRate:(f64)_rate {
+    // No real playback to rate-control; BioShock's intro-movie code calls
+    // this and previously hit the "does not respond to selector" fallback.
+}
+
 - (f64)initialPlaybackTime {
     env.objc
         .borrow::<MPMoviePlayerControllerHostObject>(this)
