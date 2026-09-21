@@ -63,9 +63,17 @@ impl GLESContext for GLES3NativeContext {
     ) -> Box<dyn GLES + 'gl_ctx> {
         if self.gl_ctx.is_current() && self.is_loaded {
             return Box::new(GLES3Native {
-                _gl_lifetime: PhantomData,
-                pvrtc_native: self.pvrtc_native,
-            });
+            _gl_lifetime: PhantomData,
+            pvrtc_native: self.pvrtc_native,
+            cached_active_texture: gles30::TEXTURE0,
+            cached_bound_textures: std::collections::HashMap::new(),
+            cached_program: None,
+            cached_array_buffer: None,
+            cached_element_array_buffer: None,
+            cached_framebuffer: None,
+            cached_renderbuffer: None,
+            cached_vertex_array: None,
+        });
         }
         unsafe {
             window.make_gl_context_current(&self.gl_ctx);
@@ -88,6 +96,14 @@ impl GLESContext for GLES3NativeContext {
         Box::new(GLES3Native {
             _gl_lifetime: PhantomData,
             pvrtc_native: self.pvrtc_native,
+            cached_active_texture: gles30::TEXTURE0,
+            cached_bound_textures: std::collections::HashMap::new(),
+            cached_program: None,
+            cached_array_buffer: None,
+            cached_element_array_buffer: None,
+            cached_framebuffer: None,
+            cached_renderbuffer: None,
+            cached_vertex_array: None,
         })
     }
 
@@ -98,9 +114,17 @@ impl GLESContext for GLES3NativeContext {
     ) -> Box<dyn GLES + 'gl_ctx> {
         if self.gl_ctx.is_current() && self.is_loaded {
             return Box::new(GLES3Native {
-                _gl_lifetime: PhantomData,
-                pvrtc_native: self.pvrtc_native,
-            });
+            _gl_lifetime: PhantomData,
+            pvrtc_native: self.pvrtc_native,
+            cached_active_texture: gles30::TEXTURE0,
+            cached_bound_textures: std::collections::HashMap::new(),
+            cached_program: None,
+            cached_array_buffer: None,
+            cached_element_array_buffer: None,
+            cached_framebuffer: None,
+            cached_renderbuffer: None,
+            cached_vertex_array: None,
+        });
         }
         make_current_fn(&self.gl_ctx);
         gles30::load_with(&mut *loader_fn);
@@ -114,6 +138,14 @@ impl GLESContext for GLES3NativeContext {
         Box::new(GLES3Native {
             _gl_lifetime: PhantomData,
             pvrtc_native: self.pvrtc_native,
+            cached_active_texture: gles30::TEXTURE0,
+            cached_bound_textures: std::collections::HashMap::new(),
+            cached_program: None,
+            cached_array_buffer: None,
+            cached_element_array_buffer: None,
+            cached_framebuffer: None,
+            cached_renderbuffer: None,
+            cached_vertex_array: None,
         })
     }
 }
@@ -166,6 +198,14 @@ unsafe fn detect_pvrtc_support() -> bool {
 pub struct GLES3Native<'gl_ctx> {
     _gl_lifetime: PhantomData<&'gl_ctx ()>,
     pvrtc_native: bool,
+    cached_active_texture: super::gles3_raw::GLenum,
+    cached_bound_textures: std::collections::HashMap<(super::gles3_raw::GLenum, super::gles3_raw::GLenum), super::gles3_raw::GLuint>,
+    cached_program: Option<super::gles3_raw::GLuint>,
+    cached_array_buffer: Option<super::gles3_raw::GLuint>,
+    cached_element_array_buffer: Option<super::gles3_raw::GLuint>,
+    cached_framebuffer: Option<super::gles3_raw::GLuint>,
+    cached_renderbuffer: Option<super::gles3_raw::GLuint>,
+    cached_vertex_array: Option<super::gles3_raw::GLuint>,
 }
 
 /// Returns `true` if `cap` is an ES 1.1 fixed-function capability that has
@@ -348,10 +388,33 @@ impl GLES for GLES3Native<'_> {
         gles30::GenBuffers(n, buffers)
     }
     unsafe fn DeleteBuffers(&mut self, n: GLsizei, buffers: *const GLuint) {
-        gles30::DeleteBuffers(n, buffers)
+        gles30::DeleteBuffers(n, buffers);
+        if n > 0 && !buffers.is_null() {
+            let slice = std::slice::from_raw_parts(buffers, n as usize);
+            for &buf in slice {
+                if self.cached_array_buffer == Some(buf) {
+                    self.cached_array_buffer = None;
+                }
+                if self.cached_element_array_buffer == Some(buf) {
+                    self.cached_element_array_buffer = None;
+                }
+            }
+        }
     }
     unsafe fn BindBuffer(&mut self, target: GLenum, buffer: GLuint) {
-        gles30::BindBuffer(target, buffer)
+        let cached = match target {
+            x if x == gles30::ARRAY_BUFFER => &mut self.cached_array_buffer,
+            x if x == gles30::ELEMENT_ARRAY_BUFFER => &mut self.cached_element_array_buffer,
+            _ => {
+                gles30::BindBuffer(target, buffer);
+                return;
+            }
+        };
+        if *cached == Some(buffer) {
+            return;
+        }
+        gles30::BindBuffer(target, buffer);
+        *cached = Some(buffer);
     }
     unsafe fn BufferData(
         &mut self,
@@ -427,13 +490,29 @@ impl GLES for GLES3Native<'_> {
         gles30::GenTextures(n, textures)
     }
     unsafe fn DeleteTextures(&mut self, n: GLsizei, textures: *const GLuint) {
-        gles30::DeleteTextures(n, textures)
+        gles30::DeleteTextures(n, textures);
+        if n > 0 && !textures.is_null() {
+            let slice = std::slice::from_raw_parts(textures, n as usize);
+            for &tex in slice {
+                self.cached_bound_textures.retain(|_, &mut bound| bound != tex);
+            }
+        }
     }
     unsafe fn ActiveTexture(&mut self, texture: GLenum) {
-        gles30::ActiveTexture(texture)
+        if self.cached_active_texture != texture {
+            gles30::ActiveTexture(texture);
+            self.cached_active_texture = texture;
+        }
     }
     unsafe fn BindTexture(&mut self, target: GLenum, texture: GLuint) {
-        gles30::BindTexture(target, texture)
+        let key = (self.cached_active_texture, target);
+        if let Some(&bound) = self.cached_bound_textures.get(&key) {
+            if bound == texture {
+                return;
+            }
+        }
+        gles30::BindTexture(target, texture);
+        self.cached_bound_textures.insert(key, texture);
     }
     unsafe fn TexParameteri(&mut self, target: GLenum, pname: GLenum, param: GLint) {
         // GL_GENERATE_MIPMAP (0x8191) is a TexParameter pname only on ES 1.1.
@@ -691,10 +770,26 @@ impl GLES for GLES3Native<'_> {
         gles30::IsRenderbuffer(renderbuffer)
     }
     unsafe fn BindFramebuffer(&mut self, target: GLenum, framebuffer: GLuint) {
-        gles30::BindFramebuffer(target, framebuffer)
+        if target == gles30::FRAMEBUFFER {
+            if self.cached_framebuffer == Some(framebuffer) {
+                return;
+            }
+            gles30::BindFramebuffer(target, framebuffer);
+            self.cached_framebuffer = Some(framebuffer);
+        } else {
+            gles30::BindFramebuffer(target, framebuffer);
+        }
     }
     unsafe fn BindRenderbuffer(&mut self, target: GLenum, renderbuffer: GLuint) {
-        gles30::BindRenderbuffer(target, renderbuffer)
+        if target == gles30::RENDERBUFFER {
+            if self.cached_renderbuffer == Some(renderbuffer) {
+                return;
+            }
+            gles30::BindRenderbuffer(target, renderbuffer);
+            self.cached_renderbuffer = Some(renderbuffer);
+        } else {
+            gles30::BindRenderbuffer(target, renderbuffer);
+        }
     }
     unsafe fn RenderbufferStorage(
         &mut self,
@@ -728,10 +823,26 @@ impl GLES for GLES3Native<'_> {
         gles30::CheckFramebufferStatus(target)
     }
     unsafe fn DeleteFramebuffers(&mut self, n: GLsizei, framebuffers: *const GLuint) {
-        gles30::DeleteFramebuffers(n, framebuffers)
+        gles30::DeleteFramebuffers(n, framebuffers);
+        if n > 0 && !framebuffers.is_null() {
+            let slice = std::slice::from_raw_parts(framebuffers, n as usize);
+            for &fb in slice {
+                if self.cached_framebuffer == Some(fb) {
+                    self.cached_framebuffer = None;
+                }
+            }
+        }
     }
     unsafe fn DeleteRenderbuffers(&mut self, n: GLsizei, renderbuffers: *const GLuint) {
-        gles30::DeleteRenderbuffers(n, renderbuffers)
+        gles30::DeleteRenderbuffers(n, renderbuffers);
+        if n > 0 && !renderbuffers.is_null() {
+            let slice = std::slice::from_raw_parts(renderbuffers, n as usize);
+            for &rb in slice {
+                if self.cached_renderbuffer == Some(rb) {
+                    self.cached_renderbuffer = None;
+                }
+            }
+        }
     }
     unsafe fn GetFramebufferAttachmentParameteriv(
         &mut self,
@@ -786,10 +897,26 @@ impl GLES for GLES3Native<'_> {
         gles30::GenFramebuffers(n, framebuffers)
     }
     unsafe fn DeleteFramebuffersOES(&mut self, n: GLsizei, framebuffers: *const GLuint) {
-        gles30::DeleteFramebuffers(n, framebuffers)
+        gles30::DeleteFramebuffers(n, framebuffers);
+        if n > 0 && !framebuffers.is_null() {
+            let slice = std::slice::from_raw_parts(framebuffers, n as usize);
+            for &fb in slice {
+                if self.cached_framebuffer == Some(fb) {
+                    self.cached_framebuffer = None;
+                }
+            }
+        }
     }
     unsafe fn BindFramebufferOES(&mut self, target: GLenum, framebuffer: GLuint) {
-        gles30::BindFramebuffer(target, framebuffer)
+        if target == gles30::FRAMEBUFFER {
+            if self.cached_framebuffer == Some(framebuffer) {
+                return;
+            }
+            gles30::BindFramebuffer(target, framebuffer);
+            self.cached_framebuffer = Some(framebuffer);
+        } else {
+            gles30::BindFramebuffer(target, framebuffer);
+        }
     }
     unsafe fn IsFramebufferOES(&mut self, framebuffer: GLuint) -> GLboolean {
         gles30::IsFramebuffer(framebuffer)
@@ -830,10 +957,26 @@ impl GLES for GLES3Native<'_> {
         gles30::GenRenderbuffers(n, renderbuffers)
     }
     unsafe fn DeleteRenderbuffersOES(&mut self, n: GLsizei, renderbuffers: *const GLuint) {
-        gles30::DeleteRenderbuffers(n, renderbuffers)
+        gles30::DeleteRenderbuffers(n, renderbuffers);
+        if n > 0 && !renderbuffers.is_null() {
+            let slice = std::slice::from_raw_parts(renderbuffers, n as usize);
+            for &rb in slice {
+                if self.cached_renderbuffer == Some(rb) {
+                    self.cached_renderbuffer = None;
+                }
+            }
+        }
     }
     unsafe fn BindRenderbufferOES(&mut self, target: GLenum, renderbuffer: GLuint) {
-        gles30::BindRenderbuffer(target, renderbuffer)
+        if target == gles30::RENDERBUFFER {
+            if self.cached_renderbuffer == Some(renderbuffer) {
+                return;
+            }
+            gles30::BindRenderbuffer(target, renderbuffer);
+            self.cached_renderbuffer = Some(renderbuffer);
+        } else {
+            gles30::BindRenderbuffer(target, renderbuffer);
+        }
     }
     unsafe fn IsRenderbufferOES(&mut self, renderbuffer: GLuint) -> GLboolean {
         gles30::IsRenderbuffer(renderbuffer)
@@ -931,7 +1074,10 @@ impl GLES for GLES3Native<'_> {
         gles30::CreateProgram()
     }
     unsafe fn DeleteProgram(&mut self, program: GLuint) {
-        gles30::DeleteProgram(program)
+        gles30::DeleteProgram(program);
+        if self.cached_program == Some(program) {
+            self.cached_program = None;
+        }
     }
     unsafe fn AttachShader(&mut self, program: GLuint, shader: GLuint) {
         gles30::AttachShader(program, shader)
@@ -943,7 +1089,11 @@ impl GLES for GLES3Native<'_> {
         gles30::LinkProgram(program)
     }
     unsafe fn UseProgram(&mut self, program: GLuint) {
-        gles30::UseProgram(program)
+        if self.cached_program == Some(program) {
+            return;
+        }
+        gles30::UseProgram(program);
+        self.cached_program = Some(program);
     }
     unsafe fn GetProgramiv(&mut self, program: GLuint, pname: GLenum, params: *mut GLint) {
         gles30::GetProgramiv(program, pname, params)
@@ -1335,10 +1485,22 @@ impl GLES for GLES3Native<'_> {
         gles30::IsVertexArray(array)
     }
     unsafe fn BindVertexArray(&mut self, array: GLuint) {
-        gles30::BindVertexArray(array)
+        if self.cached_vertex_array == Some(array) {
+            return;
+        }
+        gles30::BindVertexArray(array);
+        self.cached_vertex_array = Some(array);
     }
     unsafe fn DeleteVertexArrays(&mut self, n: GLsizei, arrays: *const GLuint) {
-        gles30::DeleteVertexArrays(n, arrays)
+        gles30::DeleteVertexArrays(n, arrays);
+        if n > 0 && !arrays.is_null() {
+            let slice = std::slice::from_raw_parts(arrays, n as usize);
+            for &arr in slice {
+                if self.cached_vertex_array == Some(arr) {
+                    self.cached_vertex_array = None;
+                }
+            }
+        }
     }
     unsafe fn GenVertexArrays(&mut self, n: GLsizei, arrays: *mut GLuint) {
         gles30::GenVertexArrays(n, arrays)
