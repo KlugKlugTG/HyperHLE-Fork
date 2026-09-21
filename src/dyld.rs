@@ -1939,5 +1939,22 @@ fn dyld_stub_binder(_env: &mut Environment, _arg: u32) {
 /// On ARM32 the return value is placed in `r0`, which matches the C ABI for
 /// `int`/`uid_t`/`pid_t`/pointer return types.
 fn unimplemented_function_stub(_env: &mut Environment) -> i32 {
+    {
+        use std::collections::HashMap;
+        use std::sync::Mutex;
+        static COUNTS: Mutex<Option<HashMap<&'static str, u32>>> = Mutex::new(None);
+        let mut guard = COUNTS.lock().unwrap();
+        let map = guard.get_or_insert_with(HashMap::new);
+        *map.entry("total").or_insert(0) += 1;
+        let total = map["total"];
+        // Periodic summary so quiet hangs still show that guest code is
+        // spinning through unimplemented functions.
+        if total % 20000 == 0 {
+            log!(
+                "unimplemented-stub summary: {} calls so far (stubs return 0; check nearby guest logs for malloc/calloc failures)",
+                total
+            );
+        }
+    }
     0
 }
