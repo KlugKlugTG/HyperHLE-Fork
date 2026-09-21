@@ -288,25 +288,30 @@ impl Trainer {
             if inspect { self.describe_selection(mem, objc); }
         }
 
+        // PERF: one clock read for the three time-gated jobs below. This runs
+        // on every scheduler pass, and `Instant::elapsed()` is a syscall-backed
+        // clock read on some platforms (Android among them).
+        let now = Instant::now();
+
         // Re-assert frozen values ~20 times per second.
-        if self.last_freeze_tick.elapsed() >= Duration::from_millis(50) {
-            self.last_freeze_tick = Instant::now();
+        if now.saturating_duration_since(self.last_freeze_tick) >= Duration::from_millis(50) {
+            self.last_freeze_tick = now;
             self.apply_frozen(mem);
         }
 
         // Live-update the values shown in the results list ~4 times per
         // second, flagging addresses whose value changed since last time —
         // spend coins in-game and the matching row lights up.
-        if self.last_value_refresh.elapsed() >= Duration::from_millis(250) {
-            let seconds = self.last_value_refresh.elapsed().as_secs_f32();
-            self.last_value_refresh = Instant::now();
+        if now.saturating_duration_since(self.last_value_refresh) >= Duration::from_millis(250) {
+            let seconds = now.saturating_duration_since(self.last_value_refresh).as_secs_f32();
+            self.last_value_refresh = now;
             self.refresh_live_values(mem, Some(objc), seconds);
         }
 
         // Watch hack files for external edits (e.g. edited over ADB or a
         // file manager) — re-check at most once per second.
-        if self.last_file_check.elapsed() >= Duration::from_secs(1) {
-            self.last_file_check = Instant::now();
+        if now.saturating_duration_since(self.last_file_check) >= Duration::from_secs(1) {
+            self.last_file_check = now;
             self.reload_changed_files(mem);
         }
     }

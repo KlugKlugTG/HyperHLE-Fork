@@ -26,8 +26,14 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
 
 #[derive(Default)]
 pub struct State {
-    /// Current EAGLContext for each thread
-    current_ctxs: std::collections::HashMap<crate::ThreadId, Option<crate::objc::id>>,
+    /// Current EAGLContext for each thread.
+    ///
+    /// [`crate::ThreadId`] is a dense index into the thread table, so a plain
+    /// `Vec` is a far faster map than a `HashMap` here: this lookup runs on
+    /// every guest GL call (twice — once for the no-context guard and once
+    /// inside [get_thread_context]), i.e. tens of thousands of times per frame
+    /// in draw-heavy games.
+    current_ctxs: Vec<Option<crate::objc::id>>,
     /// `glGetString()` results cache, keyed by `(is_es2, name)` so that an
     /// ES 2.0 context does not return the ES 1.1 `OpenGL ES-CM 1.1` version
     /// string (Bad Piggies / Unity 3.5 checks the version string to decide
@@ -37,8 +43,13 @@ pub struct State {
 }
 impl State {
     fn current_ctx_for_thread(&mut self, thread: crate::ThreadId) -> &mut Option<crate::objc::id> {
-        // PERF: this runs on every guest GL call; one hash lookup, not two.
-        self.current_ctxs.entry(thread).or_insert(None)
+        // PERF: this runs on every guest GL call; direct index instead of a
+        // hash lookup. Sparse thread ids (if any) are covered by the resize,
+        // which preserves the old `entry().or_insert(None)` semantics.
+        if self.current_ctxs.len() <= thread {
+            self.current_ctxs.resize(thread + 1, None);
+        }
+        &mut self.current_ctxs[thread]
     }
 }
 

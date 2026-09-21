@@ -1660,6 +1660,10 @@ impl Environment {
         let mut curr_host_context = self.threads[0].host_context.take().unwrap();
         let panic_cell = self.panic_cell.clone();
         let mut stepping = false;
+        // PERF: the bundle identifier is immutable, but the trainer wants it on
+        // every scheduler pass, so format the owned copy once here instead of
+        // allocating a fresh String per batch.
+        let app_id_owned = self.bundle.bundle_identifier().to_string();
         loop {
             if stepping {
                 self.remaining_ticks = None;
@@ -1693,13 +1697,15 @@ impl Environment {
                 // timers, audio callbacks) precise while retaining the
                 // overhead win in long busy stretches, fall back to the
                 // smaller batch whenever any thread has an imminent wake-up.
+                // PERF: one `Instant::now()` per batch, not one per thread.
+                let wake_horizon = Instant::now() + Duration::from_millis(10);
                 let imminent_wakeup = self.threads.iter().any(|thread| {
                     let deadline = match thread.blocked_by {
                         ThreadBlock::Sleeping(due) => Some(due),
                         ThreadBlock::GuestSleeping(due) => Some(self.guest_clock.host_deadline(due)),
                         _ => None,
                     };
-                    deadline.is_some_and(|due| due < Instant::now() + Duration::from_millis(10))
+                    deadline.is_some_and(|due| due < wake_horizon)
                 });
                 self.remaining_ticks = Some(if imminent_wakeup {
                     100_000
@@ -1710,21 +1716,18 @@ impl Environment {
             // RTCV-style game corruption: once per main-loop iteration, give the
             // corruption engine a chance to mangle live guest memory. This is a
             // no-op unless enabled via the `--corrupt*` options.
+            //
+            // PERF: direct disjoint-field borrows instead of the old
+            // take/replace dance (which constructed and dropped a placeholder
+            // Corruptor/Trainer on every scheduler pass).
             if self.corruptor.is_enabled() {
-                let mut corruptor = std::mem::take(&mut self.corruptor);
-                corruptor.tick(&mut self.mem);
-                self.corruptor = corruptor;
+                self.corruptor.tick(&mut self.mem);
             }
             // Game trainer (Cheat Engine-style memory search/patch + on-screen
             // UI). No-op unless enabled (default on for games).
             {
-                let app_id = self.bundle.bundle_identifier().to_string();
-                let mut trainer = std::mem::replace(
-                    &mut self.trainer,
-                    crate::trainer::Trainer::new(false),
-                );
-                trainer.tick(&mut self.mem, Some(app_id.as_str()), &self.objc);
-                self.trainer = trainer;
+                self.trainer
+                    .tick(&mut self.mem, Some(app_id_owned.as_str()), &self.objc);
                 if let Some(speed) = crate::trainer_ui::take_speed_request() {
                     self.guest_clock.set_speed(speed);
                     crate::trainer_ui::publish_status(format!("GAME SPEED {}", speed.label()));
@@ -2569,6 +2572,15 @@ impl Environment {
             return;
         }
 
+        // PERF: the bundle identifier never changes at runtime, but the check
+        // below runs after *every* guest→host call (GL, memcpy, objc msgSend,
+        // …), i.e. tens of thousands of times per frame in draw-heavy games.
+        // The plist lookup is hoisted out of the inner loop to a single local.
+        let asphalt8_bundle = self
+            .bundle
+            .bundle_identifier()
+            .starts_with("com.gameloft.asphalt8");
+
         loop {
             while self
                 .remaining_ticks
@@ -2577,42 +2589,28 @@ impl Environment {
                 let state = self
                     .cpu
                     .run_or_step(&mut self.mem, self.remaining_ticks.as_mut());
-                let diag_pc = self.cpu.regs()[crate::cpu::Cpu::PC];
-                std::sync::atomic::AtomicU32::store(
-                    &crate::environment::LAST_GUEST_PC,
-                    diag_pc,
-                    std::sync::atomic::Ordering::Relaxed,
-                );
-                std::sync::atomic::AtomicU32::store(
-                    &crate::environment::LAST_GUEST_LR,
-                    self.cpu.regs()[crate::cpu::Cpu::LR],
-                    std::sync::atomic::Ordering::Relaxed,
-                );
-                let ring_i = std::sync::atomic::AtomicUsize::load(
-                    &crate::environment::GUEST_PC_RING_IDX,
-                    std::sync::atomic::Ordering::Relaxed,
-                );
-                std::sync::atomic::AtomicU32::store(
-                    &crate::environment::GUEST_PC_RING[ring_i % 32],
-                    diag_pc,
-                    std::sync::atomic::Ordering::Relaxed,
-                );
-                std::sync::atomic::AtomicUsize::store(
-                    &crate::environment::GUEST_PC_RING_IDX,
-                    ring_i.wrapping_add(1),
-                    std::sync::atomic::Ordering::Relaxed,
-                );
+                // PERF: crash-diagnostics bookkeeping. This block runs after
+                // every CPU re-entry (batch end *and* every guest→host call),
+                // so it is kept to a single register read and Relaxed atomics.
+                let diag_pc = {
+                    use std::sync::atomic::Ordering::Relaxed;
+                    let regs = self.cpu.regs();
+                    let diag_pc = regs[crate::cpu::Cpu::PC];
+                    let diag_lr = regs[crate::cpu::Cpu::LR];
+                    LAST_GUEST_PC.store(diag_pc, Relaxed);
+                    LAST_GUEST_LR.store(diag_lr, Relaxed);
+                    let ring_i = GUEST_PC_RING_IDX.load(Relaxed);
+                    GUEST_PC_RING[ring_i % GUEST_PC_RING.len()].store(diag_pc, Relaxed);
+                    GUEST_PC_RING_IDX.store(ring_i.wrapping_add(1), Relaxed);
+                    diag_pc
+                };
 
                 // Asphalt 8 (com.gameloft.asphalt8) v1.1.0 compatibility hacks,
                 // ported from the touchHLE-XaView fork. The game deliberately
                 // calls abort() when its DRM/network checks fail, which looks
                 // like a silent emulator crash. These unwinds skip the checks.
-                if self
-                    .bundle
-                    .bundle_identifier()
-                    .starts_with("com.gameloft.asphalt8")
-                {
-                    let pc = self.cpu.regs()[Cpu::PC];
+                if asphalt8_bundle {
+                    let pc = diag_pc;
                     // BypassAsphaltDRM: deep stack unwind past the license check
                     if pc == 0x00600ac4 {
                         log!(

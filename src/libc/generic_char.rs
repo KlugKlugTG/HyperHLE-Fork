@@ -44,8 +44,32 @@ impl<T: Copy + Default + Eq + Ord + SafeRead + Debug> GenericChar<T> {
         } else {
             count
         };
-        for i in 0..actual {
-            env.mem.write(dest + i, ch);
+        // PERF: games memset constantly (struct init, framebuffer clears).
+        // A bulk fill is one bounds check plus an optimised `fill`, instead of
+        // a per-element bounds-checked write.
+        //
+        // The bulk path is only taken for ranges that lie entirely above the
+        // null segment and do not wrap past the 4 GiB guest address-space end
+        // (the stack lives near 2^32). Ranges that touch either edge keep the
+        // per-element loop, which routes each write through `Mem::write` and
+        // therefore preserves the null-page write-sink and wraparound
+        // behaviour exactly.
+        let start = dest.to_bits();
+        let byte_size = u64::from(actual) * u64::from(guest_size_of::<T>());
+        let end = u64::from(start) + byte_size;
+        if actual > 0
+            && u64::from(start) >= u64::from(env.mem.null_segment_size())
+            && end <= 0x1_0000_0000
+        {
+            let ptr = env.mem.ptr_at_mut(dest, actual);
+            // SAFETY: `ptr` addresses `actual` consecutive `T`s in guest
+            // memory (checked above and by `ptr_at_mut`), and `T: SafeWrite`
+            // means any bit pattern — including `ch` — is valid there.
+            unsafe { std::slice::from_raw_parts_mut(ptr, actual as usize) }.fill(ch);
+        } else {
+            for i in 0..actual {
+                env.mem.write(dest + i, ch);
+            }
         }
         dest
     }

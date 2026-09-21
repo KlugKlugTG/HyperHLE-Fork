@@ -97,6 +97,11 @@ Quality and performance:
   - On Android the emulator thread's scheduling priority is raised via SDL's `SDL_SetThreadPriority(SDL_THREAD_PRIORITY_HIGH)`, keeping the emulation loop on big CPU cores on big.LITTLE SoCs.
   - The window framebuffer no longer requests depth/stencil buffers it never uses (everything host-drawn is a flat textured quad), saving a swap chain resolution's worth of bandwidth on tile-based mobile GPUs.
   - Per-frame/per-touch `getenv`-style debug toggle checks (`TOUCHHLE_*` env vars on the present, viewport, draw-call, hit-test and touch-remap paths) are now read once and cached; previously several of them ran an environ scan with locking and allocation on every frame or touch event.
+- CPU-side FPS pass: the host overhead paid on *every* guest→host call (GL, `memcpy`, Objective-C message sends — tens of thousands per frame in draw-heavy games) has been cut, so more of each frame's budget goes to actual emulation. This targets CPU-bound games that sit below their frame target (e.g. mid-20s FPS) while the GPU is nearly idle:
+  - The crash-diagnostics bookkeeping that ran after every guest→host call no longer reads the CPU register file twice, and the Asphalt 8 workaround gate no longer looks the bundle identifier up in the Info.plist on every call (it is now a constant-time flag evaluated once per run-loop entry).
+  - The current-`EAGLContext` lookup that runs on every guest GL call (twice per call) is now a dense table index instead of two SipHash `HashMap` lookups.
+  - `memset()` bulk-fills through a single bounds check instead of one bounds-checked guest write per element; ranges touching the null page or wrapping the 4 GiB guest address space keep the exact previous per-element behaviour.
+  - The scheduler pass no longer allocates a placeholder `Trainer`/`Corruptor` and a fresh bundle-identifier `String` on every batch (direct disjoint-field borrows; the identifier is formatted once at startup), `Trainer::tick` reads the clock once per pass instead of three times, and the wake-up scan takes one `Instant::now()` per batch instead of one per guest thread. (@KlugKlugTG)
 
 ## v0.2.3 (2026-01-02)
 
