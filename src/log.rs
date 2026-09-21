@@ -81,7 +81,7 @@ macro_rules! echo {
                 // panics on any interior NUL byte. Driver info logs (e.g.
                 // glGetShaderInfoLog) often end in NULs, so cut at the first
                 // one to keep the log path safe.
-                let sanitized: String = formatted_str
+                let sanitized: ::std::string::String = formatted_str
                     .chars()
                     .take_while(|&c| c != '\0')
                     .collect();
