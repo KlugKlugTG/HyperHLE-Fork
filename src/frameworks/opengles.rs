@@ -11,6 +11,7 @@
 
 mod eagl;
 mod gles_guest;
+pub use gles_guest::guest_has_drawn as guest_has_drawn_shadow;
 
 use touchHLE_gl_bindings::gles11::types::GLenum;
 

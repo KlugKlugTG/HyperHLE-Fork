@@ -1555,7 +1555,15 @@ fn warn_invalid_draw_mode(what: &str, mode: GLenum) {
     }
 }
 
+pub static GUEST_DRAW_SEEN: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+pub fn guest_has_drawn() -> bool {
+    GUEST_DRAW_SEEN.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 fn glDrawArrays(env: &mut Environment, mode: GLenum, first: GLint, count: GLsizei) {
+    GUEST_DRAW_SEEN.store(true, std::sync::atomic::Ordering::Relaxed);
     {
         use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
         static SEEN: AtomicBool = AtomicBool::new(false);
@@ -1616,6 +1624,7 @@ fn glDrawElements(
     type_: GLenum,
     indices: ConstVoidPtr,
 ) {
+    GUEST_DRAW_SEEN.store(true, std::sync::atomic::Ordering::Relaxed);
     {
         use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
         static SEEN: AtomicBool = AtomicBool::new(false);

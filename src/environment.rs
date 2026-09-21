@@ -1754,6 +1754,8 @@ impl Environment {
                     }
                 });
         }
+        static THREAD_PARK_DUMPED: std::sync::atomic::AtomicBool =
+            std::sync::atomic::AtomicBool::new(false);
         loop {
             loop_tick_ms.store(
                 run_started.elapsed().as_millis() as u64,
@@ -1770,6 +1772,20 @@ impl Environment {
                     run_started.elapsed().as_secs_f32(),
                     host_rss_kib()
                 );
+                // If the guest has been alive for a while but never submitted a
+                // single draw call, its game/render threads are almost certainly
+                // parked (waiting on a futex/semaphore/condvar that was never
+                // woken). Dump all thread stacks ONCE to make the parking spot
+                // visible in the log instead of an endless silent black screen.
+                if run_started.elapsed() >= Duration::from_secs(20)
+                    && !crate::frameworks::opengles::guest_has_drawn_shadow()
+                    && !THREAD_PARK_DUMPED.swap(true, std::sync::atomic::Ordering::Relaxed)
+                {
+                    echo_no_panic!(
+                        "touchHLE::environment: no guest draw call submitted after 20s — dumping all thread stacks to find parked threads:"
+                    );
+                    self.stack_trace_all();
+                }
             }
             if stepping {
                 self.remaining_ticks = None;
