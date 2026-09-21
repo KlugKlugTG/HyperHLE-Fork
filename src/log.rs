@@ -77,7 +77,15 @@ macro_rules! echo {
 
             #[cfg(target_os = "android")]
             {
-                sdl2::log::log(&formatted_str);
+                // SDL's log API goes through CString::new().unwrap(), which
+                // panics on any interior NUL byte. Driver info logs (e.g.
+                // glGetShaderInfoLog) often end in NULs, so cut at the first
+                // one to keep the log path safe.
+                let sanitized: String = formatted_str
+                    .chars()
+                    .take_while(|&c| c != '\0')
+                    .collect();
+                sdl2::log::log(&sanitized);
             }
             #[cfg(not(target_os = "android"))]
             eprintln!("{}", formatted_str);

@@ -209,6 +209,7 @@ fn patch_shader_for_native_es2(
     source: &str,
     texture_lod_ext_supported: bool,
     inject_default_float_precision: bool,
+    sampler3d_ext_needs_enable: bool,
 ) -> String {
     let lines: Vec<&str> = source.lines().collect();
 
@@ -252,6 +253,9 @@ fn patch_shader_for_native_es2(
     for ext in &extension_lines {
         out.push_str(ext);
         out.push('\n');
+    }
+    if sampler3d_ext_needs_enable {
+        out.push_str("#extension GL_OES_texture_3D : enable\n");
     }
     if inject_default_float_precision && !has_default_float_precision {
         out.push_str("precision mediump float;\n");
@@ -364,7 +368,7 @@ mod tests {
     fn injects_default_float_precision_when_missing() {
         let src = "#version 100\nvoid main() { gl_FragColor = vec4(1.0); }\n";
         assert!(!shader_has_default_float_precision(src));
-        let out = patch_shader_for_native_es2(src, true, true);
+        let out = patch_shader_for_native_es2(src, true, true, false);
         assert!(out.contains("precision mediump float;"));
         assert!(out.contains("void main()"));
     }
@@ -374,7 +378,7 @@ mod tests {
         let src =
             "#version 100\nprecision highp float;\nvoid main() { gl_FragColor = vec4(1.0); }\n";
         assert!(shader_has_default_float_precision(src));
-        let out = patch_shader_for_native_es2(src, true, true);
+        let out = patch_shader_for_native_es2(src, true, true, false);
         assert!(out.contains("precision highp float;"));
         assert_eq!(out.matches("precision").count(), 1);
     }
@@ -382,14 +386,14 @@ mod tests {
     #[test]
     fn does_not_inject_when_not_requested() {
         let src = "#version 100\nvoid main() { gl_Position = vec4(1.0); }\n";
-        let out = patch_shader_for_native_es2(src, true, false);
+        let out = patch_shader_for_native_es2(src, true, false, false);
         assert!(!out.contains("precision"));
     }
 
     #[test]
     fn hoists_extension_directives_before_body_code() {
         let src = "#version 100\nvoid helper() {}\n#extension GL_OES_texture_3D : enable\nvoid main() { gl_FragColor = vec4(1.0); }\n";
-        let out = patch_shader_for_native_es2(src, true, false);
+        let out = patch_shader_for_native_es2(src, true, false, false);
         let ext_pos = out.find("#extension GL_OES_texture_3D : enable").unwrap();
         let helper_pos = out.find("void helper()").unwrap();
         assert!(ext_pos < helper_pos);
@@ -1304,8 +1308,15 @@ impl GLES for GLES2Native<'_> {
             && (joined.contains("texture2DLodEXT")
                 || joined.contains("texture2DProjLodEXT")
                 || joined.contains("textureCubeLodEXT"));
-        let needs_patch =
-            joined.contains("#extension") || needs_lod_patch || needs_precision_inject;
+        // `sampler3D` is a reserved word in ESSL 1.00 unless
+        // GL_OES_texture_3D is enabled; some apps rely on lenient PowerVR-era
+        // drivers and never declare the extension.
+        let needs_sampler3d_ext = joined.contains("sampler3D")
+            && !joined.contains("GL_OES_texture_3D");
+        let needs_patch = joined.contains("#extension")
+            || needs_lod_patch
+            || needs_precision_inject
+            || needs_sampler3d_ext;
 
         if !needs_patch {
             // No patching needed — pass through directly.
@@ -1317,11 +1328,29 @@ impl GLES for GLES2Native<'_> {
             &joined,
             self.texture_lod_ext_supported,
             needs_precision_inject,
+            needs_sampler3d_ext,
         );
+        // A guest source with an interior NUL would fail CString::new();
+        // drivers treat NUL as end-of-string anyway, so patch the truncated
+        // prefix instead of passing raw unpatched source through.
+        let patched = match CString::new(patched.as_str()) {
+            Ok(_) => patched,
+            Err(_) => {
+                let truncated: String = patched
+                    .chars()
+                    .take_while(|&c| c != '\0')
+                    .collect();
+                patch_shader_for_native_es2(
+                    &truncated,
+                    self.texture_lod_ext_supported,
+                    needs_precision_inject,
+                    needs_sampler3d_ext,
+                )
+            }
+        };
         let c = match CString::new(patched) {
             Ok(c) => c,
             Err(_) => {
-                // Source contained an interior NUL — pass original through.
                 gles2::ShaderSource(shader, count, string, length);
                 return;
             }
@@ -1894,10 +1923,11 @@ fn shader_diag_compiled(shader: GLuint) {
             buf.as_mut_ptr() as *mut GLchar,
         );
         let msg = String::from_utf8_lossy(&buf);
+        let msg = msg.split('\0').next().unwrap_or("").trim_end();
         log!(
             "gles2_native: [shader-diag] SHADER COMPILE FAILED (#{}) driver said: {}",
             n + 1,
-            msg.trim_end()
+            msg
         );
         }
     }
@@ -1929,10 +1959,11 @@ fn shader_diag_linked(program: GLuint) {
             buf.as_mut_ptr() as *mut GLchar,
         );
         let msg = String::from_utf8_lossy(&buf);
+        let msg = msg.split('\0').next().unwrap_or("").trim_end();
         log!(
             "gles2_native: [shader-diag] PROGRAM LINK FAILED (#{}) driver said: {}",
             n + 1,
-            msg.trim_end()
+            msg
         );
         }
     }
