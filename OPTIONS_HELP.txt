@@ -218,6 +218,23 @@ Game controller options:
         right analog stick (tap/hold by pressing the stick or right shoulder
         button).
 
+    --right-stick-to-touch=...
+        Maps the right analog stick to simulated finger movement within a
+        region of the simulated touch screen, analogous to --stick-to-touch
+        but for the right stick. This is useful for dual-stick FPS games
+        (e.g. Dead Trigger) where the left stick is movement and the right
+        stick is camera/aim. When this option is set, the virtual cursor for
+        the right stick is disabled while the stick is mapped.
+
+        This is four parts separated by commas: x,y,w,h. See --stick-to-touch
+        for coordinate details.
+
+        For example, --right-stick-to-touch=370,210,90,90 will map the right
+        stick to a 90x90 region at (370,210) for camera control in landscape.
+
+        Except where specified in touchHLE_default_options.txt, this is not used
+        by default.
+
     --stabilize-virtual-cursor=...
         Apply motion smoothing and a sticky radius to the virtual cursor
         (controlled by the right analog stick).

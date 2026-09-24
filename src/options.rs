@@ -91,9 +91,10 @@ impl PresentMode {
 /// effect on other platforms.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum GlDriverPreference {
-    /// On Android, use bundled ANGLE for apps that may use OpenGL ES 1.1 only
-    /// on detected Adreno devices; use the system driver for ES 2.0-only apps
-    /// and other or unrecognized GPUs.
+    /// On Android, prefer the bundled ANGLE driver when it is available
+    /// (same as `angle`); only falls back to the system driver when ANGLE
+    /// is not bundled. Kept for compatibility, previously auto-selected the
+    /// native driver for ES 2.0-only / non-Adreno devices.
     Auto,
     /// Always use the bundled ANGLE driver (when it is available).
     Angle,
@@ -168,6 +169,11 @@ pub struct Options {
     pub button_to_touch: HashMap<Button, (f32, f32)>,
     pub dpad_to_touch: Option<(f32, f32, f32, f32)>,
     pub stick_to_touch: Option<(f32, f32, f32, f32)>,
+    /// Right analog stick -> touch region (for dual-stick FPS like Dead Trigger).
+    /// Same format as --stick-to-touch (x,y,w,h in iOS points). When set,
+    /// the right stick drives a dedicated touch inside that rectangle and the
+    /// virtual cursor for the right stick is suppressed.
+    pub right_stick_to_touch: Option<(f32, f32, f32, f32)>,
     pub stabilize_virtual_cursor: Option<(f32, f32)>,
     pub gles1_implementation: Option<GLESImplementation>,
     /// Allow selected early OpenGL ES 2.0 apps to use the GLES2 subset exposed
@@ -290,6 +296,7 @@ impl Default for Options {
             button_to_touch: HashMap::new(),
             dpad_to_touch: None,
             stick_to_touch: None,
+            right_stick_to_touch: None,
             stabilize_virtual_cursor: None,
             gles1_implementation: None,
             gles2_compat: false,
@@ -485,6 +492,20 @@ impl Options {
                 .map_err(|_| "--stick-to-touch= requires four values".to_string())?;
 
             self.stick_to_touch = Some((nums[0], nums[1], nums[2], nums[3]));
+        } else if let Some(values) = arg
+            .strip_prefix("--right-stick-to-touch=")
+            .or_else(|| arg.strip_prefix("--right_stick_to_touch="))
+            .or_else(|| arg.strip_prefix("--camera-stick-to-touch="))
+        {
+            let nums: [f32; 4] = values
+                .split(',')
+                .map(|s| s.parse::<f32>())
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|_| "invalid --right-stick-to-touch".to_string())?
+                .try_into()
+                .map_err(|_| "--right-stick-to-touch= requires four values".to_string())?;
+
+            self.right_stick_to_touch = Some((nums[0], nums[1], nums[2], nums[3]));
         } else if let Some(values) = arg.strip_prefix("--dpad-to-touch=") {
             let nums: [f32; 4] = values
                 .split(',')

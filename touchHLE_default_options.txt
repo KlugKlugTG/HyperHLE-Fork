@@ -285,6 +285,13 @@ com.ea.pandyinc: --landscape-left --button-to-touch=DPadLeft,50,230 --button-to-
 com.madfingergames.Samurai: --force-composition
 com.madfingergames.SamuraiHD: --force-composition
 
+# Dead Trigger / Dead Trigger 2 — MADFINGER dual-stick FPS. Left stick movement and right stick camera
+# were barely responsive / too sharp with the old per-axis deadzone and whole-screen virtual cursor.
+# Map both sticks to dedicated on-screen regions with a lower circular deadzone; disable tilt so
+# the left stick doesn't also drive the accelerometer.
+com.madfingergames.deadtrigger: --landscape-left --disable-analog-stick-tilt-controls --dpad-to-touch=30,210,90,90 --stick-to-touch=30,210,90,90 --right-stick-to-touch=370,210,90,90 --deadzone=0.06 --stabilize-virtual-cursor=0.05,5
+com.madfingergames.deadtrigger2: --landscape-left --disable-analog-stick-tilt-controls --dpad-to-touch=30,210,90,90 --stick-to-touch=30,210,90,90 --right-stick-to-touch=370,210,90,90 --deadzone=0.06 --stabilize-virtual-cursor=0.05,5
+
 # NEX
 com.StarByte.NEX: --landscape-left --force-composition
 

@@ -472,6 +472,7 @@ pub enum FingerId {
     VirtualCursor,
     ButtonToTouch(crate::options::Button),
     StickToTouch,
+    RightStickToTouch,
     DpadToTouch,
 }
 pub type Coords = (f32, f32);
@@ -603,14 +604,13 @@ pub fn host_screen_size() -> Option<(u32, u32)> {
 ///
 /// Why there is a choice at all: ANGLE was adopted because the vendors' native
 /// OpenGL ES **1.1** drivers (Qualcomm Adreno's in particular) are strict or
-/// buggy in ways that leave early iPhone OS games with a black screen. The
-/// vendors' OpenGL ES **2.0/3.x** drivers, on the other hand, are the path
-/// every Android game runs on, and they are faster than ANGLE's ES-on-Vulkan
-/// translation (no shader re-translation, no staging copies for client-side
-/// vertex arrays, cheaper draw submission). `--gl-driver=auto` uses the native driver
-/// for ES 2.0-only apps and for non-Adreno or unrecognized GPUs. It selects
-/// ANGLE for apps that may use ES 1.1 (and for the app picker) only when an
-/// Adreno KGSL device is detected; `--gl-driver=angle` can force it otherwise.
+/// buggy in ways that leave early iPhone OS games with a black screen.
+/// Historically `--gl-driver=auto` used the native driver for ES 2.0-only apps
+/// and for non-Adreno GPUs, but some games crash on the native GLES driver,
+/// so `auto` now behaves like `angle`: it prefers the bundled ANGLE libraries
+/// whenever they are present, falling back to the system driver only when
+/// ANGLE is not bundled or when `--gl-driver=native` / `TOUCHHLE_ANGLE=0` is
+/// explicitly requested.
 ///
 /// The app picker's window and the app's window are separate SDL windows, and
 /// SDL unloads the EGL/GLES libraries when the last GL window is destroyed, so
@@ -727,15 +727,11 @@ fn select_android_gl_driver(
         }
     }
 
-    fn use_system_driver(reason: &str) {
+    fn use_system_driver(_reason: &str) {
         if ANGLE_ENV_SET_BY_US.swap(false, Ordering::Relaxed) {
             env::remove_var("SDL_VIDEO_EGL_DRIVER");
             env::remove_var("SDL_VIDEO_GL_DRIVER");
         }
-        log!(
-            "Using the system OpenGL ES driver rather than bundled ANGLE: {}.",
-            reason
-        );
     }
 
     // Respect an explicit user override completely.
@@ -757,30 +753,16 @@ fn select_android_gl_driver(
         return;
     }
 
+    // Auto no longer switches to the native driver for ES2-only or
+    // non-Adreno devices: some games crash on the native GLES driver, so
+    // Auto now behaves like Angle (prefer bundled ANGLE when it is present).
+    let _ = app_gles_usage;
     match preference {
-        GlDriverPreference::Angle => {}
         GlDriverPreference::Native => {
             use_system_driver("--gl-driver=native");
             return;
         }
-        GlDriverPreference::Auto => {
-            if app_gles_usage.is_some_and(|usage| usage.is_es2_only()) {
-                use_system_driver(
-                    "the app only imports OpenGL ES 2.0 shader entry points, and the \
-                     vendor's native ES 2.0 driver is faster than ES-on-Vulkan \
-                     translation (use --gl-driver=angle to override)",
-                );
-                return;
-            }
-            if !auto_uses_bundled_angle(app_gles_usage, android_has_adreno_gpu()) {
-                use_system_driver(concat!(
-                    "Android did not expose a detectable Adreno KGSL GPU; using the system ",
-                    "driver instead of assuming the bundled ANGLE/Vulkan backend is supported ",
-                    "(use --gl-driver=angle to override)",
-                ));
-                return;
-            }
-        }
+        GlDriverPreference::Angle | GlDriverPreference::Auto => {}
     }
 
     for &(egl, gles1, gles2) in CANDIDATES {
@@ -851,6 +833,9 @@ pub struct Window {
     controllers: Vec<sdl2::controller::GameController>,
     dpad_state: DpadState,
     stick_active: bool,
+    right_stick_active: bool,
+    last_left_stick: Option<(f32, f32)>,
+    last_right_stick: Option<(f32, f32)>,
     _sensor_ctx: sdl2::SensorSubsystem,
     accelerometer: Option<sdl2::sensor::Sensor>,
     gyroscope: Option<sdl2::sensor::Sensor>,
@@ -946,12 +931,11 @@ impl Window {
             // Disable blocking of event loop when app is paused.
             sdl2::hint::set("SDL_ANDROID_BLOCK_ON_PAUSE", "0");
 
-            // Pick the host OpenGL ES driver: Google's ANGLE (OpenGL ES over
-            // Vulkan, bundled with this build) for apps that may use the
-            // OpenGL ES 1.1 fixed-function pipeline, which the vendors' native
-            // ES 1.1 drivers (Qualcomm Adreno's in particular) get wrong in
-            // black-screen-inducing ways, and the vendor's native driver for
-            // OpenGL ES 2.0-only apps, where it is the faster of the two.
+            // Pick the host OpenGL ES driver: prefer the bundled ANGLE
+            // (OpenGL ES over Vulkan) when it is present. Historically the
+            // vendor's native driver was used for ES 2.0-only apps for
+            // performance, but it crashes some games, so `auto` now also
+            // prefers ANGLE.
             //
             // SDL loads its EGL / GLES libraries with `dlopen`, honouring the
             // `SDL_VIDEO_EGL_DRIVER` / `SDL_VIDEO_GL_DRIVER` environment
@@ -1139,6 +1123,9 @@ impl Window {
                 active: false,
             },
             stick_active: false,
+            right_stick_active: false,
+            last_left_stick: None,
+            last_right_stick: None,
             _sensor_ctx: sensor_ctx,
             accelerometer,
             gyroscope,
@@ -1630,43 +1617,9 @@ impl Window {
                         }
                     }
                 }
-                E::ControllerAxisMotion { axis, .. } => {
+                E::ControllerAxisMotion { .. } => {
                     controller_updated = true;
-                    let Some((x, y, w, h)) = options.stick_to_touch else {
-                        continue;
-                    };
-                    if axis == sdl2::controller::Axis::LeftX
-                        || axis == sdl2::controller::Axis::LeftY
-                    {
-                        let (stick_x, stick_y, _) = self.get_controller_stick(options, true);
-                        let coords = transform_input_coords(
-                            self,
-                            (
-                                x + ((stick_x + 1.0) / 2.0) * w,
-                                y + ((stick_y + 1.0) / 2.0) * h,
-                            ),
-                            true,
-                        );
-                        if stick_x.abs() < options.deadzone && stick_y.abs() < options.deadzone {
-                            if !self.stick_active {
-                                // Ignore deadzone events when stick is inactive
-                                continue;
-                            } else {
-                                // Release touch when stick returns to deadzone
-                                self.stick_active = false;
-                                Event::TouchesUp(HashMap::from([(FingerId::StickToTouch, coords)]))
-                            }
-                        } else if !self.stick_active {
-                            // New touch
-                            self.stick_active = true;
-                            Event::TouchesDown(HashMap::from([(FingerId::StickToTouch, coords)]))
-                        } else {
-                            // Move existing touch
-                            Event::TouchesMove(HashMap::from([(FingerId::StickToTouch, coords)]))
-                        }
-                    } else {
-                        continue;
-                    }
+                    continue;
                 }
                 E::AppWillEnterBackground { .. } => {
                     log_dbg!("Received app-will-resign-active event.");
@@ -1888,24 +1841,125 @@ impl Window {
         }
 
         if controller_updated {
-            let (new_x, new_y, pressed, pressed_changed, moved) =
-                self.update_virtual_cursor(options);
-            self.event_queue
-                .push_back(match (pressed, pressed_changed, moved) {
+            // Virtual cursor (right stick) — suppressed when right_stick_to_touch is configured,
+            // because the right stick then drives its own dedicated touch region (FPS camera).
+            if options.right_stick_to_touch.is_none() {
+                let (new_x, new_y, pressed, pressed_changed, moved) =
+                    self.update_virtual_cursor(options);
+                match (pressed, pressed_changed, moved) {
                     (true, true, _) => {
                         let coords = transform_input_coords(self, (new_x, new_y), false);
-                        Event::TouchesDown(HashMap::from([(FingerId::VirtualCursor, coords)]))
+                        self.event_queue.push_back(Event::TouchesDown(HashMap::from([(
+                            FingerId::VirtualCursor,
+                            coords,
+                        )])));
                     }
                     (false, true, _) => {
                         let coords = transform_input_coords(self, (new_x, new_y), false);
-                        Event::TouchesUp(HashMap::from([(FingerId::VirtualCursor, coords)]))
+                        self.event_queue.push_back(Event::TouchesUp(HashMap::from([(
+                            FingerId::VirtualCursor,
+                            coords,
+                        )])));
                     }
                     (true, _, true) => {
                         let coords = transform_input_coords(self, (new_x, new_y), false);
-                        Event::TouchesMove(HashMap::from([(FingerId::VirtualCursor, coords)]))
+                        self.event_queue.push_back(Event::TouchesMove(HashMap::from([(
+                            FingerId::VirtualCursor,
+                            coords,
+                        )])));
                     }
-                    _ => return,
-                });
+                    _ => {}
+                }
+            }
+            // Left stick -> touch (FPS movement). Uses circular deadzone for diagonal fidelity.
+            if let Some((x, y, w, h)) = options.stick_to_touch {
+                let (sx, sy, _) = self.get_controller_stick(options, true);
+                let mag = sx.hypot(sy);
+                // Use hypot for deadzone so diagonal at (0.09,0.09) with deadzone 0.1 is correctly dead,
+                // but (0.08,0.08) mag 0.113 is active – matches physical stick circle.
+                if mag < options.deadzone {
+                    if self.stick_active {
+                        // Release at last position (or center) to avoid jump
+                        let coords = if let Some((lx, ly)) = self.last_left_stick {
+                            transform_input_coords(
+                                self,
+                                (x + ((lx + 1.0) / 2.0) * w, y + ((ly + 1.0) / 2.0) * h),
+                                true,
+                            )
+                        } else {
+                            transform_input_coords(self, (x + w * 0.5, y + h * 0.5), true)
+                        };
+                        self.stick_active = false;
+                        self.last_left_stick = None;
+                        self.event_queue
+                            .push_back(Event::TouchesUp(HashMap::from([(FingerId::StickToTouch, coords)])));
+                    }
+                } else {
+                    let coords = transform_input_coords(
+                        self,
+                        (x + ((sx + 1.0) / 2.0) * w, y + ((sy + 1.0) / 2.0) * h),
+                        true,
+                    );
+                    if !self.stick_active {
+                        self.stick_active = true;
+                        self.last_left_stick = Some((sx, sy));
+                        self.event_queue.push_back(Event::TouchesDown(HashMap::from([(
+                            FingerId::StickToTouch,
+                            coords,
+                        )])));
+                    } else if self.last_left_stick != Some((sx, sy)) {
+                        self.last_left_stick = Some((sx, sy));
+                        self.event_queue.push_back(Event::TouchesMove(HashMap::from([(
+                            FingerId::StickToTouch,
+                            coords,
+                        )])));
+                    }
+                }
+            }
+            // Right stick -> touch (FPS camera). Separate FingerId so left+right can be held simultaneously.
+            if let Some((x, y, w, h)) = options.right_stick_to_touch {
+                let (sx, sy, _) = self.get_controller_stick(options, false);
+                let mag = sx.hypot(sy);
+                if mag < options.deadzone {
+                    if self.right_stick_active {
+                        let coords = if let Some((rx, ry)) = self.last_right_stick {
+                            transform_input_coords(
+                                self,
+                                (x + ((rx + 1.0) / 2.0) * w, y + ((ry + 1.0) / 2.0) * h),
+                                true,
+                            )
+                        } else {
+                            transform_input_coords(self, (x + w * 0.5, y + h * 0.5), true)
+                        };
+                        self.right_stick_active = false;
+                        self.last_right_stick = None;
+                        self.event_queue.push_back(Event::TouchesUp(HashMap::from([(
+                            FingerId::RightStickToTouch,
+                            coords,
+                        )])));
+                    }
+                } else {
+                    let coords = transform_input_coords(
+                        self,
+                        (x + ((sx + 1.0) / 2.0) * w, y + ((sy + 1.0) / 2.0) * h),
+                        true,
+                    );
+                    if !self.right_stick_active {
+                        self.right_stick_active = true;
+                        self.last_right_stick = Some((sx, sy));
+                        self.event_queue.push_back(Event::TouchesDown(HashMap::from([(
+                            FingerId::RightStickToTouch,
+                            coords,
+                        )])));
+                    } else if self.last_right_stick != Some((sx, sy)) {
+                        self.last_right_stick = Some((sx, sy));
+                        self.event_queue.push_back(Event::TouchesMove(HashMap::from([(
+                            FingerId::RightStickToTouch,
+                            coords,
+                        )])));
+                    }
+                }
+            }
         }
     }
 
@@ -2185,15 +2239,9 @@ impl Window {
 
     /// Get the summed X and Y positions and button state of the left or right
     /// analog stick of the game controllers. Each axis value is in the range
-    /// [-1, 1].
+    /// [-1, 1]. Uses a circular deadzone so diagonal movement feels correct
+    /// (fix for Dead Trigger barely-moving / sharp camera).
     fn get_controller_stick(&self, options: &Options, left: bool) -> (f32, f32, bool) {
-        fn convert_axis(axis: i16, deadzone: f32) -> f32 {
-            assert!(deadzone >= 0.0);
-            let axis = ((axis as f32) / (i16::MAX as f32)).clamp(-1.0, 1.0);
-            let abs_axis = (axis.abs().max(deadzone) - deadzone) / (1.0 - deadzone);
-            abs_axis.copysign(axis)
-        }
-
         let (mut x, mut y) = (0.0, 0.0);
         let mut pressed = false;
         for controller in &self.controllers {
@@ -2213,13 +2261,38 @@ impl Window {
                     Button::RightShoulder,
                 )
             };
-            x += convert_axis(controller.axis(x_axis), options.deadzone);
-            y += convert_axis(controller.axis(y_axis), options.deadzone);
+            // Raw axis in [-1, 1] (SDL gives -32768..32767, map symmetrically)
+            let raw_x = (controller.axis(x_axis) as f32 / i16::MAX as f32).clamp(-1.0, 1.0);
+            let raw_y = (controller.axis(y_axis) as f32 / i16::MAX as f32).clamp(-1.0, 1.0);
+            x += raw_x;
+            y += raw_y;
             pressed |= controller.button(button1);
             pressed |= controller.button(button2);
         }
-        let (x, y) = (x.clamp(-1.0, 1.0), y.clamp(-1.0, 1.0));
-
+        let (mut x, mut y) = (x.clamp(-1.0, 1.0), y.clamp(-1.0, 1.0));
+        // Circular deadzone: keep direction, rescale magnitude from [deadzone, 1] -> [0, 1].
+        // This fixes the old per-axis deadzone where diagonal (0.09,0.09) was dead but
+        // should be active, and where small deflections felt too weak.
+        let deadzone = options.deadzone;
+        assert!(deadzone >= 0.0);
+        if deadzone > 0.0 {
+            let mag = x.hypot(y);
+            if mag < deadzone {
+                x = 0.0;
+                y = 0.0;
+            } else if mag > 0.0 {
+                // Avoid division by zero; mag >= deadzone > 0 so safe.
+                let scale = (mag - deadzone) / (1.0 - deadzone) / mag;
+                // When deadzone >= 1, denominator 0 -> clamp to 0.
+                if deadzone >= 1.0 {
+                    x = 0.0;
+                    y = 0.0;
+                } else {
+                    x *= scale;
+                    y *= scale;
+                }
+            }
+        }
         (x, y, pressed)
     }
 

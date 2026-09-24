@@ -485,16 +485,6 @@ impl Environment {
             .read(executable_path)
             .map_err(|_| "Could not load executable: Could not read executable file".to_string())?;
         let gles_api_usage = mach_o::scan_gles_api_usage(&executable_bytes);
-        log!(
-            "Executable imports OpenGL ES entry points: ES 1.1 fixed-function: {}, ES 2.0 shaders: {}{}",
-            if gles_api_usage.uses_es1 { "yes" } else { "no" },
-            if gles_api_usage.uses_es2 { "yes" } else { "no" },
-            if gles_api_usage.is_es2_only() {
-                " (OpenGL ES 2.0-only app)"
-            } else {
-                ""
-            }
-        );
 
         let window = if options.headless {
             None
