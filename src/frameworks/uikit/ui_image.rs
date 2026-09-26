@@ -76,8 +76,30 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 + (id)imageNamed:(id)name { // NSString*
     let bundle: id = msg_class![env; NSBundle mainBundle];
-    let path: id = msg![env; bundle pathForResource:name ofType:nil];
+    let mut path: id = msg![env; bundle pathForResource:name ofType:nil];
     let name_str = ns_string::to_rust_string(env, name).to_string();
+    // Like UIKit, accept names without an extension (".png" is implied) and
+    // fall back to the "~iphone" and @2x variants.
+    if path == nil && !name_str.contains('.') {
+        let device_suffix = "~iphone";
+        for candidate in [
+            format!("{}{}", name_str, device_suffix),
+            name_str.clone(),
+            format!("{}@2x{}", name_str, device_suffix),
+            format!("{}@2x", name_str),
+        ] {
+            let candidate = ns_string::from_rust_string(env, candidate);
+            let png = ns_string::get_static_str(env, "png");
+            path = msg![env; bundle pathForResource:candidate ofType:png];
+            release(env, candidate);
+            if path != nil {
+                break;
+            }
+        }
+    }
+    if path == nil {
+        log!("UIImage imageNamed: {:?} not found in bundle", name_str);
+    }
 
     if State::get(env).cached_images.len() > CACHE_SIZE {
         let cache = std::mem::take(&mut State::get_mut(env).cached_images);

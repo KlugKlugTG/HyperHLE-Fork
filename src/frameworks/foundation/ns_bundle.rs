@@ -832,6 +832,16 @@ pub const CLASSES: ClassExports = objc_classes! {
         if tableName == nil { "Localizable".into() } else { ns_string::to_rust_string(env, tableName) }
     );
     let empty_str: id = ns_string::get_static_str(env, "");
+    // Apple returns the key when `value` is nil or an empty string (any
+    // empty string, not just a particular object).
+    let value = if value != nil && {
+        let len: NSUInteger = msg![env; value length];
+        len == 0
+    } {
+        empty_str
+    } else {
+        value
+    };
     // 2. Early exit for nil keys
     if key == nil {
         return if value == nil { empty_str } else { value };
@@ -1232,7 +1242,25 @@ fn load_strings_as_standard_format(env: &mut Environment, dict_url: id) -> id {
         return res;
     }
 
+    // A UTF-8 file may start with a BOM (EF BB BF), which the decoder keeps
+    // as U+FEFF. It isn't whitespace, so the scanner would choke on it.
+    let strings_str: id = {
+        let len: NSUInteger = msg![env; strings_str length];
+        let first: u16 = if len > 0 { msg![env; strings_str characterAtIndex:0u32] } else { 0 };
+        if first == 0xFEFF {
+            let stripped: id = msg![env; strings_str substringFromIndex:1u32];
+            retain(env, stripped);
+            release(env, strings_str);
+            stripped
+        } else {
+            strings_str
+        }
+    };
+
     let comment_start = ns_string::get_static_str(env, "/*");
+    let line_comment_start = ns_string::get_static_str(env, "//");
+    let newline = ns_string::get_static_str(env, "
+");
     let comment_end = ns_string::get_static_str(env, "*/");
     let equal_sign = ns_string::get_static_str(env, "=");
     let semicolon = ns_string::get_static_str(env, ";");
@@ -1242,14 +1270,23 @@ fn load_strings_as_standard_format(env: &mut Environment, dict_url: id) -> id {
     let scanner: id = msg_class![env; NSScanner scannerWithString:strings_str];
     release(env, strings_str);
     while !msg![env; scanner isAtEnd] {
-        while msg![env; scanner scanString:comment_start intoString:null_ptr] {
-            // Assume no nested comments!
-            let _: bool = msg![env; scanner scanUpToString:comment_end intoString:null_ptr];
-            let has_comment_end: bool =
-                msg![env; scanner scanString:comment_end intoString:null_ptr];
-            if !has_comment_end {
-                // Unterminated comment: scanUpToString consumed the rest of
-                // the file, so stop parsing instead of asserting.
+        // `//` comments run to the end of the line (Apple's .strings format
+        // allows both comment styles).
+        loop {
+            if msg![env; scanner scanString:line_comment_start intoString:null_ptr] {
+                let _: bool = msg![env; scanner scanUpToString:newline intoString:null_ptr];
+            } else if msg![env; scanner scanString:comment_start intoString:null_ptr] {
+                // Assume no nested comments!
+                let _: bool =
+                    msg![env; scanner scanUpToString:comment_end intoString:null_ptr];
+                let has_comment_end: bool =
+                    msg![env; scanner scanString:comment_end intoString:null_ptr];
+                if !has_comment_end {
+                    // Unterminated comment: scanUpToString consumed the rest
+                    // of the file, so stop parsing instead of asserting.
+                    break;
+                }
+            } else {
                 break;
             }
             if msg![env; scanner isAtEnd] {

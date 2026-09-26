@@ -343,6 +343,57 @@ pub const CLASSES: ClassExports = objc_classes! {
     () = msg![env; image_view setFrame:bounds];
 }
 
+// touchHLE has no deferred layout pass (setNeedsLayout is a no-op), so
+// re-layout the title/image/background subviews whenever the button is
+// resized. Buttons made with `buttonWithType:` get their real frame (often via
+// `sizeToFit`) only after init, and would otherwise keep zero-sized subviews.
+- (())setFrame:(CGRect)frame {
+    () = msg_super![env; this setFrame:frame];
+    () = msg![env; this layoutSubviews];
+}
+- (())setBounds:(CGRect)bounds {
+    () = msg_super![env; this setBounds:bounds];
+    () = msg![env; this layoutSubviews];
+}
+
+// A button's fitting size is the larger of its background image and its
+// content (image + title, plus contentEdgeInsets). Apps commonly size image
+// buttons with `[button sizeToFit]` or `sizeThatFits:`, so returning the
+// argument (UIView's behaviour) leaves them zero-sized and invisible.
+- (CGSize)sizeThatFits:(CGSize)_size {
+    let background: id = msg![env; this currentBackgroundImage];
+    let image: id = msg![env; this currentImage];
+    let title: id = msg![env; this currentTitle];
+    let insets = env.objc.borrow::<UIButtonHostObject>(this).content_edge_insets;
+
+    let image_size: CGSize = if image != nil {
+        msg![env; image size]
+    } else {
+        CGSize { width: 0.0, height: 0.0 }
+    };
+    let title_size: CGSize = if title != nil && to_rust_string(env, title).len() > 0 {
+        let label = env.objc.borrow::<UIButtonHostObject>(this).title_label;
+        let unbounded = CGSize { width: CGFloat::MAX, height: CGFloat::MAX };
+        msg![env; label sizeThatFits:unbounded]
+    } else {
+        CGSize { width: 0.0, height: 0.0 }
+    };
+    let content = CGSize {
+        width: image_size.width + title_size.width + insets.left + insets.right,
+        height: image_size.height.max(title_size.height) + insets.top + insets.bottom,
+    };
+
+    let background_size: CGSize = if background != nil {
+        msg![env; background size]
+    } else {
+        CGSize { width: 0.0, height: 0.0 }
+    };
+    CGSize {
+        width: content.width.max(background_size.width),
+        height: content.height.max(background_size.height),
+    }
+}
+
 - (CGRect)titleRectForContentRect:(CGRect)content_rect {
     content_rect
 }

@@ -129,6 +129,34 @@ fn objc_msgSend_inner(
         selector.as_str(&env.mem),
         receiver
     );
+    if crate::env_flag_cached!("TOUCHHLE_TRACE_MSGS") && receiver != nil {
+        use std::sync::Mutex;
+        static SEEN: Mutex<Option<std::collections::HashSet<(Class, SEL)>>> = Mutex::new(None);
+        let class = ObjC::read_isa(receiver, &env.mem);
+        let sel_name = selector.as_str(&env.mem);
+        if sel_name.starts_with("addSubview") || sel_name.starts_with("insertSubview") || sel_name.starts_with("setFullscreen") || sel_name == "removeFromSuperview" || sel_name.starts_with("bringSubview") || sel_name.starts_with("sendSubview") {
+            let r = env.cpu.regs();
+            let arg_class = if sel_name.starts_with("setFullscreen") || r[2] == 0 || r[2] < 0x1000 { "-".to_string() } else { env.objc.get_class_name(ObjC::read_isa(crate::mem::Ptr::from_bits(r[2]), &env.mem)).to_string() };
+            log!("VIEWOP {} {:?} {} arg={:#x}({}) r3={:#x} lr={:#x}", env.objc.get_class_name(class), receiver, sel_name, r[2], arg_class, r[3], r[14]);
+        }
+        if matches!(sel_name, "setEnabled:" | "setHidden:" | "setTitle:forState:" | "setImage:forState:" | "setBackgroundImage:forState:") && env.objc.get_class_name(class) == "UIButton" {
+            let r = env.cpu.regs();
+            log!("BTN {:?} {} arg={:#x} lr={:#x}", receiver, sel_name, r[2], r[14]);
+        }
+        if SEEN
+            .lock()
+            .unwrap()
+            .get_or_insert_with(Default::default)
+            .insert((class, selector))
+        {
+            log!(
+                "MSGTRACE t{} [{} {}]",
+                env.current_thread,
+                env.objc.get_class_name(class),
+                selector.as_str(&env.mem)
+            );
+        }
+    }
     // Host-side recursion guard. If an Objective-C method (typically
     // `hitTest:withEvent:` or `pointInside:withEvent:`) ends up recursing
     // into itself indirectly, the host call stack balloons because every

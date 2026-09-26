@@ -46,7 +46,9 @@ use crate::objc::{
     id, msg, msg_class, nil, objc_classes, release, retain, ClassExports, HostObject, NSZonePtr,
 };
 use crate::Environment;
-use std::collections::VecDeque;
+use super::movie_video::MovieVideo;
+use std::collections::{HashMap, VecDeque};
+use std::io::{Read, Seek, SeekFrom};
 use std::time::{Duration, Instant};
 
 /// Variants of `MPMoviePlayerController` notifications that we schedule on the
@@ -119,6 +121,9 @@ pub struct State {
     /// arrive before `Duration`), so the queue is now drained strictly in
     /// FIFO order. Each entry retains the player by +1.
     pending_notifications: VecDeque<(PendingNotification, Instant)>,
+    /// Video decoders for players that are currently playing (see
+    /// [super::movie_video]).
+    videos: HashMap<id, MovieVideo>,
 }
 impl State {
     fn get(env: &mut Environment) -> &mut Self {
@@ -130,6 +135,8 @@ type MPMovieScalingMode = NSInteger;
 type MPMovieControlStyle = NSInteger;
 type MPMovieSourceType = NSInteger;
 type MPMovieRepeatMode = NSInteger;
+/// `MPMovieRepeatModeOne`: the movie loops until it is stopped.
+const MPMovieRepeatModeOne: MPMovieRepeatMode = 1;
 
 type MPMoviePlaybackState = NSInteger;
 const MPMoviePlaybackStateStopped: MPMoviePlaybackState = 0;
@@ -305,6 +312,12 @@ struct MPMoviePlayerControllerHostObject {
     /// screen; this prevents `division by zero` aspect-ratio code paths.
     natural_size: CGSize,
     duration: f64,
+    /// Playback clock: position (seconds) accumulated before the current
+    /// play run, and when the current run started (`None` unless playing).
+    /// We can't decode the video, but apps still time their UI against
+    /// `currentPlaybackTime` (e.g. fading a menu in over a background movie).
+    clock_offset: f64,
+    clock_started: Option<Instant>,
     ready_for_display: bool,
     /// `true` once we have scheduled the post-load notification burst, so
     /// `prepareToPlay` / `play` / `setContentURL:` don't queue it twice.
@@ -327,6 +340,92 @@ const PLACEHOLDER_NATURAL_SIZE: CGSize = CGSize {
 /// zero crashes in app code that builds a progress bar from `currentPlaybackTime
 /// / duration`.
 const PLACEHOLDER_DURATION: f64 = 1.0;
+
+/// Read the duration (in seconds) of an MPEG-4/QuickTime file from the `mvhd`
+/// box inside its top-level `moov` box. Returns `None` if the file can't be
+/// parsed. See ISO/IEC 14496-12, "Movie Header Box".
+fn read_mp4_duration<F: Read + Seek>(file: &mut F) -> Option<f64> {
+    /// Reads a box header, returning (box start, box type, box size).
+    fn box_header<F: Read + Seek>(file: &mut F) -> Option<(u64, [u8; 4], u64)> {
+        let start = file.stream_position().ok()?;
+        let mut header = [0u8; 8];
+        file.read_exact(&mut header).ok()?;
+        let mut size = u32::from_be_bytes(header[0..4].try_into().unwrap()) as u64;
+        let kind: [u8; 4] = header[4..8].try_into().unwrap();
+        let mut header_len = 8;
+        if size == 1 {
+            let mut large = [0u8; 8];
+            file.read_exact(&mut large).ok()?;
+            size = u64::from_be_bytes(large);
+            header_len = 16;
+        } else if size == 0 {
+            // Box extends to the end of the file.
+            let end = file.seek(SeekFrom::End(0)).ok()?;
+            file.seek(SeekFrom::Start(start + header_len)).ok()?;
+            size = end - start;
+        }
+        if size < header_len {
+            return None;
+        }
+        Some((start, kind, size))
+    }
+
+    file.seek(SeekFrom::Start(0)).ok()?;
+    let (moov_start, moov_size) = loop {
+        let (start, kind, size) = box_header(file)?;
+        if &kind == b"moov" {
+            break (start, size);
+        }
+        file.seek(SeekFrom::Start(start + size)).ok()?;
+    };
+    loop {
+        let (start, kind, size) = box_header(file)?;
+        if start >= moov_start + moov_size {
+            return None;
+        }
+        if &kind == b"mvhd" {
+            let mut version_flags = [0u8; 4];
+            file.read_exact(&mut version_flags).ok()?;
+            let (timescale, duration) = if version_flags[0] == 1 {
+                // creation/modification time are 64-bit in version 1
+                let mut b = [0u8; 28];
+                file.read_exact(&mut b).ok()?;
+                (
+                    u32::from_be_bytes(b[16..20].try_into().unwrap()),
+                    u64::from_be_bytes(b[20..28].try_into().unwrap()),
+                )
+            } else {
+                let mut b = [0u8; 16];
+                file.read_exact(&mut b).ok()?;
+                (
+                    u32::from_be_bytes(b[8..12].try_into().unwrap()),
+                    u32::from_be_bytes(b[12..16].try_into().unwrap()) as u64,
+                )
+            };
+            if timescale == 0 || duration == 0 {
+                return None;
+            }
+            return Some(duration as f64 / timescale as f64);
+        }
+        file.seek(SeekFrom::Start(start + size)).ok()?;
+    }
+}
+
+/// Current position of the player's playback clock, in seconds. Wraps around
+/// for `MPMovieRepeatModeOne`, otherwise stops at the end of the movie.
+fn playback_position(host: &MPMoviePlayerControllerHostObject) -> f64 {
+    let elapsed = host
+        .clock_started
+        .map_or(0.0, |started| started.elapsed().as_secs_f64());
+    let position = host.clock_offset + elapsed;
+    if host.duration <= 0.0 {
+        position
+    } else if host.repeat_mode == MPMovieRepeatModeOne {
+        position % host.duration
+    } else {
+        position.min(host.duration)
+    }
+}
 
 /// Ensure the player has a valid dummy view, creating one lazily if needed.
 /// Returns the view id (always non-nil after this call).
@@ -412,6 +511,30 @@ fn schedule_preload_sequence(env: &mut Environment, this: id) {
             }
         }
     };
+
+    if playback_error_reason.is_none() {
+        let url = env
+            .objc
+            .borrow::<MPMoviePlayerControllerHostObject>(this)
+            .content_url;
+        let path = ns_url::to_rust_path(env, url);
+        let duration = env
+            .fs
+            .open(&path)
+            .ok()
+            .and_then(|mut file| read_mp4_duration(&mut file));
+        if let Some(duration) = duration {
+            log_dbg!(
+                "MPMoviePlayerController {:?}: {:?} is {:.2}s long",
+                this,
+                path.as_str(),
+                duration
+            );
+            env.objc
+                .borrow_mut::<MPMoviePlayerControllerHostObject>(this)
+                .duration = duration;
+        }
+    }
 
     let now = Instant::now();
     let base = now + Duration::from_millis(20);
@@ -510,6 +633,9 @@ fn schedule_playback(env: &mut Environment, this: id, start_at: Instant) {
             .objc
             .borrow_mut::<MPMoviePlayerControllerHostObject>(this);
         host.playback_state = MPMoviePlaybackStatePlaying;
+        if host.clock_started.is_none() {
+            host.clock_started = Some(start_at);
+        }
         let was = host.finish_scheduled;
         host.finish_scheduled = true;
         was
@@ -562,6 +688,8 @@ pub const CLASSES: ClassExports = objc_classes! {
         load_state: MPMovieLoadStateUnknown,
         natural_size: PLACEHOLDER_NATURAL_SIZE,
         duration: PLACEHOLDER_DURATION,
+        clock_offset: 0.0,
+        clock_started: None,
         ready_for_display: false,
         preload_scheduled: false,
         finish_scheduled: false,
@@ -630,6 +758,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())dealloc {
+    State::get(env).videos.remove(&this);
     // No need to drain pending notifications: each pending entry holds a
     // +1 retain on the player, so dealloc can only run once all queued
     // notifications have been delivered and released.
@@ -714,6 +843,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         .repeat_mode
 }
 - (())setRepeatMode:(MPMovieRepeatMode)mode {
+    log_dbg!("[(MPMoviePlayerController*){:?} setRepeatMode:{}]", this, mode);
     env.objc
         .borrow_mut::<MPMoviePlayerControllerHostObject>(this)
         .repeat_mode = mode;
@@ -786,22 +916,14 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (f64)currentPlaybackTime {
-    // We don't have a real clock; report 0 while stopped, otherwise mid-movie.
-    let state = env
-        .objc
-        .borrow::<MPMoviePlayerControllerHostObject>(this)
-        .playback_state;
-    if state == MPMoviePlaybackStatePlaying {
-        env.objc
-            .borrow::<MPMoviePlayerControllerHostObject>(this)
-            .duration
-            / 2.0
-    } else {
-        0.0
-    }
+    playback_position(env.objc.borrow::<MPMoviePlayerControllerHostObject>(this))
 }
-- (())setCurrentPlaybackTime:(f64)_time {
-    // No real playback to seek in.
+- (())setCurrentPlaybackTime:(f64)time {
+    let host = env.objc.borrow_mut::<MPMoviePlayerControllerHostObject>(this);
+    host.clock_offset = time.max(0.0);
+    if host.clock_started.is_some() {
+        host.clock_started = Some(Instant::now());
+    }
 }
 
 - (f64)initialPlaybackTime {
@@ -876,16 +998,19 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())pause {
-    env.objc
-        .borrow_mut::<MPMoviePlayerControllerHostObject>(this)
-        .playback_state = MPMoviePlaybackStatePaused;
+    let host = env.objc.borrow_mut::<MPMoviePlayerControllerHostObject>(this);
+    host.clock_offset = playback_position(host);
+    host.clock_started = None;
+    host.playback_state = MPMoviePlaybackStatePaused;
     enqueue(env, PendingNotification::PlaybackStateChange(this), Instant::now());
 }
 
 - (())stop {
-    env.objc
-        .borrow_mut::<MPMoviePlayerControllerHostObject>(this)
-        .playback_state = MPMoviePlaybackStateStopped;
+    let host = env.objc.borrow_mut::<MPMoviePlayerControllerHostObject>(this);
+    host.clock_offset = 0.0;
+    host.clock_started = None;
+    host.playback_state = MPMoviePlaybackStateStopped;
+    State::get(env).videos.remove(&this);
     enqueue(env, PendingNotification::PlaybackStateChange(this), Instant::now());
     if env
         .framework_state
@@ -941,7 +1066,58 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 /// For use by `NSRunLoop` via [super::handle_players]: check movie players'
 /// status, send notifications if necessary.
+/// Start decoding the player's movie for display, if it is playing and has
+/// no decoder yet.
+fn start_video_if_playing(env: &mut Environment, player: id) {
+    let (playing, looping, url) = {
+        let host = env.objc.borrow::<MPMoviePlayerControllerHostObject>(player);
+        (
+            host.playback_state == MPMoviePlaybackStatePlaying,
+            host.repeat_mode == MPMovieRepeatModeOne,
+            host.content_url,
+        )
+    };
+    if !playing || url == nil || State::get(env).videos.contains_key(&player) {
+        return;
+    }
+    let path = ns_url::to_rust_path(env, url);
+    let Ok(bytes) = env.fs.read(&path) else {
+        return;
+    };
+    if let Some(video) = MovieVideo::start(&bytes, looping) {
+        State::get(env).videos.insert(player, video);
+    }
+}
+
+/// Show the latest decoded frame of each playing movie in its player's view.
+fn present_video_frames(env: &mut Environment) {
+    let frames: Vec<(id, Vec<u8>, u32, u32)> = State::get(env)
+        .videos
+        .iter()
+        .filter_map(|(&player, video)| {
+            video
+                .take_frame()
+                .map(|frame| (player, frame, video.width, video.height))
+        })
+        .collect();
+    for (player, frame, width, height) in frames {
+        let view = env
+            .objc
+            .borrow::<MPMoviePlayerControllerHostObject>(player)
+            .view;
+        if view == nil {
+            continue;
+        }
+        let layer: id = msg![env; view layer];
+        crate::frameworks::core_animation::ca_eagl_layer::present_pixels(
+            env, layer, frame, width, height,
+        );
+    }
+}
+
 pub(super) fn handle_players(env: &mut Environment) {
+    present_video_frames(env);
+
     // Pop all notifications whose time has come, preserving FIFO order.
     let mut ready: Vec<PendingNotification> = Vec::new();
     {
@@ -961,12 +1137,49 @@ pub(super) fn handle_players(env: &mut Environment) {
         let player = notif.player();
         let name_str = notif.name();
 
+        // A looping movie (`MPMovieRepeatModeOne`) never reaches its end, so
+        // Apple's player never posts `PlaybackDidFinish` for it on its own;
+        // it keeps playing until the app calls `stop`. Apps that play a
+        // looping background movie behind their UI (e.g. BioShock's main
+        // menu) treat an early "playback ended" as the movie being dismissed
+        // and tear down that screen. The repeat mode is usually set after
+        // `initWithContentURL:` has already queued the finish, so check it
+        // here, at dispatch time.
+        if let PendingNotification::PlaybackDidFinish {
+            reason: MPMovieFinishReasonPlaybackEnded,
+            ..
+        } = notif
+        {
+            let host = env.objc.borrow::<MPMoviePlayerControllerHostObject>(player);
+            if host.repeat_mode == MPMovieRepeatModeOne
+                && host.playback_state == MPMoviePlaybackStatePlaying
+            {
+                log_dbg!(
+                    "MPMoviePlayerController {:?}: looping movie, not posting PlaybackDidFinish",
+                    player
+                );
+                env.objc
+                    .borrow_mut::<MPMoviePlayerControllerHostObject>(player)
+                    .finish_scheduled = false;
+                release(env, player);
+                continue;
+            }
+        }
+
         // For PlaybackDidFinish we must update playbackState BEFORE posting,
         // so observers that read [player playbackState] see Stopped.
         if matches!(notif, PendingNotification::PlaybackDidFinish { .. }) {
-            env.objc
-                .borrow_mut::<MPMoviePlayerControllerHostObject>(player)
-                .playback_state = MPMoviePlaybackStateStopped;
+            let host = env
+                .objc
+                .borrow_mut::<MPMoviePlayerControllerHostObject>(player);
+            host.playback_state = MPMoviePlaybackStateStopped;
+            host.clock_offset = 0.0;
+            host.clock_started = None;
+            State::get(env).videos.remove(&player);
+        }
+
+        if matches!(notif, PendingNotification::PlaybackStateChange(_)) {
+            start_video_if_playing(env, player);
         }
 
         let name = ns_string::get_static_str(env, name_str);

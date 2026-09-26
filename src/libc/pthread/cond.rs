@@ -118,6 +118,21 @@ fn check_or_register_cond(env: &mut Environment, cond: MutPtr<pthread_cond_t>) -
     }
 }
 
+/// Debug: log distinct (thread, op, cond, lr) tuples.
+fn cond_trace(env: &Environment, op: &str, cond: MutPtr<pthread_cond_t>) {
+    if !crate::env_flag_cached!("TOUCHHLE_TRACE_COND") {
+        return;
+    }
+    use std::sync::Mutex;
+    static SEEN: Mutex<Option<HashSet<(usize, String, u32, u32)>>> = Mutex::new(None);
+    let lr = env.cpu.regs()[14];
+    let key = (env.current_thread, op.to_string(), cond.to_bits(), lr);
+    let mut g = SEEN.lock().unwrap();
+    if g.get_or_insert_with(HashSet::new).insert(key) {
+        log!("CONDTRACE thread={} {} cond={:?} lr={:#x}", env.current_thread, op, cond, lr);
+    }
+}
+
 pub fn pthread_cond_timedwait(
     env: &mut Environment,
     cond: MutPtr<pthread_cond_t>,
@@ -207,6 +222,7 @@ pub fn pthread_cond_wait(
         env.current_thread,
         cond
     );
+    cond_trace(env, "wait", cond);
 
     let current_thread = env.current_thread;
     let mutex_id = env.mem.read(mutex).mutex_id;
@@ -239,6 +255,7 @@ pub fn pthread_cond_signal(env: &mut Environment, cond: MutPtr<pthread_cond_t>) 
     if let Err(e) = check_or_register_cond(env, cond) {
         return e;
     }
+    cond_trace(env, "signal", cond);
     let host_object = State::get_mut(env)
         .condition_variables
         .get_mut(&cond)
@@ -266,6 +283,7 @@ pub fn pthread_cond_broadcast(env: &mut Environment, cond: MutPtr<pthread_cond_t
     if let Err(e) = check_or_register_cond(env, cond) {
         return e;
     }
+    cond_trace(env, "broadcast", cond);
     log_dbg!(
         "Thread {} unblocks all threads waiting on condition variable {:?}",
         env.current_thread,

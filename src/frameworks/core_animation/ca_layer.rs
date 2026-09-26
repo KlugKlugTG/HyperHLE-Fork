@@ -129,6 +129,9 @@ pub(crate) struct CALayerHostObject {
 impl HostObject for CALayerHostObject {}
 
 impl CALayerHostObject {
+    pub(super) fn delegate_for_debug(&self) -> id {
+        self.delegate
+    }
     // CAMetalLayer helpers: metal.rs lives in a sibling module tree, so it
     // cannot reach the pub(super) fields directly. Route frame/bounds access
     // through these methods.
