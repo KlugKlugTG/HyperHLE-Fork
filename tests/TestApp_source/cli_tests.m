@@ -111,6 +111,28 @@ int test_performSelectorOnMainThread_mainThreadDeferred(void) {
   return result;
 }
 
+int test_UIApplication_canOpenURL_own_registered_scheme(void) {
+  NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+  UIApplication *application = [[UIApplication alloc] init];
+  NSURL *registered = [NSURL URLWithString:@"HYPERHLE-TEST://callback"];
+  NSURL *unregistered =
+      [NSURL URLWithString:@"hyperhle-unregistered://callback"];
+  if (application == nil || registered == nil || unregistered == nil) {
+    [pool drain];
+    return -1;
+  }
+  if (![application canOpenURL:registered]) {
+    [pool drain];
+    return -2;
+  }
+  if ([application canOpenURL:unregistered]) {
+    [pool drain];
+    return -3;
+  }
+  [pool drain];
+  return 0;
+}
+
 int test_NSBundle_subbundleCacheRetainsAutoreleasedBundle(void) {
   NSString *identifier = @"org.touchhle.TestResources";
   NSAutoreleasePool *innerPool = [[NSAutoreleasePool alloc] init];
@@ -6366,6 +6388,7 @@ struct {
     FUNC_DEF(test_NSNotificationCenter_addObserver_nilName_withObject),
     FUNC_DEF(test_NSNotificationCenter_addObserver_nilName_removeObserver),
     FUNC_DEF(test_performSelectorOnMainThread_mainThreadDeferred),
+    FUNC_DEF(test_UIApplication_canOpenURL_own_registered_scheme),
     FUNC_DEF(test_NSBundle_subbundleCacheRetainsAutoreleasedBundle),
 };
 // clang-format on

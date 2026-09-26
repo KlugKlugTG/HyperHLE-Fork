@@ -234,9 +234,10 @@ pub const CLASSES: ClassExports = objc_classes! {
     // gate sharing buttons on `canOpenURL:` (Talking Carl's social
     // links, the Bubble Witch share sheet, the Imobamoba "rate me"
     // popup) take the "yes, link the user out" branch instead of
-    // greying out the button. Application-specific schemes (e.g.
-    // `fb://`, `twitter://`) we report as unavailable because no
-    // host-side app responds to them.
+    // greying out the button. Schemes in the app's own
+    // `CFBundleURLTypes` are checked below. Other application-specific
+    // schemes (e.g. `fb://`, `twitter://`) remain unavailable because
+    // no host-side app responds to them.
     if url == nil {
         return false;
     }
@@ -275,14 +276,46 @@ pub const CLASSES: ClassExports = objc_classes! {
         return true;
     }
 
-    // Honour the Info.plist allow-list (`LSApplicationQueriesSchemes`).
-    // Real iOS uses this only to *gate* the query, not to answer it,
-    // but if the app lists a scheme there it almost always genuinely
-    // expects the answer to be NO when the corresponding app is not
-    // installed. We therefore log a debug note and return false so the
-    // app's "app isn't installed" fallback runs.
     let main_bundle: id = msg_class![env; NSBundle mainBundle];
     if main_bundle != nil {
+        let url_types_key = ns_string::get_static_str(env, "CFBundleURLTypes");
+        let url_types: id = msg![env; main_bundle objectForInfoDictionaryKey:url_types_key];
+        if url_types != nil {
+            let schemes_key = ns_string::get_static_str(env, "CFBundleURLSchemes");
+            let type_count: u32 = msg![env; url_types count];
+            for i in 0..type_count {
+                let url_type: id = msg![env; url_types objectAtIndex:i];
+                if url_type == nil {
+                    continue;
+                }
+                let schemes: id = msg![env; url_type objectForKey:schemes_key];
+                if schemes == nil {
+                    continue;
+                }
+                let scheme_count: u32 = msg![env; schemes count];
+                for j in 0..scheme_count {
+                    let registered_scheme: id = msg![env; schemes objectAtIndex:j];
+                    if registered_scheme == nil {
+                        continue;
+                    }
+                    let registered_scheme = ns_string::to_rust_string(env, registered_scheme);
+                    if registered_scheme.to_lowercase() == scheme_lower {
+                        log_dbg!(
+                            "canOpenURL: {:?} is registered by the running app; returning YES",
+                            scheme_lower
+                        );
+                        return true;
+                    }
+                }
+            }
+        }
+
+        // Honour the Info.plist allow-list (`LSApplicationQueriesSchemes`).
+        // Real iOS uses this only to *gate* the query, not to answer it,
+        // but if the app lists a scheme there it almost always genuinely
+        // expects the answer to be NO when the corresponding app is not
+        // installed. We therefore log a debug note and return false so the
+        // app's "app isn't installed" fallback runs.
         let key_str = ns_string::get_static_str(env, "LSApplicationQueriesSchemes");
         let allowed_arr: id = msg![env; main_bundle objectForInfoDictionaryKey:key_str];
         if allowed_arr != nil {
