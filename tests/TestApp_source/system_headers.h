@@ -140,6 +140,7 @@ typedef double NSTimeInterval;
 @end
 
 @interface NSURL : NSObject
++ (instancetype)URLWithString:(NSString *)string;
 @end
 
 @interface NSData : NSObject
@@ -412,6 +413,7 @@ typedef enum {
 @interface UIApplication : NSObject
 + (instancetype)sharedApplication;
 - (id)delegate;
+- (BOOL)canOpenURL:(NSURL *)url;
 @end
 @interface UIScreen : NSObject
 + (instancetype)mainScreen;
