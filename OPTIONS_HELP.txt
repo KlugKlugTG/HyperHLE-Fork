@@ -382,25 +382,6 @@ Other options:
         option takes precedence over it. --vsync and --no-vsync are shorthands
         for 'on' and 'off'.
 
-    --gl-driver=...
-        (Android only.) Which host OpenGL ES driver to use. One of:
-
-        'auto' (default): apps whose executable only imports OpenGL ES 2.0
-        shader entry points use the vendor's native driver. For apps that may
-        use ES 1.1 (and the app picker), bundled ANGLE is selected only when
-        Android exposes an Adreno KGSL GPU; other or unrecognized GPUs use the
-        system driver instead. This avoids assuming that the bundled ANGLE's
-        Vulkan backend is supported on every device. The log explains the
-        choice.
-
-        'angle': always use bundled ANGLE when available, regardless of the
-        detected GPU. Use this to override the automatic safety check.
-
-        'native': always use the vendor's native driver, even for ES 1.1 apps.
-
-        The environment variable TOUCHHLE_GL_DRIVER accepts the same values;
-        the option takes precedence over it.
-
     --no-perf-hints
         (Android only.) Don't raise the emulator thread's scheduling priority
         and don't report its per-frame CPU time to the system's performance

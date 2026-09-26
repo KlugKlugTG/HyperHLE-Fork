@@ -87,31 +87,6 @@ impl PresentMode {
     }
 }
 
-/// Which host OpenGL ES driver to load on Android (`--gl-driver=`). Has no
-/// effect on other platforms.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum GlDriverPreference {
-    /// On Android, use bundled ANGLE for apps that may use OpenGL ES 1.1 only
-    /// on detected Adreno devices; use the system driver for ES 2.0-only apps
-    /// and other or unrecognized GPUs.
-    Auto,
-    /// Always use the bundled ANGLE driver (when it is available).
-    Angle,
-    /// Always use the vendor's native (system) OpenGL ES driver.
-    Native,
-}
-
-impl GlDriverPreference {
-    pub fn from_short_name(name: &str) -> Result<Self, ()> {
-        match name {
-            "auto" => Ok(Self::Auto),
-            "angle" => Ok(Self::Angle),
-            "native" | "system" => Ok(Self::Native),
-            _ => Err(()),
-        }
-    }
-}
-
 /// Whether host buffer swaps wait for the display's vertical refresh
 /// (`--vsync=`).
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -192,10 +167,6 @@ pub struct Options {
     /// the app's draws correctly; costs a GPU pipeline stall per frame.
     /// Can also be enabled with `TOUCHHLE_PRESENT_FINISH=1`.
     pub present_finish: bool,
-    /// See [GlDriverPreference]. Can also be set with the
-    /// `TOUCHHLE_GL_DRIVER` environment variable (the option takes
-    /// precedence).
-    pub gl_driver: GlDriverPreference,
     /// See [VsyncMode]. Can also be set with the `TOUCHHLE_VSYNC` environment
     /// variable (the option takes precedence).
     pub vsync: VsyncMode,
@@ -308,10 +279,6 @@ impl Default for Options {
             present_finish: std::env::var_os("TOUCHHLE_PRESENT_FINISH")
                 .map(|value| value != "0")
                 .unwrap_or(false),
-            gl_driver: std::env::var("TOUCHHLE_GL_DRIVER")
-                .ok()
-                .and_then(|value| GlDriverPreference::from_short_name(value.trim()).ok())
-                .unwrap_or(GlDriverPreference::Auto),
             vsync: std::env::var("TOUCHHLE_VSYNC")
                 .ok()
                 .and_then(|value| VsyncMode::from_short_name(value.trim()).ok())
@@ -561,10 +528,6 @@ impl Options {
             self.present_finish = true;
         } else if arg == "--no-present-finish" {
             self.present_finish = false;
-        } else if let Some(value) = arg.strip_prefix("--gl-driver=") {
-            self.gl_driver = GlDriverPreference::from_short_name(value).map_err(|_| {
-                "Invalid value for --gl-driver= (expected auto, angle or native)".to_string()
-            })?;
         } else if let Some(value) = arg.strip_prefix("--vsync=") {
             self.vsync = VsyncMode::from_short_name(value).map_err(|_| {
                 "Invalid value for --vsync= (expected auto, on or off)".to_string()
