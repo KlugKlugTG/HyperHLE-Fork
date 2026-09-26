@@ -146,4 +146,4 @@ macro_rules! echo_no_panic {
 /// Put modules to enable [log_dbg] for here, e.g. "touchHLE::mem" to see when
 /// memory is allocated and freed. Keep the default empty to avoid hot-path log
 /// traffic in normal builds.
-pub const ENABLED_MODULES: &[&str] = &[];
+pub const ENABLED_MODULES: &[&str] = &["touchHLE::frameworks::media_player::movie_player"];

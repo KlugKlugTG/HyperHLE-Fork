@@ -64,6 +64,9 @@ pub struct HostDylib {
     pub function_exports: &'static [FunctionExports],
 }
 
+/// Debug: number of upcoming host calls to log.
+pub static TRACE_HOST_CALLS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
 pub type HostFunction = &'static dyn CallFromGuest;
 
 /// Type for lists of functions exported by host implementations of dynamic
@@ -1591,6 +1594,10 @@ impl Dyld {
                     return None;
                 };
                 log_dbg!("Call to host function, already linked: {}", symbol);
+                if TRACE_HOST_CALLS.load(std::sync::atomic::Ordering::Relaxed) > 0 {
+                    TRACE_HOST_CALLS.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+                    log!("HOSTCALL {} lr={:#x}", symbol, cpu.regs()[14]);
+                }
                 Some(f)
             }
         }

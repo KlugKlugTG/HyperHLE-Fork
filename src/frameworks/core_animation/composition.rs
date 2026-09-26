@@ -466,6 +466,51 @@ pub fn recomposite_if_necessary(env: &mut Environment, force: bool) -> Option<In
     }
     std::mem::drop(gles);
 
+    if crate::env_flag_cached!("TOUCHHLE_DUMP_LAYER_TREE") {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static N: AtomicU32 = AtomicU32::new(0);
+        if N.fetch_add(1, Ordering::Relaxed) % 600 == 0 {
+            fn dump(env: &Environment, layer: id, depth: usize) {
+                let h = env.objc.borrow::<CALayerHostObject>(layer);
+                let delegate: id = h.delegate_for_debug();
+                let cls = |o: id| -> String {
+                    if o == nil {
+                        "nil".into()
+                    } else {
+                        let c = crate::objc::ObjC::read_isa(o, &env.mem);
+                        env.objc.get_class_name(c).to_string()
+                    }
+                };
+                log!(
+                    "LAYER {:indent$}{} ({:?}) delegate={} bounds={:?} pos={:?} hidden={} opaque={} opacity={} bg={:?} contents={} pixels={} ctx={}",
+                    "",
+                    cls(layer),
+                    layer,
+                    cls(delegate),
+                    h.bounds,
+                    h.position,
+                    h.hidden,
+                    h.opaque,
+                    h.opacity,
+                    h.background_color.map(|c| (c.r, c.g, c.b, c.a)),
+                    h.contents != nil,
+                    h.presented_pixels.as_ref().map(|p| (p.1, p.2)).is_some(),
+                    h.cg_context.is_some(),
+                    indent = depth * 2
+                );
+                for &s in &h.sublayers {
+                    dump(env, s, depth + 1);
+                }
+            }
+            for &root in &window_layers {
+                dump(env, root, 0);
+            }
+            for (i, t) in env.threads.iter().enumerate() {
+                log!("THREAD {} current={} {:?}", i, i == env.current_thread, t);
+            }
+        }
+    }
+
     // Assumes the windows in the list are ordered back-to-front.
     // TODO: this may not be correct once we support windowLevel.
     for root_layer in window_layers {

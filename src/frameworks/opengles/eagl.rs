@@ -783,6 +783,9 @@ pub const CLASSES: ClassExports = objc_classes! {
                 n
             );
         }
+        if n == 3000 && crate::env_flag_cached!("TOUCHHLE_TRACE_FRAME_CALLS") {
+            crate::dyld::TRACE_HOST_CALLS.store(400, Ordering::Relaxed);
+        }
     }
 
     if target != gles11::RENDERBUFFER_OES {
