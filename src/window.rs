@@ -589,112 +589,14 @@ pub fn host_screen_size() -> Option<(u32, u32)> {
     }
 }
 
-/// Choose between Google's ANGLE (when this Android build was packaged with
-/// it) and the vendor-native OpenGL ES driver, and point SDL's EGL / GLES
-/// loader at the chosen one.
+/// Configure SDL to use the bundled ANGLE libraries on Android.
 ///
-/// SDL loads its EGL and GLES libraries with `dlopen` at context-creation time
-/// and honours the `SDL_VIDEO_EGL_DRIVER` / `SDL_VIDEO_GL_DRIVER` environment
-/// variables (see SDL's `src/video/SDL_egl.c`). ANGLE ships as a pair of shared
-/// libraries — an `libEGL` and an `libGLESv2` — so to avoid clashing with the
-/// system driver of the same name we look for the conventional ANGLE-suffixed
-/// sonames (`libEGL_angle.so` / `libGLESv2_angle.so`), which is how ANGLE is
-/// packaged inside an APK's native library directory.
-///
-/// Why there is a choice at all: ANGLE was adopted because the vendors' native
-/// OpenGL ES **1.1** drivers (Qualcomm Adreno's in particular) are strict or
-/// buggy in ways that leave early iPhone OS games with a black screen. The
-/// vendors' OpenGL ES **2.0/3.x** drivers, on the other hand, are the path
-/// every Android game runs on, and they are faster than ANGLE's ES-on-Vulkan
-/// translation (no shader re-translation, no staging copies for client-side
-/// vertex arrays, cheaper draw submission). `--gl-driver=auto` uses the native driver
-/// for ES 2.0-only apps and for non-Adreno or unrecognized GPUs. It selects
-/// ANGLE for apps that may use ES 1.1 (and for the app picker) only when an
-/// Adreno KGSL device is detected; `--gl-driver=angle` can force it otherwise.
-///
-/// The app picker's window and the app's window are separate SDL windows, and
-/// SDL unloads the EGL/GLES libraries when the last GL window is destroyed, so
-/// the choice can differ between the two: the variables are simply set (or
-/// cleared again) before each window is created.
-///
-/// This is deliberately conservative:
-/// - It never overrides an `SDL_VIDEO_*_DRIVER` value the user set themselves
-///   (only values this function set earlier are cleared again).
-/// - It only selects ANGLE if *both* libraries can actually be `dlopen`ed, so
-///   a build that doesn't bundle ANGLE is completely unaffected (SDL falls back
-///   to the system driver, which itself may already be ANGLE on Android 15+ or
-///   when the user enabled ANGLE Preferences).
-#[cfg(any(target_os = "android", test))]
-fn gpu_model_is_adreno(model: &str) -> bool {
-    model.to_ascii_lowercase().contains("adreno")
-}
-
+/// This is done before creating an SDL window/context, because SDL loads EGL
+/// and GLES at context-creation time. Android builds always prefer the same
+/// bundled ANGLE backend; app imports and GPU-model heuristics do not select a
+/// different host driver. If ANGLE is not loadable, SDL uses the system driver.
 #[cfg(target_os = "android")]
-fn android_has_adreno_gpu() -> bool {
-    std::fs::read_to_string("/sys/class/kgsl/kgsl-3d0/gpu_model")
-        .as_deref()
-        .is_ok_and(gpu_model_is_adreno)
-        || std::path::Path::new("/dev/kgsl-3d0").exists()
-}
-
-#[cfg(any(target_os = "android", test))]
-fn auto_uses_bundled_angle(
-    app_gles_usage: Option<crate::mach_o::GlesApiUsage>,
-    adreno_detected: bool,
-) -> bool {
-    adreno_detected && !app_gles_usage.is_some_and(|usage| usage.is_es2_only())
-}
-
-#[cfg(test)]
-mod android_gl_driver_tests {
-    use super::{auto_uses_bundled_angle, gpu_model_is_adreno};
-    use crate::mach_o::GlesApiUsage;
-
-    #[test]
-    fn gpu_detection_matches_adreno_not_mali() {
-        assert!(gpu_model_is_adreno("Qualcomm Adreno (TM) 530"));
-        assert!(gpu_model_is_adreno("adreno 506"));
-        assert!(!gpu_model_is_adreno("Mali-T830 MP2"));
-        assert!(!gpu_model_is_adreno(""));
-    }
-
-    #[test]
-    fn automatic_angle_is_limited_to_detected_adreno_es1() {
-        let es1 = Some(GlesApiUsage {
-            uses_es1: true,
-            uses_es2: false,
-        });
-        let es2 = Some(GlesApiUsage {
-            uses_es1: false,
-            uses_es2: true,
-        });
-
-        assert!(auto_uses_bundled_angle(None, true));
-        assert!(auto_uses_bundled_angle(es1, true));
-        assert!(!auto_uses_bundled_angle(None, false));
-        assert!(!auto_uses_bundled_angle(es1, false));
-        assert!(!auto_uses_bundled_angle(es2, true));
-    }
-}
-
-#[cfg(target_os = "android")]
-fn select_android_gl_driver(
-    preference: crate::options::GlDriverPreference,
-    app_gles_usage: Option<crate::mach_o::GlesApiUsage>,
-) {
-    use crate::options::GlDriverPreference;
-    use std::sync::atomic::{AtomicBool, Ordering};
-
-    /// Whether the `SDL_VIDEO_*_DRIVER` variables currently in the environment
-    /// were set by this function (as opposed to by the user).
-    static ANGLE_ENV_SET_BY_US: AtomicBool = AtomicBool::new(false);
-
-    /// Candidate (EGL, GLESv1_CM, GLESv2) soname triples, most specific first.
-    /// `libGLESv1_CM_angle.so` is what SDL should load for touchHLE's ES 1.1
-    /// contexts (this is how Google's own ANGLE-in-APK setup works); entry
-    /// points for higher versions resolve through ANGLE's `eglGetProcAddress`
-    /// regardless. `libfeature_support_angle.so` is dlopened by
-    /// `libGLESv2_angle.so` at runtime, so it must be packaged alongside.
+fn configure_android_angle_driver() {
     const CANDIDATES: &[(&str, &str, &str)] = &[
         (
             "libEGL_angle.so",
@@ -708,8 +610,6 @@ fn select_android_gl_driver(
         ),
     ];
 
-    /// Returns true if `name` can be dynamically loaded (i.e. it is present in
-    /// the app's native library search path), closing the handle again.
     fn can_load(name: &str) -> bool {
         use std::ffi::CString;
         let Ok(cname) = CString::new(name) else {
@@ -727,92 +627,27 @@ fn select_android_gl_driver(
         }
     }
 
-    fn use_system_driver(reason: &str) {
-        if ANGLE_ENV_SET_BY_US.swap(false, Ordering::Relaxed) {
-            env::remove_var("SDL_VIDEO_EGL_DRIVER");
-            env::remove_var("SDL_VIDEO_GL_DRIVER");
-        }
-        log!(
-            "Using the system OpenGL ES driver rather than bundled ANGLE: {}.",
-            reason
-        );
-    }
-
-    // Respect an explicit user override completely.
-    if env::var_os("TOUCHHLE_ANGLE")
-        .map(|v| v == "0")
-        .unwrap_or(false)
-    {
-        use_system_driver("TOUCHHLE_ANGLE=0");
-        return;
-    }
-    if !ANGLE_ENV_SET_BY_US.load(Ordering::Relaxed)
-        && (env::var_os("SDL_VIDEO_EGL_DRIVER").is_some()
-            || env::var_os("SDL_VIDEO_GL_DRIVER").is_some())
-    {
-        log!(
-            "SDL_VIDEO_EGL_DRIVER / SDL_VIDEO_GL_DRIVER already set; \
-             leaving GL driver selection to the environment."
-        );
-        return;
-    }
-
-    match preference {
-        GlDriverPreference::Angle => {}
-        GlDriverPreference::Native => {
-            use_system_driver("--gl-driver=native");
-            return;
-        }
-        GlDriverPreference::Auto => {
-            if app_gles_usage.is_some_and(|usage| usage.is_es2_only()) {
-                use_system_driver(
-                    "the app only imports OpenGL ES 2.0 shader entry points, and the \
-                     vendor's native ES 2.0 driver is faster than ES-on-Vulkan \
-                     translation (use --gl-driver=angle to override)",
-                );
-                return;
-            }
-            if !auto_uses_bundled_angle(app_gles_usage, android_has_adreno_gpu()) {
-                use_system_driver(concat!(
-                    "Android did not expose a detectable Adreno KGSL GPU; using the system ",
-                    "driver instead of assuming the bundled ANGLE/Vulkan backend is supported ",
-                    "(use --gl-driver=angle to override)",
-                ));
-                return;
-            }
-        }
-    }
-
     for &(egl, gles1, gles2) in CANDIDATES {
-        let loadable = can_load(egl) && can_load(gles1) && can_load(gles2);
-        if !loadable {
-            log_dbg!(
-                "Bundled ANGLE candidate not fully loadable \
-                 (egl={} gles1={} gles2={}); letting SDL use the system driver.",
-                egl,
-                gles1,
-                gles2
-            );
+        let libraries_loadable = can_load(egl) && can_load(gles1) && can_load(gles2);
+        if !libraries_loadable {
             continue;
         }
-        // Set before any SDL video init reads these variables; we are still
-        // single-threaded during Window::new startup here.
+
+        // Always override SDL's environment-based driver choice when the
+        // bundled ANGLE libraries are available.
         env::set_var("SDL_VIDEO_EGL_DRIVER", egl);
-        // Point SDL's GL loader at ANGLE's ES 1.1 front-end, as in Google's
-        // own ANGLE-in-APK setup.
+        // ANGLE's ES 1.1 front-end also resolves higher-version entry points
+        // through EGL's get-proc-address mechanism.
         env::set_var("SDL_VIDEO_GL_DRIVER", gles1);
-        ANGLE_ENV_SET_BY_US.store(true, Ordering::Relaxed);
-        log!(
-            "Bundled ANGLE detected ({} / {} / {}); preferring it over the \
-             system OpenGL ES driver for ES 1.1 compatibility.",
-            egl,
-            gles1,
-            gles2
-        );
+        log!("Using bundled ANGLE for Android OpenGL ES ({} / {}).", egl, gles1);
         return;
     }
-    // No bundled ANGLE: fall through and let SDL use the system driver.
-    use_system_driver("no bundled ANGLE libraries were found");
+
+    // Do not leave a stale or user-provided override pointing at an unavailable
+    // driver; SDL will use Android's system OpenGL ES fallback.
+    env::remove_var("SDL_VIDEO_EGL_DRIVER");
+    env::remove_var("SDL_VIDEO_GL_DRIVER");
+    log!("Bundled ANGLE is unavailable; using the Android system OpenGL ES driver.");
 }
 
 pub struct Window {
@@ -907,24 +742,15 @@ impl Window {
         }
     }
 
-    /// Create the window. `app_gles_usage` describes which OpenGL ES API
-    /// generations the app's executable imports (`None` for the app picker);
-    /// on Android it steers the host GL driver choice, see
-    /// [select_android_gl_driver].
+    /// Create the window.
     pub fn new(
         title: &str,
         icon: Option<Image>,
         launch_image: Option<(Image, bool)>,
         options: &Options,
-        app_gles_usage: Option<crate::mach_o::GlesApiUsage>,
     ) -> Window {
-        #[cfg(not(target_os = "android"))]
-        {
-            let _ = app_gles_usage;
-            if options.gl_driver != crate::options::GlDriverPreference::Auto {
-                log!("--gl-driver= only has an effect on Android; ignoring it.");
-            }
-        }
+        #[cfg(target_os = "android")]
+        configure_android_angle_driver();
 
         let sdl_ctx = sdl2::init().unwrap();
         let video_ctx = sdl_ctx.video().unwrap();
@@ -945,25 +771,6 @@ impl Window {
 
             // Disable blocking of event loop when app is paused.
             sdl2::hint::set("SDL_ANDROID_BLOCK_ON_PAUSE", "0");
-
-            // Pick the host OpenGL ES driver: Google's ANGLE (OpenGL ES over
-            // Vulkan, bundled with this build) for apps that may use the
-            // OpenGL ES 1.1 fixed-function pipeline, which the vendors' native
-            // ES 1.1 drivers (Qualcomm Adreno's in particular) get wrong in
-            // black-screen-inducing ways, and the vendor's native driver for
-            // OpenGL ES 2.0-only apps, where it is the faster of the two.
-            //
-            // SDL loads its EGL / GLES libraries with `dlopen`, honouring the
-            // `SDL_VIDEO_EGL_DRIVER` / `SDL_VIDEO_GL_DRIVER` environment
-            // variables (see SDL's `src/video/SDL_egl.c`). If this build was
-            // packaged with ANGLE's `libEGL`/`libGLESv2` in the APK's native
-            // library directory, we point SDL straight at them so ANGLE is used
-            // transparently without the user having to toggle developer
-            // options. When ANGLE isn't bundled this is a no-op and SDL falls
-            // back to the system driver (which itself may already be ANGLE on
-            // Android 15+ or when selected via ANGLE Preferences).
-            #[cfg(target_os = "android")]
-            select_android_gl_driver(options.gl_driver, app_gles_usage);
         }
 
         // Separate mouse and touch events in both SDL synthesis directions.
@@ -1222,16 +1029,9 @@ impl Window {
         }
 
         // Detect the host GL stack once, up front, so we can auto-apply the
-        // known Adreno black-screen workarounds. On Qualcomm Adreno hardware,
-        // the native OpenGL ES 1.1 driver is unusually strict: it samples
-        // incomplete textures as opaque black and silently stubs ES 2.0-style
-        // shader entry points requested through an ES 1.1 context, both of
-        // which manifest as a black screen for many early iPhone OS games.
-        // Google's ANGLE (OpenGL ES over Vulkan) is far more lenient and is the
-        // recommended driver on Adreno devices. Auto-selection is limited to
-        // devices exposing the Adreno KGSL node; --gl-driver=angle or
-        // SDL_VIDEO_GL_DRIVER can select ANGLE when auto chooses the system
-        // driver, and `driver_description()` reports an "ANGLE" renderer here.
+        // known Adreno black-screen workarounds. Android uses bundled ANGLE
+        // whenever its libraries are available; the system driver is only a
+        // fallback if ANGLE cannot be loaded.
         window.log_gpu_backend_hints();
 
         if window.splash_image.is_some() {
@@ -1276,13 +1076,10 @@ impl Window {
             } else {
                 log!(
                     "GPU backend: Qualcomm Adreno native OpenGL ES driver. \
-                     Its ES 2.0 path is the fast one and is what OpenGL ES \
-                     2.0-only apps are given on purpose (see --gl-driver); its \
-                     ES 1.1 path is strict and can render some early iPhone OS \
-                     games as a black screen, so if this app uses ES 1.1 and \
-                     comes out black, try --gl-driver=angle. The Adreno \
-                     rendering workarounds (--fix-texture-min-filter) are \
-                     auto-enabled to mitigate this."
+                     Bundled ANGLE could not be loaded; the native ES 1.1 path \
+                     can render some early iPhone OS games as a black screen. \
+                     Adreno rendering workarounds (--fix-texture-min-filter) \
+                     are auto-enabled to mitigate this."
                 );
             }
         }
