@@ -1209,6 +1209,7 @@ fn _touchHLE_AVAudioPlayerOutputBufferHelper(
                     &format,
                     audio_queue_buffer.audio_data.cast(),
                     num_bytes as GuestUSize,
+                    &[],
                 );
                 let channels = if format.channels_per_frame > 2 {
                     1

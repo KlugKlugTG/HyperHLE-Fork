@@ -10,6 +10,7 @@
 
 use crate::abi::{CallFromHost, GuestFunction};
 use crate::audio::decode_ima4;
+use crate::frameworks::audio_toolbox::audio_converter::AudioStreamPacketDescription;
 use crate::audio::openal as al;
 use crate::audio::openal::al_types::*;
 use crate::audio::openal::{OpenAL, OpenALManager};
@@ -76,6 +77,13 @@ struct AudioQueueHostObject {
     /// the nth item in this queue must also be the nth item in the OpenAL
     /// queue, though the OpenAL queue may be shorter.
     buffer_queue: VecDeque<AudioQueueBufferRef>,
+    /// Per-buffer packet boundaries `(start_offset, byte_size)` captured from
+    /// `AudioQueueEnqueueBuffer` for compressed formats. Compressed AAC/MP3
+    /// access units carry no length prefix, and raw AAC (as opposed to ADTS)
+    /// has no self-synchronising header, so the caller-supplied packet
+    /// descriptions are the only way to split a buffer back into frames.
+    /// Keyed by the guest buffer pointer and overwritten on each enqueue.
+    buffer_packet_descs: HashMap<AudioQueueBufferRef, Vec<(u32, u32)>>,
     is_running: AudioQueueIsRunning,
     al_source: Option<ALuint>,
     al_unused_buffers: Vec<ALuint>,
@@ -273,6 +281,7 @@ pub fn AudioQueueNewOutput(
         level_metering_enabled: false,
         buffers: Vec::new(),
         buffer_queue: VecDeque::new(),
+        buffer_packet_descs: HashMap::new(),
         is_running: AudioQueueIsRunning::Stopped,
         al_source: None,
         al_unused_buffers: Vec::new(),
@@ -573,10 +582,26 @@ pub fn AudioQueueEnqueueBuffer(
     env: &mut Environment,
     in_aq: AudioQueueRef,
     in_buffer: AudioQueueBufferRef,
-    _in_num_packet_descs: u32,
-    _in_packet_descs: MutVoidPtr,
+    in_num_packet_descs: u32,
+    in_packet_descs: MutVoidPtr,
 ) -> OSStatus {
     return_if_null!(in_aq);
+
+    // Capture the caller-supplied packet boundaries (compressed formats only)
+    // before borrowing the host object, since reading guest memory and the
+    // mutable host-object borrow can't overlap.
+    let packet_descs: Vec<(u32, u32)> =
+        if in_num_packet_descs > 0 && !in_packet_descs.is_null() {
+            let descs: ConstPtr<AudioStreamPacketDescription> = in_packet_descs.cast_const().cast();
+            (0..in_num_packet_descs)
+                .map(|i| {
+                    let d = env.mem.read(descs + i);
+                    (d.mStartOffset as u32, d.mDataByteSize)
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
 
     let host_object = match State::get(&mut env.framework_state)
         .audio_queues
@@ -588,6 +613,14 @@ pub fn AudioQueueEnqueueBuffer(
 
     if !host_object.buffers.contains(&in_buffer) {
         return kAudioQueueErr_InvalidBuffer;
+    }
+
+    if packet_descs.is_empty() {
+        host_object.buffer_packet_descs.remove(&in_buffer);
+    } else {
+        host_object
+            .buffer_packet_descs
+            .insert(in_buffer, packet_descs);
     }
 
     host_object.buffer_queue.push_back(in_buffer);
@@ -1100,11 +1133,98 @@ fn downmix_i16_to_mono(pcm: &[u8], channels: u32) -> Vec<u8> {
     mono
 }
 
+/// Map a sampling rate to the MPEG-4 sampling-frequency index used in the
+/// ADTS header. Falls back to 44100 (index 4) for anything unrecognised.
+fn adts_freq_index(sample_rate: u32) -> u8 {
+    match sample_rate {
+        96000 => 0,
+        88200 => 1,
+        64000 => 2,
+        48000 => 3,
+        44100 => 4,
+        32000 => 5,
+        24000 => 6,
+        22050 => 7,
+        16000 => 8,
+        12000 => 9,
+        11025 => 10,
+        8000 => 11,
+        7350 => 12,
+        _ => 4,
+    }
+}
+
+/// Wrap raw AAC access units in ADTS frame headers so symphonia's ADTS
+/// reader can decode them.
+///
+/// The Nu2 engine feeds `AudioQueueEnqueueBuffer` raw AAC access units (no
+/// sync words) plus an `AudioStreamPacketDescription` array giving each unit's
+/// offset and length. We prepend a 7-byte ADTS header (no CRC) to each unit.
+/// If we have no packet descriptions we treat the whole buffer as one access
+/// unit — better than dropping the audio entirely.
+fn wrap_raw_aac_as_adts(
+    data: &[u8],
+    packet_descs: &[(u32, u32)],
+    sample_rate: u32,
+    channels: u32,
+    format_flags: u32,
+) -> Vec<u8> {
+    // Apple encodes the MPEG-4 audio object type in mFormatFlags for AAC.
+    // AAC LC is object type 2; the ADTS "profile" field is objectType - 1.
+    let object_type = if (1..=4).contains(&format_flags) {
+        format_flags
+    } else {
+        2
+    };
+    let profile = ((object_type - 1) & 0x3) as u8;
+    let freq_idx = adts_freq_index(sample_rate);
+    let chan_cfg = (channels.clamp(1, 7)) as u8;
+
+    // Build the list of (offset, len) access units.
+    let units: Vec<(usize, usize)> = if packet_descs.is_empty() {
+        vec![(0, data.len())]
+    } else {
+        packet_descs
+            .iter()
+            .filter_map(|&(off, len)| {
+                let off = off as usize;
+                let len = len as usize;
+                if len == 0 || off.checked_add(len).map_or(true, |end| end > data.len()) {
+                    None
+                } else {
+                    Some((off, len))
+                }
+            })
+            .collect()
+    };
+
+    let mut out = Vec::with_capacity(data.len() + units.len() * 7);
+    for (off, len) in units {
+        let frame_len = len + 7;
+        if frame_len > 0x1FFF {
+            // ADTS frame length is 13 bits; skip anything that doesn't fit.
+            continue;
+        }
+        let frame_len = frame_len as u32;
+        out.push(0xFF);
+        // MPEG-4, layer 0, protection absent (no CRC).
+        out.push(0xF1);
+        out.push((profile << 6) | ((freq_idx & 0xF) << 2) | ((chan_cfg >> 2) & 0x1));
+        out.push((((chan_cfg & 0x3) as u32) << 6) as u8 | ((frame_len >> 11) & 0x3) as u8);
+        out.push(((frame_len >> 3) & 0xFF) as u8);
+        out.push((((frame_len & 0x7) << 5) as u8) | 0x1F);
+        out.push(0xFC);
+        out.extend_from_slice(&data[off..off + len]);
+    }
+    out
+}
+
 pub fn decode_buffer(
     mem: &Mem,
     format: &AudioStreamBasicDescription,
     audio_data: MutPtr<u8>,
     audio_data_byte_size: GuestUSize,
+    packet_descs: &[(u32, u32)],
 ) -> (ALenum, ALsizei, Vec<u8>) {
     let data_slice = mem.bytes_at(audio_data, audio_data_byte_size);
 
@@ -1321,7 +1441,56 @@ pub fn decode_buffer(
             // raw stream works in practice. Frames that straddle
             // buffer boundaries are dropped by symphonia and logged at
             // debug level — better than letting AudioQueueStart fail.
-            let cursor = std::io::Cursor::new(data_slice.to_vec());
+            if crate::env_flag_cached!("TOUCHHLE_TRACE_AUDIO") {
+                let head: Vec<String> = data_slice
+                    .iter()
+                    .take(24)
+                    .map(|b| format!("{:02x}", b))
+                    .collect();
+                let fmt_id = format.format_id;
+                let sr = format.sample_rate;
+                let ch = format.channels_per_frame;
+                let bpp = format.bytes_per_packet;
+                let fpp = format.frames_per_packet;
+                let bpc = format.bits_per_channel;
+                let flags = format.format_flags;
+                log!(
+                    "TOUCHHLE_TRACE_AUDIO: id={} sr={} ch={} bpp={} fpp={} bpc={} flags={:#x} len={} head=[{}]",
+                    debug_fourcc(fmt_id),
+                    sr,
+                    ch,
+                    bpp,
+                    fpp,
+                    bpc,
+                    flags,
+                    data_slice.len(),
+                    head.join(" ")
+                );
+            }
+            // Raw AAC access units (as delivered by the Nu2 engine's
+            // AudioQueue path) carry no self-framing: symphonia's probe
+            // needs either MP4/CAF containers or ADTS sync words. The game
+            // hands us the per-access-unit boundaries out-of-band via the
+            // AudioStreamPacketDescription array on AudioQueueEnqueueBuffer.
+            // If we have those and the data isn't already ADTS, wrap each
+            // access unit in a 7-byte ADTS header so symphonia's ADTS reader
+            // can parse the stream. MP3 is self-framing, so it's fed as-is.
+            let is_aac = format.format_id == kAudioFormatMPEG4AAC;
+            let already_adts = data_slice.len() >= 2
+                && data_slice[0] == 0xFF
+                && (data_slice[1] & 0xF6) == 0xF0;
+            let feed_bytes: Vec<u8> = if is_aac && !already_adts {
+                wrap_raw_aac_as_adts(
+                    data_slice,
+                    packet_descs,
+                    format.sample_rate as u32,
+                    format.channels_per_frame,
+                    format.format_flags,
+                )
+            } else {
+                data_slice.to_vec()
+            };
+            let cursor = std::io::Cursor::new(feed_bytes);
             let Ok(decoded) = crate::audio::symphonia_formats::decode_symphonia_to_pcm(cursor)
             else {
                 let sample_rate = format.sample_rate;
@@ -1519,11 +1688,18 @@ fn prime_audio_queue(env: &mut Environment, in_aq: AudioQueueRef) {
             }
         };
 
+        let packet_descs = host_object
+            .buffer_packet_descs
+            .get(&next_buffer_ref)
+            .cloned()
+            .unwrap_or_default();
+
         let (al_format, al_frequency, data) = decode_buffer(
             &env.mem,
             &host_object.format,
             next_buffer.audio_data.cast(),
             next_buffer.audio_data_byte_size,
+            &packet_descs,
         );
 
         unsafe {
@@ -2071,6 +2247,7 @@ pub fn AudioQueueNewInput(
         level_metering_enabled: false,
         buffers: Vec::new(),
         buffer_queue: VecDeque::new(),
+        buffer_packet_descs: HashMap::new(),
         is_running: AudioQueueIsRunning::Stopped,
         al_source: None,
         al_unused_buffers: Vec::new(),

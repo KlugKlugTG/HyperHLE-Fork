@@ -164,7 +164,7 @@ fn AudioServicesCreateSystemSoundID(
                 .copy_from_slice(data.as_slice());
 
             let (al_format, al_frequency, decoded_data) =
-                decode_buffer(&env.mem, &format, tmp.cast(), size as GuestUSize);
+                decode_buffer(&env.mem, &format, tmp.cast(), size as GuestUSize, &[]);
             env.mem.free(tmp.cast());
             log!(
                 "AudioServicesCreateSystemSoundID: {:?} -> al_format=0x{:x}, al_freq={}, pcm_bytes={}",

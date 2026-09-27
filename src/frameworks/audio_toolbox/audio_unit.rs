@@ -1540,7 +1540,7 @@ fn render_audio_unit_buses(env: &mut Environment, audio_unit: AudioUnit) {
             );
 
             let (al_fmt, _, processed) =
-                decode_buffer(&env.mem, &fmt, buffer_data.cast(), buffer_size);
+                decode_buffer(&env.mem, &fmt, buffer_data.cast(), buffer_size, &[]);
 
             if processed.is_empty() {
                 // Если callback ничего не записал — прекращаем burst.
@@ -1868,7 +1868,7 @@ pub fn render_audio_unit(env: &mut Environment, audio_unit: AudioUnit) {
         );
 
         let (al_fmt, _, processed) =
-            decode_buffer(&env.mem, &stream_format, buffer1_data.cast(), buffer_size);
+            decode_buffer(&env.mem, &stream_format, buffer1_data.cast(), buffer_size, &[]);
         {
             let context = env
                 .framework_state

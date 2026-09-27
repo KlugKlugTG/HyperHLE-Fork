@@ -35,6 +35,12 @@ fn main() {
 
     let mut include_dirs: Vec<PathBuf> = Vec::new();
 
+    // On Windows/MSVC the static lib basename depends on the CMake config:
+    // Release builds emit `libxml2s.lib`, Debug builds `libxml2sd.lib`.  We
+    // detect the actual file produced by the vendored build and link that,
+    // instead of assuming one name.  Set inside the static block below.
+    let mut win_static_lib: Option<String> = None;
+
     if cfg!(feature = "static") {
         if !src_dir.join("CMakeLists.txt").exists() {
             panic!(
@@ -107,6 +113,21 @@ fn main() {
         // Some Linux distributions install to lib64.
         link_search(&install_dir.join("lib64"));
 
+        // Figure out the real static lib name on Windows (debug `libxml2sd`
+        // vs release `libxml2s`) by probing the install dir.
+        if os.eq_ignore_ascii_case("windows") {
+            win_static_lib = ["libxml2sd", "libxml2s"]
+                .into_iter()
+                .find(|name| {
+                    install_dir.join("lib").join(format!("{name}.lib")).exists()
+                        || install_dir
+                            .join("lib64")
+                            .join(format!("{name}.lib"))
+                            .exists()
+                })
+                .map(|name| name.to_string());
+        }
+
         include_dirs.push(install_dir.join("include").join("libxml2"));
         include_dirs.push(install_dir.join("include"));
     } else {
@@ -118,9 +139,12 @@ fn main() {
 
     // The library file is named differently on different platforms:
     //   Linux/macOS/Android: libxml2.a (link name "xml2")
-    //   Windows MSVC: libxml2s.lib for static builds (CMake adds the trailing s)
+    //   Windows MSVC: libxml2s.lib (release) or libxml2sd.lib (debug) for
+    //     static builds — CMake adds a trailing "s", and "d" for debug.
     if cfg!(feature = "static") && os.eq_ignore_ascii_case("windows") {
-        link_lib("libxml2s");
+        // Use the name we actually found next to the build; fall back to the
+        // release name if probing somehow failed.
+        link_lib(win_static_lib.as_deref().unwrap_or("libxml2s"));
     } else if os.eq_ignore_ascii_case("windows") {
         link_lib("libxml2");
     } else {

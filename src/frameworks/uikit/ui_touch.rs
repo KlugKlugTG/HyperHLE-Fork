@@ -450,19 +450,36 @@ pub const CLASSES: ClassExports = objc_classes! {
     let should_remap =
         touchhle_should_use_landscape_touch_remap(env) || should_remap_touch_location_for_view(env, remap_view);
 
-    if crate::env_flag_cached!("TOUCHHLE_TRACE_TOUCH_REMAP")
-        && env.bundle.bundle_identifier() == "com.saban.powerrangersbash"
-    {
+    if crate::env_flag_cached!("TOUCHHLE_TRACE_TOUCH_REMAP") {
         static COUNTER: AtomicUsize = AtomicUsize::new(0);
-        if COUNTER.fetch_add(1, Ordering::Relaxed) < 12 {
+        if COUNTER.fetch_add(1, Ordering::Relaxed) < 24 {
             let location_x = location.x;
             let location_y = location.y;
             let location_in_window_x = location_in_window.x;
             let location_in_window_y = location_in_window.y;
             let result_x = result.x;
             let result_y = result.y;
+            let vclass = if remap_view != nil {
+                let c: crate::objc::Class = msg![env; remap_view class];
+                env.objc.get_class_name(c).to_owned()
+            } else {
+                "(nil)".to_string()
+            };
+            let vbounds: CGRect = if remap_view != nil {
+                msg![env; remap_view bounds]
+            } else {
+                CGRect {
+                    origin: CGPoint { x: 0.0, y: 0.0 },
+                    size: crate::frameworks::core_graphics::CGSize { width: 0.0, height: 0.0 },
+                }
+            };
+            // Copy packed CGRect fields into aligned locals before formatting
+            // (taking a reference to a packed field is a hard error).
+            let vb_w = vbounds.size.width;
+            let vb_h = vbounds.size.height;
             log!(
-                "TOUCHHLE_TRACE_TOUCH_REMAP: location=({:.1},{:.1}) location_in_window=({:.1},{:.1}) result=({:.1},{:.1}) should_remap={}",
+                "TOUCHHLE_TRACE_TOUCH_REMAP: view={} bounds=({:.0}x{:.0}) location=({:.1},{:.1}) location_in_window=({:.1},{:.1}) result=({:.1},{:.1}) should_remap={}",
+                vclass, vb_w, vb_h,
                 location_x, location_y, location_in_window_x, location_in_window_y, result_x, result_y,
                 should_remap
             );

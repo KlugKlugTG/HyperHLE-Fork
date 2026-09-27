@@ -9,9 +9,9 @@ use super::ns_array;
 use super::ns_dictionary::DictionaryHostObject;
 use super::ns_enumerator::{fast_enumeration_helper, NSFastEnumerationState};
 use super::NSUInteger;
-use crate::abi::DotDotDot;
+use crate::abi::{CallFromHost, DotDotDot, GuestFunction};
 use crate::environment::Environment;
-use crate::mem::{ConstPtr, MutPtr};
+use crate::mem::{ConstPtr, MutPtr, MutVoidPtr, Ptr};
 use crate::objc::{
     autorelease, id, msg, msg_class, nil, objc_classes, release, retain, ClassExports, HostObject,
     NSZonePtr, SEL,
@@ -244,6 +244,53 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (i32)intValue {
         let count: NSUInteger = msg![env; this count];
         count as i32
+}
+
+// Apple's
+// <https://developer.apple.com/documentation/foundation/nsset/1408301-enumerateobjectsusingblock>:
+// iterates the set and, for each element, calls the supplied
+// `void (^)(id obj, BOOL *stop)` block. Note the signature differs from
+// NSArray's: a set is unordered, so there is NO index argument (the block
+// is 2-argument here vs. 3-argument for NSArray). Writing `*stop = YES;`
+// inside the block ends the enumeration early. Enumeration order for a set
+// is undefined, so we walk a snapshot taken via -allObjects, which also
+// keeps us safe if the block mutates the set mid-iteration.
+- (())enumerateObjectsUsingBlock:(MutVoidPtr)block {
+    if block.is_null() {
+        return;
+    }
+    let invoke_ptr_addr: MutPtr<u32> = Ptr::from_bits(block.to_bits() + 12);
+    let invoke_addr: u32 = env.mem.read(invoke_ptr_addr);
+    if invoke_addr == 0 {
+        log!(
+            "Warning: -[NSSet enumerateObjectsUsingBlock:] block at {:?} \
+             has NULL invoke pointer; skipping.",
+            block
+        );
+        return;
+    }
+    let invoke = GuestFunction::from_addr_with_thumb_bit(invoke_addr);
+    let block_arg: crate::mem::ConstVoidPtr = block.cast_const();
+    // `BOOL` on iOS is one byte. We allocate a 4-byte slot because the
+    // ARMv7 ABI passes small values widened to a word, matching the
+    // NSArray implementation.
+    let stop_ptr: MutPtr<u8> = env.mem.alloc(4).cast();
+    env.mem.write(stop_ptr, 0u8);
+
+    let objects: id = msg![env; this allObjects];
+    let count: NSUInteger = msg![env; objects count];
+    let mut i: NSUInteger = 0;
+    while i < count {
+        let obj: id = msg![env; objects objectAtIndex:i];
+        <GuestFunction as CallFromHost<(), (crate::mem::ConstVoidPtr, id, MutPtr<u8>)>>::call_from_host(
+            &invoke, env, (block_arg, obj, stop_ptr),
+        );
+        if env.mem.read(stop_ptr) != 0 {
+            break;
+        }
+        i += 1;
+    }
+    env.mem.free(stop_ptr.cast());
 }
 
 @end
