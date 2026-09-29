@@ -842,6 +842,21 @@ Type mismatch when sending message {} to {:?}!
             ) {
                 return;
             }
+            // Angry Birds Seasons calls `+[Flurry getFlurryAgentVersion]` during
+            // launch and feeds the result into C++ string code. Returning nil
+            // yields a NULL `const char*` from `-UTF8String`, so libstdc++
+            // throws `std::logic_error` ("basic_string::_S_construct NULL not
+            // valid"). That app ships its own SjLj C++ runtime, so the real
+            // throw finds no handler, hits `std::terminate` -> `abort()`, and
+            // frame recovery resumes the app half-initialised (the splash
+            // screen then freezes on "LOADING"). Any string-returning Flurry
+            // getter must therefore return a real, non-nil NSString.
+            if class_name_for_log.starts_with("Flurry") && sel_name == "getFlurryAgentVersion" {
+                let version =
+                    crate::frameworks::foundation::ns_string::get_static_str(env, "4.2.3");
+                objc_ret_id(env, version);
+                return;
+            }
             log!(
                 "Call to faked class \"{}\" ({:?}) {} method \"{}\". Behaving as if message was sent to nil.",
                 class_name_for_log,
