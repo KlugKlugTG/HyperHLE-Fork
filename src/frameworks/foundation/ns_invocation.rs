@@ -575,6 +575,21 @@ pub const CLASSES: ClassExports = objc_classes! {
             continue;
         }
 
+        if arguments.get(i).and_then(|a| *a).is_none() {
+            // An unset slot must still occupy its ABI position. Otherwise
+            // later arguments shift left and old CPU registers leak into
+            // the invoked method (for example as an invalid GL enum).
+            let words = match argument_types[i].as_str() {
+                "q" | "Q" | "d" => 2,
+                _ => 1,
+            };
+            for _ in 0..words {
+                write_next_arg::<u32>(
+                    &mut reg_offset, env.cpu.regs_mut(), &mut env.mem, 0,
+                );
+            }
+            continue;
+        }
         if let Some(arg_slot) = arguments.get(i).and_then(|a| *a) {
             let arg_type = argument_types[i].as_str();
             match arg_type {
