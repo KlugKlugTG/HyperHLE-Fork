@@ -469,9 +469,35 @@ Other options:
         no reason to enable this option. The number of bytes must be
         chosen carefully on a per-app basis.
 
+    --trainer
+        Enable the Cheat Engine-style memory trainer: a floating "CE"
+        button in the corner of the game window opens an overlay for
+        searching and editing the running game's memory. It is OFF by
+        default. The overlay searches for a value across every type
+        (U8..I32/F32), refines a search as the value changes in game,
+        sets, bulk-sets and freezes the addresses it finds, guesses what a
+        value is for (coins, ammo, health, score, timer), watches a live
+        change feed, dumps results to a text file, and saves hacks to
+        touchHLE_hacks/ so they are replayed on the next launch.
+
+        It also drives values continuously instead of only pinning them:
+        RAMP drifts a value by N per second (negative counts down, and the
+        value is clamped to its type's range instead of wrapping), RAND
+        draws a random value inside 0..N twice a second, CORRPT flips
+        random bits of the current value, OSC sweeps between 0 and N and
+        back, and GUARD restores the highest value seen whenever the game
+        lowers it. The number typed into the SET field is the step, bound
+        or rate; STOP ends every running mutation. Hack files can request
+        the same effects with a keyword in the line's comment, e.g.
+        "0x1234=5 # I32 ramp" (also: random, corrupt, osc, guard).
+
+    --no-trainer
+        Disable the memory trainer overlay (the default).
+
     --corrupt-game
-        Enable the RTCV-style "game corruption" engine. This is ENABLED BY
-        DEFAULT. At a configurable cadence the emulator overwrites random
+        Enable the RTCV-style "game corruption" engine. It is off unless
+        this option (or one of the --corrupt-* options below, which imply
+        it) is given. At a configurable cadence the emulator overwrites random
         bytes of the running game's live memory with random values,
         producing the glitchy, "broken game" behaviour the Real-Time
         Corruptor (RTCV) is known for: corrupted graphics, audio, physics,
@@ -481,8 +507,14 @@ Other options:
         and therefore works on every platform HyperHLE runs on, including
         Android. Use --no-corrupt-game to disable it.
 
+        The trainer overlay's BREAK MEMORY button can also switch this
+        engine on and off at runtime and pick its strength
+        (LIGHT/MEDIUM/HEAVY). Once it does, the chosen level overrides
+        --corrupt-interval= and --corrupt-intensity= for the rest of the
+        session; --corrupt-seed= and --corrupt-max-offset= still apply.
+
     --no-corrupt-game
-        Disable the game corruption engine (it is on by default).
+        Disable the game corruption engine (it is off by default).
 
     --corrupt-interval=<frames>
         How many main-loop iterations to wait between corruption bursts.

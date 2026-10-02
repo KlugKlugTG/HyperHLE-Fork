@@ -143,6 +143,16 @@ Quality and performance:
   - The window framebuffer no longer requests depth/stencil buffers it never uses (everything host-drawn is a flat textured quad), saving a swap chain resolution's worth of bandwidth on tile-based mobile GPUs.
   - Per-frame/per-touch `getenv`-style debug toggle checks (`TOUCHHLE_*` env vars on the present, viewport, draw-call, hit-test and touch-remap paths) are now read once and cached; previously several of them ran an environ scan with locking and allocation on every frame or touch event.
 
+Usability:
+
+- The Cheat Engine-style trainer overlay (`--trainer`) can now change values *gradually* instead of only pinning them: a new mutation row (`src/trainer/mutate.rs`) offers `RAMP` (drift by N per second, negative counts down, clamped to the type's range so it never wraps around), `RAND` (a fresh random value inside `0..N` twice a second), `CORRPT` (flip random bits of the current value — the classic "corrupt memory" effect, scoped to one address), `OSC` (sweep `0..N` and back over four seconds) and `GUARD` (record the highest value seen and restore it whenever the game lowers it, i.e. never lose a coin or a hit point), plus `STOP` for all of them. The parameter is typed into the existing SET field. Mutations run on the trainer's 20Hz tick, scale with real elapsed time, are capped at 64, drop addresses that leave live memory, always lose to a freeze on an overlapping range, and record their writes so the activity feed and the value-history classifier do not read them as in-game behaviour. (@KlugKlugTG)
+
+- The RTCV-style game-corruption engine (`--corrupt-game`) is now reachable from the trainer overlay: a `BREAK MEMORY` button cycles the whole-memory blast `OFF → LIGHT → MEDIUM → HEAVY` (1 byte every 60 frames up to 16 bytes every 5 frames). The `--corrupt*` command-line options stay in charge until the overlay picks a level, and the seed and `--corrupt-max-offset=` restriction are preserved when it does. (@KlugKlugTG)
+
+- Trainer hack files (`touchHLE_hacks/`) can express the new continuous mutations, so `SAVE HACK` round-trips a running one: `0x1234=5 # I32 ramp`, and likewise `random`, `corrupt`, `osc` and `guard`. A type name in the comment (`# U8`) now also pins the width a saved line reloads at — previously every saved integer came back as a 4-byte write — and values that do not fit the declared type keep the previous auto-detection instead of being silently truncated. (@KlugKlugTG)
+
+- The Linux CI job now runs the trainer and corruption unit tests after building, so that behaviour is executed on every pull request rather than only compiled. (@KlugKlugTG)
+
 ## v0.2.3 (2026-01-02)
 
 Compatibility:
