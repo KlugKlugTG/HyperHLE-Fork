@@ -154,6 +154,17 @@ pub const ARRAYS: &[ArrayInfo] = &[
     },
 ];
 
+/// EXT_framebuffer_object accepts desktop sized formats. GLES RGB565 is
+/// not accepted by all desktop drivers through the EXT storage entry points.
+/// RGB8 preserves an opaque RGB render target without an invalid enum.
+fn desktop_renderbuffer_format(format: GLenum) -> GLenum {
+    if format == gles11::RGB565_OES {
+        gl21::RGB8
+    } else {
+        format
+    }
+}
+
 /// Table of `glGet` parameters shared by OpenGL ES 1.1 and OpenGL 2.1.
 const GET_PARAMS: ParamTable = ParamTable(&[
     (gl21::ACTIVE_TEXTURE, ParamType::Int, 1),
@@ -3231,7 +3242,9 @@ impl GLES for GLES1OnGL2<'_> {
         width: GLsizei,
         height: GLsizei,
     ) {
-        gl21::RenderbufferStorageEXT(target, internalformat, width, height)
+        gl21::RenderbufferStorageEXT(
+            target, desktop_renderbuffer_format(internalformat), width, height,
+        )
     }
     unsafe fn FramebufferRenderbufferOES(
         &mut self,
@@ -3293,7 +3306,9 @@ impl GLES for GLES1OnGL2<'_> {
         width: GLsizei,
         height: GLsizei,
     ) {
-        gl21::RenderbufferStorageMultisampleEXT(target, samples, internalformat, width, height)
+        gl21::RenderbufferStorageMultisampleEXT(
+            target, samples, desktop_renderbuffer_format(internalformat), width, height,
+        )
     }
     unsafe fn ResolveMultisampleFramebufferAPPLE(&mut self) {
         // Apple's GL_APPLE_framebuffer_multisample doesn't take any arguments:
@@ -3902,5 +3917,18 @@ mod matrix_palette_tests {
             blended[c] = 0.5 * ta[c] + 0.5 * tb[c];
         }
         assert_eq!(blended, [5.0, 0.0, 0.0, 1.0]);
+    }
+}
+
+#[cfg(test)]
+mod renderbuffer_format_tests {
+    use super::*;
+
+    #[test]
+    fn translates_rgb565_for_desktop_storage() {
+        assert_eq!(desktop_renderbuffer_format(gles11::RGB565_OES), gl21::RGB8);
+        assert_eq!(desktop_renderbuffer_format(gles11::RGBA8_OES), gl21::RGBA8);
+        assert_eq!(desktop_renderbuffer_format(gles11::DEPTH_COMPONENT16_OES),
+                   gles11::DEPTH_COMPONENT16_OES);
     }
 }

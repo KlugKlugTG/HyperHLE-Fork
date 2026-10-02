@@ -1686,6 +1686,12 @@ fn glRenderbufferStorageMultisampleAPPLE(
     width: GLsizei,
     height: GLsizei,
 ) {
+    if env.options.trace_gl_errors {
+        log!(
+            "MSAA storage: target={:#x} samples={} format={:#x} size={}x{}",
+            target, samples, internalformat, width, height
+        );
+    }
     // Apply --scale-hack so an MSAA renderbuffer matches the size of the
     // single-sample one it'll be resolved into.
     let factor = env.options.scale_hack.get() as GLsizei;

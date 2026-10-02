@@ -6466,6 +6466,34 @@ int test_strftime() {
   return 0;
 }
 
+// A struct-returning super call must preserve the hidden return pointer.
+@interface StructReturnBase : NSObject
+- (CGRect)geometry;
+@end
+@implementation StructReturnBase
+- (CGRect)geometry {
+  return CGRectMake(7, 11, 320, 480);
+}
+@end
+@interface StructReturnChild : StructReturnBase
+@end
+@implementation StructReturnChild
+- (CGRect)geometry {
+  CGRect rect = [super geometry];
+  rect.origin.x += 1;
+  return rect;
+}
+@end
+int test_super_struct_return() {
+  StructReturnChild *object = [[StructReturnChild alloc] init];
+  CGRect rect = [object geometry];
+  [object release];
+  return rect.origin.x == 8 && rect.origin.y == 11 &&
+                 rect.size.width == 320 && rect.size.height == 480
+             ? 0
+             : -1;
+}
+
 @interface InvocationTarget : NSObject {
 @public
   id receivedValue;
@@ -7374,6 +7402,7 @@ struct {
 #ifndef DEFINE_ME_WHEN_BUILDING_ON_MACOS
     // below tests are failing on macOS,
     // so we skip them
+    FUNC_DEF(test_super_struct_return),
     FUNC_DEF(test_getcwd_chdir),
     FUNC_DEF(test_synchronized),
     FUNC_DEF(test_read_directory_as_fd),
