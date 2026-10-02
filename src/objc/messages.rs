@@ -2486,12 +2486,13 @@ pub(super) fn objc_msgSendSuper2(
 #[allow(non_snake_case)]
 pub(super) fn objc_msgSendSuper2_stret(
     env: &mut Environment,
+    _stret: MutVoidPtr,
     super_ptr: ConstPtr<objc_super>,
     selector: SEL,
 ) {
     let objc_super { receiver, class } = env.mem.read(super_ptr);
-    // Rewrite first argument to match the normal ABI.
-    crate::abi::write_next_arg(&mut 0, env.cpu.regs_mut(), &mut env.mem, receiver);
+    // Preserve r0 (the return buffer); replace the super pointer in r1.
+    crate::abi::write_next_arg(&mut 1, env.cpu.regs_mut(), &mut env.mem, receiver);
     objc_msgSend_inner(
         env,
         receiver,
@@ -2742,14 +2743,8 @@ where
     // Provide type info for dynamic type checking.
     env.objc.message_type_info = Some(<(R, P) as MsgSendSuperSignature>::WithoutSuper::type_info());
     if R::SIZE_IN_MEM.is_some() {
-        // Struct returns (stret) for super-calls aren't implemented yet.
-        // Log this clearly and fall through to the non-stret path so the
-        // host process keeps running and the caller will simply observe
-        // the default-constructed return value via to_regs/to_mem below.
-        log!(
-            "Warning: msg_send_super2: struct-return (stret) super-call is not implemented; falling back to non-stret dispatch. Result may be unreliable.",
-        );
-        (objc_msgSendSuper2 as fn(&mut Environment, ConstPtr<objc_super>, SEL))
+        (objc_msgSendSuper2_stret
+            as fn(&mut Environment, MutVoidPtr, ConstPtr<objc_super>, SEL))
             .call_from_host(env, args)
     } else {
         (objc_msgSendSuper2 as fn(&mut Environment, ConstPtr<objc_super>, SEL))
