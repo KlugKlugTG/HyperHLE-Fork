@@ -699,20 +699,9 @@ pub const CLASSES: ClassExports = objc_classes! {
     })
 }
 - (())setFrame:(CGRect)frame {
-    let CALayerHostObject { anchor_point, affine_transform, .. } = env.objc.borrow_mut(this);
-    let inverse_transform = CGAffineTransform::make_translation(
-        -frame.size.width * anchor_point.x,
-        -frame.size.height * anchor_point.y,
-    ).concat(*affine_transform).invert();
-    let transformed_size = inverse_transform.apply_to_rect(CGRect {
-        origin: CGPoint { x: 0.0, y: 0.0 },
-        size: frame.size
-    }).size;
-    let transformed_offset = inverse_transform.apply_to_point(CGPoint { x: 0.0, y: 0.0 });
-    let new_position = CGPoint {
-        x: frame.origin.x + transformed_offset.x,
-        y: frame.origin.y + transformed_offset.y,
-    };
+    let CALayerHostObject { anchor_point, affine_transform, bounds, .. } = env.objc.borrow(this);
+    let bounds_origin = bounds.origin;
+    let (transformed_size, new_position) = geometry_for_frame(frame, *anchor_point, *affine_transform);
     // The inverse-transform round-trip above accumulates floating-point
     // error, so a frame whose origin/size are whole numbers can come back
     // as e.g. 320.000031 instead of 320.0. Real iOS reports clean integer
@@ -728,7 +717,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     };
     () = msg![env; this setPosition:new_position];
     let new_bounds = CGRect {
-        origin: CGPoint { x: 0.0, y: 0.0 },
+        origin: bounds_origin,
         size: CGSize {
             width: snap_near_integer(transformed_size.width),
             height: snap_near_integer(transformed_size.height),
@@ -1381,4 +1370,41 @@ pub fn set_use_implicit_animations(env: &mut Environment, layer: id, enable: boo
     env.objc
         .borrow_mut::<CALayerHostObject>(layer)
         .use_implicit_animations = enable;
+}
+
+
+/// Recover local bounds from the axis-aligned frame, then place the transformed
+/// anchor-relative rectangle at the requested origin. Inverting the frame's
+/// origin directly gives the wrong position for a rotated layer.
+fn geometry_for_frame(frame: CGRect, anchor: CGPoint, transform: CGAffineTransform) -> (CGSize, CGPoint) {
+    let (a, b, c, d) = (transform.a.abs(), transform.b.abs(), transform.c.abs(), transform.d.abs());
+    let determinant = a * d - b * c;
+    let fallback = transform.invert().apply_to_rect(CGRect { origin: CGPoint { x: 0.0, y: 0.0 }, size: frame.size }).size;
+    let size = if determinant.abs() > 0.000001 {
+        let width = (frame.size.width * d - frame.size.height * c) / determinant;
+        let height = (frame.size.height * a - frame.size.width * b) / determinant;
+        if width.is_finite() && height.is_finite() && width >= 0.0 && height >= 0.0 { CGSize { width, height } } else { fallback }
+    } else { fallback };
+    let extent = transform.apply_to_rect(CGRect { origin: CGPoint { x: -size.width * anchor.x, y: -size.height * anchor.y }, size });
+    (size, CGPoint { x: frame.origin.x - extent.origin.x, y: frame.origin.y - extent.origin.y })
+}
+
+#[cfg(test)]
+mod frame_geometry_tests {
+    use super::*;
+    #[test]
+    fn rotated_frames_round_trip_with_noncentral_anchors() {
+        for angle in [0.0, std::f32::consts::FRAC_PI_2, -std::f32::consts::FRAC_PI_2, std::f32::consts::PI] {
+            for anchor in [CGPoint { x: 0.5, y: 0.5 }, CGPoint { x: 0.0, y: 1.0 }] {
+                let transform = CGAffineTransform::make_rotation(angle);
+                let frame = CGRect { origin: CGPoint { x: 17.0, y: 23.0 }, size: CGSize { width: 480.0, height: 320.0 } };
+                let (size, position) = geometry_for_frame(frame, anchor, transform);
+                let actual = transform.apply_to_rect(CGRect { origin: CGPoint { x: -size.width * anchor.x, y: -size.height * anchor.y }, size });
+                assert!((actual.origin.x + position.x - frame.origin.x).abs() < 0.001);
+                assert!((actual.origin.y + position.y - frame.origin.y).abs() < 0.001);
+                assert!((actual.size.width - frame.size.width).abs() < 0.001);
+                assert!((actual.size.height - frame.size.height).abs() < 0.001);
+            }
+        }
+    }
 }

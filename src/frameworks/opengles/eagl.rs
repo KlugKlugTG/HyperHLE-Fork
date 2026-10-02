@@ -1292,7 +1292,7 @@ pub const CLASSES: ClassExports = objc_classes! {
                 env.current_thread,
             );
             match maybe_gles {
-                Some(mut gles) => Some(unsafe { read_renderbuffer(gles.as_mut(), renderbuffer, pixels_vec) }),
+                Some(mut gles) => unsafe { read_renderbuffer(gles.as_mut(), renderbuffer, pixels_vec) },
                 None => {
                     log!(
                         "[EAGLContext presentRenderbuffer:{:#x}] lost GL \
@@ -1411,7 +1411,7 @@ unsafe fn present_renderbuffer_readback(env: &mut Environment, renderbuffer: GLu
             env.current_thread,
         );
         match maybe_gles {
-            Some(mut gles) => Some(read_renderbuffer(gles.as_mut(), renderbuffer, pixels_vec)),
+            Some(mut gles) => read_renderbuffer(gles.as_mut(), renderbuffer, pixels_vec),
             None => None,
         }
     };
@@ -1597,8 +1597,12 @@ unsafe fn get_renderbuffer_size(gles: &mut dyn GLES) -> (GLsizei, GLsizei) {
 /// The returned values are the [Vec], the width and height.
 ///
 /// The provided context must be current.
-unsafe fn read_renderbuffer(gles: &mut dyn GLES, renderbuffer: GLuint, mut pixel_buffer: Vec<u8>) -> (Vec<u8>, u32, u32) {
+unsafe fn read_renderbuffer(gles: &mut dyn GLES, renderbuffer: GLuint, mut pixel_buffer: Vec<u8>) -> Option<(Vec<u8>, u32, u32)> {
+    let old_renderbuffer = get_int(gles, gles11::RENDERBUFFER_BINDING_OES) as GLuint;
+    gles.BindRenderbufferOES(gles11::RENDERBUFFER_OES, renderbuffer);
     let (width, height) = get_renderbuffer_size(gles);
+    gles.BindRenderbufferOES(gles11::RENDERBUFFER_OES, old_renderbuffer);
+    if width <= 0 || height <= 0 { return None; }
     let width_u32: u32 = width.try_into().unwrap();
     let height_u32: u32 = height.try_into().unwrap();
 
@@ -1611,7 +1615,7 @@ unsafe fn read_renderbuffer(gles: &mut dyn GLES, renderbuffer: GLuint, mut pixel
     // a different or incomplete FBO bound, in which case using it would be
     // just as wrong as the old unconditional temporary-FBO path.
     let old_framebuffer: GLuint = get_int(gles, gles11::FRAMEBUFFER_BINDING_OES) as _;
-    let (attached_renderbuffer, framebuffer_status) = if old_framebuffer != 0 {
+    let (attached_renderbuffer, attachment_type, framebuffer_status) = if old_framebuffer != 0 {
         let mut attached = 0;
         gles.GetFramebufferAttachmentParameterivOES(
             gles11::FRAMEBUFFER_OES,
@@ -1619,15 +1623,19 @@ unsafe fn read_renderbuffer(gles: &mut dyn GLES, renderbuffer: GLuint, mut pixel
             gles11::FRAMEBUFFER_ATTACHMENT_OBJECT_NAME_OES,
             &mut attached,
         );
+        let mut object_type = 0;
+        gles.GetFramebufferAttachmentParameterivOES(gles11::FRAMEBUFFER_OES, gles11::COLOR_ATTACHMENT0_OES, gles11::FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE_OES, &mut object_type);
         (
             attached as GLuint,
+            object_type as GLenum,
             gles.CheckFramebufferStatusOES(gles11::FRAMEBUFFER_OES),
         )
     } else {
-        (0, gles11::FRAMEBUFFER_COMPLETE_OES)
+        (0, 0, gles11::FRAMEBUFFER_COMPLETE_OES)
     };
     let use_bound_framebuffer = old_framebuffer != 0
         && attached_renderbuffer == renderbuffer
+        && attachment_type == gles11::RENDERBUFFER_OES
         && framebuffer_status == gles11::FRAMEBUFFER_COMPLETE_OES;
     let mut src_framebuffer: GLuint = 0;
     if !use_bound_framebuffer {
@@ -1646,6 +1654,14 @@ unsafe fn read_renderbuffer(gles: &mut dyn GLES, renderbuffer: GLuint, mut pixel
         );
     }
 
+    if gles.CheckFramebufferStatusOES(gles11::FRAMEBUFFER_OES) != gles11::FRAMEBUFFER_COMPLETE_OES {
+        if !use_bound_framebuffer {
+            gles.BindFramebufferOES(gles11::FRAMEBUFFER_OES, old_framebuffer);
+            gles.DeleteFramebuffersOES(1, &src_framebuffer);
+        }
+        return None;
+    }
+
     // On tile-based GPUs (Mali, Adreno, PowerVR) the per-tile color buffer
     // isn't guaranteed to be resolved to the renderbuffer's main memory
     // until the driver decides to flush. glReadPixels is supposed to imply
@@ -1660,8 +1676,11 @@ unsafe fn read_renderbuffer(gles: &mut dyn GLES, renderbuffer: GLuint, mut pixel
         .unwrap()
         .checked_mul(4)
         .unwrap();
-    pixel_buffer.clear();
-    pixel_buffer.reserve_exact(size);
+    // ReadPixels leaves the destination untouched on error. Never expose spare
+    // Vec capacity as pixels: that displays heap garbage and is undefined Rust.
+    prepare_readback_buffer(&mut pixel_buffer, size);
+    let old_pack_alignment = get_int(gles, gles11::PACK_ALIGNMENT);
+    gles.PixelStorei(gles11::PACK_ALIGNMENT, 1);
     let before = Instant::now();
     gles.ReadPixels(
         0,
@@ -1678,14 +1697,20 @@ unsafe fn read_renderbuffer(gles: &mut dyn GLES, renderbuffer: GLuint, mut pixel
         height,
         Instant::now().saturating_duration_since(before)
     );
-    pixel_buffer.set_len(size);
+    gles.PixelStorei(gles11::PACK_ALIGNMENT, old_pack_alignment);
+    let read_error = gles.GetError();
 
     if !use_bound_framebuffer {
         gles.DeleteFramebuffersOES(1, &src_framebuffer);
         gles.BindFramebufferOES(gles11::FRAMEBUFFER_OES, old_framebuffer);
     }
 
-    (pixel_buffer, width_u32, height_u32)
+    if read_error != gles11::NO_ERROR {
+        log!("EAGL readback failed with GL error {:#x}; skipping frame", read_error);
+        None
+    } else {
+        Some((pixel_buffer, width_u32, height_u32))
+    }
 }
 
 /// Shader-based variant of the renderbuffer presenter, used when the
@@ -3806,4 +3831,21 @@ fn attach_orphaned_eagl_view_to_root(env: &mut Environment, drawable: id) -> boo
         }
     }
     false
+}
+
+fn prepare_readback_buffer(buffer: &mut Vec<u8>, size: usize) {
+    buffer.clear();
+    buffer.resize(size, 0);
+}
+#[cfg(test)]
+mod readback_buffer_tests {
+    use super::prepare_readback_buffer;
+    #[test]
+    fn failed_copy_cannot_expose_recycled_or_uninitialized_pixels() {
+        let mut buffer = vec![0xa5; 128];
+        prepare_readback_buffer(&mut buffer, 64);
+        assert_eq!(buffer, vec![0; 64]);
+        prepare_readback_buffer(&mut buffer, 256);
+        assert_eq!(buffer, vec![0; 256]);
+    }
 }
