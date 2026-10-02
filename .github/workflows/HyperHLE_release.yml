@@ -175,6 +175,11 @@ jobs:
       - name: Build
         run: cargo build --release
 
+      - name: Run unit tests
+        run: |
+          cargo test --release --lib -- trainer
+          cargo test --release --lib -- corrupt
+
       - name: Create bundle
         run: cd dev-scripts && ./make-linux-bundle.sh ../target/release/touchHLE && mv touchHLE_linux_bundle/ ..
 

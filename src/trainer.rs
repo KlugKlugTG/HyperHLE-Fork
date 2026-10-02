@@ -19,7 +19,9 @@
 //! Every hack line is applied once when the app starts (and when the file
 //! changes on disk), and can additionally be marked as frozen with a
 //! `# freeze` comment, which makes the trainer re-assert the value
-//! continuously.
+//! continuously. A line can instead start a continuous mutation by naming one
+//! in its comment (`0x1234=5 # I32 ramp`, plus `random`, `corrupt`, `osc` and
+//! `guard`); see [mutate] for what each of those does.
 
 use crate::mem::{ConstVoidPtr, GuestUSize, Mem};
 use crate::trainer_ui::{self, TrainerCmd};
@@ -29,10 +31,12 @@ use std::time::{Duration, Instant};
 
 mod bulk;
 pub mod classify;
+pub mod mutate;
 pub mod watch;
 use watch::{Activity, Change, Snapshot};
 use classify::{analyze_batch, Analysis, ResultFilter};
 use bulk::{apply_bulk, plan_bulk, BulkPlan};
+use mutate::{MutateKind, MutateMode, Mutations};
 
 struct PendingBulk {
     plan: BulkPlan,
@@ -205,6 +209,14 @@ pub struct Patch {
     pub freeze: bool,
 }
 
+/// One parsed hack-file line: either a value to write, or a continuous
+/// mutation to start (see [mutate]).
+#[derive(Clone, Debug)]
+enum HackPatch {
+    Set { addr: u32, vtype: VType, bits: u64, freeze: bool },
+    Mutate { addr: u32, vtype: VType, mode: MutateMode },
+}
+
 /// Per-app trainer state. Rebuilt whenever the running app changes.
 #[derive(Default)]
 struct TrainerState {
@@ -222,6 +234,9 @@ struct TrainerState {
     applied_hacks: HashSet<(u32, VType, u64)>,
     /// Frozen patches, re-asserted every tick.
     frozen: Vec<Patch>,
+    /// Continuous mutations (RAMP/RANDOM/CORRUPT/OSC/GUARD), applied every
+    /// tick. Unlike a freeze these keep the value moving.
+    mutations: Mutations,
     /// Hack files, as (path, mtime); used to detect edits on disk.
     watched_files: Vec<(PathBuf, Option<std::time::SystemTime>)>,
 }
@@ -231,6 +246,7 @@ pub struct Trainer {
     state: TrainerState,
     last_file_check: Instant,
     last_freeze_tick: Instant,
+    last_mutate_tick: Instant,
     last_value_refresh: Instant,
     dump_counter: u32,
 }
@@ -246,6 +262,9 @@ const MAX_RESULTS: usize = 500_000;
 const BULK_CONFIRM_TIMEOUT: Duration = Duration::from_secs(15);
 /// Cap on dump file lines.
 const MAX_DUMP_LINES: usize = 200_000;
+/// Mutations run at the freeze rate; each pass is scaled by the real elapsed
+/// time, so a stutter slows the effect down instead of making it jump.
+const MUTATE_INTERVAL: Duration = Duration::from_millis(50);
 
 impl Trainer {
     pub fn new(enabled: bool) -> Trainer {
@@ -254,6 +273,7 @@ impl Trainer {
             state: TrainerState::default(),
             last_file_check: Instant::now() - Duration::from_secs(60),
             last_freeze_tick: Instant::now(),
+            last_mutate_tick: Instant::now(),
             last_value_refresh: Instant::now(),
             dump_counter: 0,
         }
@@ -298,6 +318,13 @@ impl Trainer {
         if self.last_freeze_tick.elapsed() >= Duration::from_millis(50) {
             self.last_freeze_tick = Instant::now();
             self.apply_frozen(mem);
+        }
+
+        // Continuous mutations run at the same rate.
+        if self.last_mutate_tick.elapsed() >= MUTATE_INTERVAL {
+            let dt = self.last_mutate_tick.elapsed().as_secs_f32();
+            self.last_mutate_tick = Instant::now();
+            self.apply_mutations(mem, dt);
         }
 
         // Live-update the values shown in the results list ~4 times per
@@ -366,6 +393,39 @@ impl Trainer {
         Ok(bits)
     }
 
+    /// Start (or replace) a continuous mutation of one address. Like
+    /// [Trainer::set_watch_value], this validates the target first and writes
+    /// nothing on failure.
+    fn start_mutation(
+        &mut self,
+        mem: &mut Mem,
+        addr: u32,
+        vtype: VType,
+        kind: MutateKind,
+        text: &str,
+    ) -> Result<MutateMode, &'static str> {
+        let vtype = self.result_type(addr, vtype);
+        if vtype == VType::Auto {
+            return Err("PICK A CONCRETE TYPE");
+        }
+        let mut allocations = mem.live_allocations();
+        allocations.sort_unstable_by_key(|allocation| allocation.0);
+        let current = bulk::containing_allocation(&allocations, addr, vtype.size())
+            .and_then(|_| vtype.read_at(mem, addr));
+        let Some(current) = current else {
+            return Err("ADDRESS NO LONGER LIVE");
+        };
+        // A freeze and a mutation on one address would only fight each other.
+        if mutate::overlaps_frozen(&self.state.frozen, addr, vtype.size()) {
+            return Err("FROZEN RANGE: UNFREEZE FIRST");
+        }
+        let mode = MutateMode::parse(kind, vtype, text, classify::number(vtype, current))?;
+        if !self.state.mutations.add(mem, addr, vtype, mode) {
+            return Err("TOO MANY MUTATIONS: STOP ONE");
+        }
+        Ok(mode)
+    }
+
     fn handle_command(&mut self, mem: &mut Mem, cmd: TrainerCmd) {
         if !matches!(&cmd, TrainerCmd::SetAll { .. }) {
             if self.state.pending_bulk.take().is_some() {
@@ -375,7 +435,8 @@ impl Trainer {
         }
         // A comparison experiment must not include the trainer's own edits.
         if matches!(&cmd, TrainerCmd::Set { .. } | TrainerCmd::SetAll { .. }
-            | TrainerCmd::Freeze { .. } | TrainerCmd::ApplyHack { .. }) {
+            | TrainerCmd::Freeze { .. } | TrainerCmd::ApplyHack { .. }
+            | TrainerCmd::Mutate { .. }) {
             self.state.snapshot = None;
         }
         match cmd {
@@ -568,6 +629,26 @@ impl Trainer {
                 trainer_ui::publish_frozen(0);
                 trainer_ui::publish_status(format!("UNFROZEN {}", count));
             }
+            TrainerCmd::Mutate { kind, vtype, text } => {
+                let Some(addr) = trainer_ui::selected_address() else {
+                    trainer_ui::publish_status("NO RESULT SELECTED".to_string());
+                    return;
+                };
+                match self.start_mutation(mem, addr, vtype, kind, &text) {
+                    Ok(mode) => {
+                        trainer_ui::publish_mutations(self.state.mutations.len());
+                        trainer_ui::publish_status(format!("{} 0x{:08X}", mode.describe(), addr));
+                        log!("trainer: {} at 0x{:X}", mode.describe(), addr);
+                    }
+                    Err(reason) => trainer_ui::publish_status(reason.to_string()),
+                }
+            }
+            TrainerCmd::MutateStop => {
+                let count = self.state.mutations.clear();
+                trainer_ui::publish_mutations(0);
+                trainer_ui::publish_status(format!("STOPPED {} MUTATION(S)", count));
+                log!("trainer: stopped {} mutation(s)", count);
+            }
             TrainerCmd::Dump => {
                 let results = self.state.results.clone();
                 let status = self.write_dump(&results);
@@ -581,7 +662,8 @@ impl Trainer {
                 let vtype = self.result_type(addr, vtype);
                 let bits = vtype.read_at(mem, addr).unwrap_or(0);
                 let frozen = self.state.frozen.iter().any(|p| p.addr == addr);
-                let status = self.save_hack_line(addr, vtype, bits, frozen);
+                let mutation = self.state.mutations.mode_of(addr, vtype);
+                let status = self.save_hack_line(addr, vtype, bits, frozen, mutation);
                 trainer_ui::publish_status(status);
             }
             TrainerCmd::ApplyHack { addr, vtype, bits } => {
@@ -637,12 +719,18 @@ impl Trainer {
         paths_hacks_dir()
     }
 
-    /// Parse a hack file. Returns patches as (addr, vtype, bits, freeze).
+    /// Parse a hack file into the patches and mutations it asks for.
+    ///
+    /// Besides `0x1234=100` (optionally `# freeze`), a line can request a
+    /// continuous mutation by naming one in its comment:
+    /// `0x1234=5 # I32 ramp` drifts the value by 5 per second, and likewise
+    /// for `random`/`corrupt`/`osc` (the value is the bound or rate) and
+    /// `guard` (the value is ignored).
     fn parse_hack_text(
         text: &str,
         file_app: Option<&str>,
         current_app: Option<&str>,
-    ) -> Vec<(u32, VType, u64, bool)> {
+    ) -> Vec<HackPatch> {
         let mut patches = Vec::new();
         let mut section_app: Option<String> = None;
         for raw_line in text.lines() {
@@ -651,6 +739,7 @@ impl Trainer {
                 continue;
             }
             let freeze = raw_line.to_lowercase().contains("freeze");
+            let comment = raw_line.split_once('#').map(|(_, comment)| *comment).unwrap_or("");
             // Section header: [com.example.App]
             if line.starts_with('[') && line.ends_with(']') {
                 section_app = Some(line[1..line.len() - 1].trim().to_string());
@@ -676,9 +765,32 @@ impl Trainer {
                 Some(app) if Some(app.as_str()) != current_app => continue,
                 _ => {}
             }
-            let (vtype, bits) = parse_hack_value(value_str);
+            // A type name in the comment (`# U8`, as written by SAVE HACK)
+            // pins the line's width, so a saved byte hack reloads as a byte
+            // hack instead of the 4-byte default. Values that do not fit the
+            // declared type keep the auto-detected one.
+            let declared = comment.split_whitespace().find_map(|word| {
+                VType::ALL.iter().copied().find(|t| {
+                    *t != VType::Auto && t.name().eq_ignore_ascii_case(word)
+                })
+            });
+            let (vtype, bits) = match declared
+                .and_then(|t| t.parse(value_str).map(|bits| (t, bits)))
+            {
+                Some(pair) => pair,
+                None => parse_hack_value(value_str),
+            };
+            // A mutation keyword in the comment turns the line into a
+            // continuous mutation; the value part is its step/bound/rate.
+            let mutation = comment
+                .split_whitespace()
+                .find_map(MutateKind::from_keyword)
+                .and_then(|kind| MutateMode::parse(kind, vtype, value_str, 0.0).ok());
             if let Ok(addr) = u32::from_str_radix(addr_str.trim_start_matches("0x"), 16) {
-                patches.push((addr, vtype, bits, freeze));
+                patches.push(match mutation {
+                    Some(mode) => HackPatch::Mutate { addr, vtype, mode },
+                    None => HackPatch::Set { addr, vtype, bits, freeze },
+                });
             }
         }
         patches
@@ -691,10 +803,8 @@ impl Trainer {
         // Global file, all apps.
         let global_path = dir.join(GLOBAL_HACKS_FILE);
         if let Ok(text) = std::fs::read_to_string(&global_path) {
-            for (addr, vtype, bits, freeze) in
-                Self::parse_hack_text(&text, None, current_app.as_deref())
-            {
-                Self::apply_patch(mem, &mut self.state, addr, vtype, bits, freeze);
+            for patch in Self::parse_hack_text(&text, None, current_app.as_deref()) {
+                Self::apply_hack_patch(mem, &mut self.state, patch);
             }
         }
         let global_mtime = std::fs::metadata(&global_path)
@@ -705,10 +815,8 @@ impl Trainer {
         if let Some(app_id) = current_app.clone() {
             let app_path = dir.join(format!("{}.txt", app_id));
             if let Ok(text) = std::fs::read_to_string(&app_path) {
-                for (addr, vtype, bits, freeze) in
-                    Self::parse_hack_text(&text, Some(&app_id), Some(&app_id))
-                {
-                    Self::apply_patch(mem, &mut self.state, addr, vtype, bits, freeze);
+                for patch in Self::parse_hack_text(&text, Some(&app_id), Some(&app_id)) {
+                    Self::apply_hack_patch(mem, &mut self.state, patch);
                 }
             }
             let app_mtime = std::fs::metadata(&app_path)
@@ -718,6 +826,31 @@ impl Trainer {
         }
         self.state.watched_files = watched;
         log!("trainer: hack files loaded for {:?}", self.state.app_id);
+    }
+
+    fn apply_hack_patch(mem: &mut Mem, state: &mut TrainerState, patch: HackPatch) {
+        match patch {
+            HackPatch::Set { addr, vtype, bits, freeze } => {
+                Self::apply_patch(mem, state, addr, vtype, bits, freeze)
+            }
+            HackPatch::Mutate { addr, vtype, mode } => {
+                // Re-adding an identical mutation is idempotent; a changed
+                // parameter replaces the running one, so editing a hack file
+                // takes effect on the next file check (within a second).
+                if state.mutations.add(mem, addr, vtype, mode) {
+                    trainer_ui::publish_mutations(state.mutations.len());
+                    log!(
+                        "trainer: hack mutation {} at 0x{:X} ({})",
+                        mode.describe(), addr, vtype.name()
+                    );
+                } else {
+                    log!(
+                        "trainer: mutation limit {}; ignoring 0x{:X}",
+                        mutate::MAX_MUTATIONS, addr
+                    );
+                }
+            }
+        }
     }
 
     fn apply_patch(
@@ -764,6 +897,24 @@ impl Trainer {
         if reload {
             log!("trainer: hack files changed on disk; reloading");
             self.load_and_apply_hacks(mem);
+        }
+    }
+
+    /// Run one pass of every active mutation (see [mutate]).
+    fn apply_mutations(&mut self, mem: &mut Mem, dt: f32) {
+        let (writes, dropped) =
+            self.state
+                .mutations
+                .tick(mem, &mut self.state.results, &self.state.frozen, dt);
+        if writes > 0 {
+            // A pending before/after experiment must not include trainer edits.
+            self.state.snapshot = None;
+        }
+        if dropped > 0 {
+            // The live-value refresh republishes the rows; only the count
+            // shown in the header needs an immediate update here.
+            trainer_ui::publish_mutations(self.state.mutations.len());
+            log!("trainer: dropped {} mutation(s) on freed memory", dropped);
         }
     }
 
@@ -880,7 +1031,14 @@ impl Trainer {
         }
     }
 
-    fn save_hack_line(&self, addr: u32, vtype: VType, bits: u64, frozen: bool) -> String {
+    fn save_hack_line(
+        &self,
+        addr: u32,
+        vtype: VType,
+        bits: u64,
+        frozen: bool,
+        mutation: Option<MutateMode>,
+    ) -> String {
         let dir = self.hacks_dir();
         if std::fs::create_dir_all(&dir).is_err() {
             return "SAVE FAILED (NO DIR)".to_string();
@@ -889,13 +1047,7 @@ impl Trainer {
             return "NO APP (CANNOT SAVE)".to_string();
         };
         let path = dir.join(format!("{}.txt", app_id));
-        let line = format!(
-            "0x{:X}={} # {}{}",
-            addr,
-            vtype.format(bits),
-            vtype.name(),
-            if frozen { " freeze" } else { "" }
-        );
+        let line = hack_line_text(addr, vtype, bits, frozen, mutation);
         use std::io::Write;
         let result = std::fs::OpenOptions::new()
             .create(true)
@@ -913,6 +1065,33 @@ impl Trainer {
             }
         }
     }
+}
+
+/// One hack-file line. A running mutation is written as its keyword plus
+/// parameter (`0x1234=5 # I32 ramp`), so reloading the file replays the same
+/// gradual effect instead of a single value.
+fn hack_line_text(
+    addr: u32,
+    vtype: VType,
+    bits: u64,
+    frozen: bool,
+    mutation: Option<MutateMode>,
+) -> String {
+    let value = match mutation {
+        Some(mode) => mode.hack_value(),
+        None => vtype.format(bits),
+    };
+    format!(
+        "0x{:X}={} # {}{}{}",
+        addr,
+        value,
+        vtype.name(),
+        if frozen { " freeze" } else { "" },
+        match mutation {
+            Some(mode) => format!(" {}", mode.kind().keyword()),
+            None => String::new(),
+        }
+    )
 }
 
 fn format_bits_hex(bits: u64) -> String {

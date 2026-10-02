@@ -19,6 +19,7 @@ use crate::font::{Font, TextAlignment};
 use crate::guest_clock::Speed;
 use crate::gles::gles11_raw as gles11;
 use crate::gles::{GLES, GLint, GLuint};
+use crate::trainer::mutate::MutateKind;
 use crate::trainer::{SearchResult, VType};
 use crate::trainer::watch::{Change, WatchFilter};
 use std::collections::VecDeque;
@@ -46,6 +47,10 @@ pub enum TrainerCmd {
     ClearActivity,
     Freeze { vtype: VType, text: String },
     UnfreezeAll,
+    /// Start a continuous mutation of the selected address. The SET field
+    /// carries the step, bound or rate, depending on the kind.
+    Mutate { kind: MutateKind, vtype: VType, text: String },
+    MutateStop,
     Dump,
     SaveHack { vtype: VType },
     ApplyHack { addr: u32, vtype: VType, bits: u64 },
@@ -82,6 +87,8 @@ struct TrainerUi {
     scroll: usize,
     status: String,
     frozen_count: usize,
+    /// Number of continuous mutations currently running.
+    mutation_count: usize,
     bulk_preview: bool,
     /// Latched preference for this session, not the current touch state.
     safe_mode: bool,
@@ -162,6 +169,7 @@ impl TrainerUi {
             scroll: 0,
             status: String::new(),
             frozen_count: 0,
+            mutation_count: 0,
             bulk_preview: false,
             safe_mode: true,
             // Cannot read the environment in this const context; the env
@@ -215,6 +223,7 @@ pub fn reset_for_app(app_id: Option<&str>) {
     ui.scroll = 0;
     ui.status.clear();
     ui.frozen_count = 0;
+    ui.mutation_count = 0;
     ui.bulk_preview = false;
     ui.speed = Speed::Normal;
     ui.speed_dirty = false;
@@ -300,6 +309,10 @@ pub fn publish_frozen(count: usize) {
     UI.lock().unwrap().frozen_count = count;
 }
 
+pub fn publish_mutations(count: usize) {
+    UI.lock().unwrap().mutation_count = count;
+}
+
 pub fn selected_address() -> Option<u32> {
     UI.lock().unwrap().selected
 }
@@ -339,6 +352,15 @@ const W_WATCH_PAUSE: u16 = 28;
 const W_WATCH_CLEAR: u16 = 29;
 const W_WATCH_CLOSE: u16 = 30;
 const W_IAP: u16 = 31;
+/// Continuous mutation buttons (see `crate::trainer::mutate`).
+const W_RAMP: u16 = 50;
+const W_RANDOM: u16 = 51;
+const W_CORRUPT: u16 = 52;
+const W_OSC: u16 = 53;
+const W_GUARD: u16 = 54;
+const W_MUT_STOP: u16 = 55;
+/// Global RTCV-style memory blast level (see `crate::corrupt`).
+const W_BLAST: u16 = 56;
 const W_WATCH_NEWER: u16 = 45;
 const W_WATCH_OLDER: u16 = 46;
 const W_WATCH_FIELD: u16 = 47;
@@ -402,8 +424,9 @@ fn compute_layout(ui: &TrainerUi, viewport: (u32, u32, u32, u32)) -> Layout {
     // by the letterbox offset, tap targets misaligned with drawn keys).
     let (_vx, _vy, vw, vh) = viewport;
     let (vx, vy, vw, vh) = (0.0_f32, 0.0_f32, vw as f32, vh as f32);
-    // Fit the complete panel, including speed controls, in both orientations.
-    let s = (vh / 545.0).min(vw / if ui.watch_open && ui.open { 600.0 } else { 320.0 }).clamp(0.1, 4.0);
+    // Fit the complete panel, including the speed and mutation rows, in both
+    // orientations.
+    let s = (vh / 595.0).min(vw / if ui.watch_open && ui.open { 600.0 } else { 320.0 }).clamp(0.1, 4.0);
     let btn = 30.0 * s;
     let button = Rect {
         x: vx + vw - btn - 6.0 * s,
@@ -498,6 +521,19 @@ fn compute_layout(ui: &TrainerUi, viewport: (u32, u32, u32, u32)) -> Layout {
         for (i, id) in [W_SET, W_SET_ALL, W_FREEZE, W_UNFREEZE].iter().enumerate() {
             push_widget(*id, px + 6.0 * s + (quarter + 4.0 * s) * i as f32, y, quarter, row_h, &mut widgets);
         }
+        y += row_h + 3.0 * s;
+        // Continuous mutations of the selected address ("memory breaker"):
+        // gradual value changes instead of one frozen value.
+        let sixth = (pw - 12.0 * s - 10.0 * s) / 6.0;
+        for (i, id) in [W_RAMP, W_RANDOM, W_CORRUPT, W_OSC, W_GUARD, W_MUT_STOP]
+            .iter()
+            .enumerate()
+        {
+            push_widget(*id, px + 6.0 * s + (sixth + 2.0 * s) * i as f32, y, sixth, row_h, &mut widgets);
+        }
+        y += row_h + 3.0 * s;
+        // Whole-game memory blast level (RTCV-style, see crate::corrupt).
+        push_widget(W_BLAST, px + 6.0 * s, y, pw - 12.0 * s, row_h, &mut widgets);
         y += row_h + 3.0 * s;
         // Activity window with inline editing, plus dump/save.
         let third = (pw - 12.0 * s - 8.0 * s) / 3.0;
@@ -791,6 +827,35 @@ fn activate_widget(ui: &mut TrainerUi, id: u16) {
         }
         W_UNFREEZE => {
             COMMANDS.lock().unwrap().push(TrainerCmd::UnfreezeAll);
+        }
+        W_RAMP | W_RANDOM | W_CORRUPT | W_OSC | W_GUARD => {
+            let kind = match id {
+                W_RAMP => MutateKind::Ramp,
+                W_RANDOM => MutateKind::Random,
+                W_CORRUPT => MutateKind::Corrupt,
+                W_OSC => MutateKind::Oscillate,
+                _ => MutateKind::Guard,
+            };
+            // The SET field doubles as the mutation parameter: the per-second
+            // step, the upper bound, or the corruption rate.
+            let text = ui.set_text.trim().to_string();
+            COMMANDS
+                .lock()
+                .unwrap()
+                .push(TrainerCmd::Mutate { kind, vtype: ui.vtype, text });
+        }
+        W_MUT_STOP => {
+            COMMANDS.lock().unwrap().push(TrainerCmd::MutateStop);
+        }
+        W_BLAST => {
+            let next = crate::corrupt::blast_level()
+                .unwrap_or(crate::corrupt::BlastLevel::Off)
+                .next();
+            crate::corrupt::set_blast_level(next);
+            ui.status = match next {
+                crate::corrupt::BlastLevel::Off => "MEMORY BLAST OFF".to_string(),
+                _ => format!("MEMORY BLAST {}: GAME MAY CRASH", next.label()),
+            };
         }
         W_DUMP => {
             COMMANDS.lock().unwrap().push(TrainerCmd::Dump);
@@ -1456,7 +1521,25 @@ unsafe fn build_scene(
                         );
                     }
                 }
-                W_SEARCH | W_REFINE | W_RESET | W_SET | W_SET_ALL | W_FREEZE | W_UNFREEZE | W_DUMP | W_SAVE | W_WATCH | W_MARK | W_CHANGED | W_SAME | W_INCREASED | W_DECREASED => {
+                W_BLAST => {
+                    // Lit while the whole-game memory blast is running.
+                    let level = crate::corrupt::blast_level()
+                        .unwrap_or(crate::corrupt::BlastLevel::Off);
+                    let (background, foreground) = safe_mode_colors(
+                        level != crate::corrupt::BlastLevel::Off,
+                    );
+                    push_rect(&mut quads, *rect, background);
+                    let label = format!("BREAK MEMORY: {}", level.label());
+                    let size = 11.0 * bs;
+                    let tw = text_width(atlas, &label, size);
+                    push_text(&mut quads, atlas, &label,
+                        rect.x + (rect.w - tw) / 2.0,
+                        rect.y + (rect.h - atlas.height * (size / FONT_PX)) / 2.0,
+                        size, foreground,
+                    );
+                }
+                W_SEARCH | W_REFINE | W_RESET | W_SET | W_SET_ALL | W_FREEZE | W_UNFREEZE | W_DUMP | W_SAVE | W_WATCH | W_MARK | W_CHANGED | W_SAME | W_INCREASED | W_DECREASED
+                | W_RAMP | W_RANDOM | W_CORRUPT | W_OSC | W_GUARD | W_MUT_STOP => {
                     push_rect(&mut quads, *rect, COL_WIDGET);
                     let label: &str = match *id {
                         W_SEARCH => "SEARCH",
@@ -1474,6 +1557,13 @@ unsafe fn build_scene(
                         W_SAME => "SAME",
                         W_INCREASED => "UP",
                         W_DECREASED => "DOWN",
+                        // Continuous mutations; the last one stops all of them.
+                        W_RAMP => "RAMP",
+                        W_RANDOM => "RAND",
+                        W_CORRUPT => "CORRPT",
+                        W_OSC => "OSC",
+                        W_GUARD => "GUARD",
+                        W_MUT_STOP => "STOP",
                         _ => "",
                     };
                     let size = 12.0 * bs;
@@ -1538,8 +1628,11 @@ unsafe fn build_scene(
 
         // Results header + counts, drawn between the header and the result rows.
         let res_label = format!(
-            "HITS {}/{} FROZEN {}",
-            ui_state.filtered_results, ui_state.total_results, ui_state.frozen_count
+            "HITS {}/{} FROZEN {} MUT {}",
+            ui_state.filtered_results,
+            ui_state.total_results,
+            ui_state.frozen_count,
+            ui_state.mutation_count
         );
         push_text(&mut quads,
             atlas,

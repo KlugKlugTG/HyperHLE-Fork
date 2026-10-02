@@ -1817,8 +1817,10 @@ impl Environment {
             }
             // RTCV-style game corruption: once per main-loop iteration, give the
             // corruption engine a chance to mangle live guest memory. This is a
-            // no-op unless enabled via the `--corrupt*` options.
-            if self.corruptor.is_enabled() {
+            // no-op unless enabled via the `--corrupt*` options, or switched on
+            // at runtime by the trainer overlay's BREAK MEMORY button (which the
+            // engine picks up inside its own tick).
+            if self.corruptor.is_enabled() || crate::corrupt::blast_requested() {
                 let mut corruptor = std::mem::take(&mut self.corruptor);
                 corruptor.tick(&mut self.mem);
                 self.corruptor = corruptor;

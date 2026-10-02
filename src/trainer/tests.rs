@@ -485,3 +485,173 @@ fn watch_write_rejects_overflow_type_changes_frozen_aliases_and_expiry() {
     mem.free(MutVoidPtr::from_bits(base));
     assert!(trainer.set_watch_value(&mut mem, base + 1, VType::U8, "99").is_err());
 }
+
+// --- continuous mutations: the per-address memory breaker ---
+
+fn patch_mode(patch: &HackPatch) -> Option<MutateMode> {
+    match patch {
+        HackPatch::Mutate { mode, .. } => Some(*mode),
+        _ => None,
+    }
+}
+
+fn patch_type(patch: &HackPatch) -> VType {
+    match patch {
+        HackPatch::Mutate { vtype, .. } | HackPatch::Set { vtype, .. } => *vtype,
+    }
+}
+
+#[test]
+fn a_mutation_moves_the_value_gradually_instead_of_freezing_it() {
+    let (mut mem, base) = memory(64);
+    let mut trainer = Trainer::new(true);
+    trainer.state.results = vec![result(&mut mem, base, VType::I32, "100")];
+    // AUTO resolves to the selected result's own type.
+    let mode = trainer
+        .start_mutation(&mut mem, base, VType::Auto, MutateKind::Ramp, "2")
+        .unwrap();
+    assert_eq!(mode, MutateMode::Ramp { step: 2.0 });
+    // One second of quarter-second passes at +2 per second. The step size is
+    // binary-exact so the expected total is not at float accumulation's mercy.
+    for _ in 0..4 {
+        trainer.apply_mutations(&mut mem, 0.25);
+    }
+    assert_eq!(VType::I32.read_at(&mem, base), Some(102));
+    // The stored row follows the write and is not flagged as a game change,
+    // so the activity feed and the classifier do not learn from it.
+    assert_eq!(trainer.state.results[0].bits, 102);
+    assert!(!trainer.state.results[0].changed);
+    assert_eq!(trainer.state.mutations.len(), 1);
+    trainer.handle_command(&mut mem, TrainerCmd::MutateStop);
+    assert!(trainer.state.mutations.is_empty());
+    for _ in 0..4 {
+        trainer.apply_mutations(&mut mem, 0.25);
+    }
+    assert_eq!(VType::I32.read_at(&mem, base), Some(102), "a stopped mutation kept running");
+}
+
+#[test]
+fn a_mutation_is_rejected_before_writing_anything() {
+    let (mut mem, base) = memory(64);
+    let mut trainer = Trainer::new(true);
+    trainer.state.results = vec![result(&mut mem, base, VType::I32, "100")];
+    trainer.state.frozen.push(Patch { addr: base, vtype: VType::I32, bits: 100, freeze: true });
+    assert_eq!(
+        trainer.start_mutation(&mut mem, base, VType::I32, MutateKind::Ramp, "1"),
+        Err("FROZEN RANGE: UNFREEZE FIRST")
+    );
+    trainer.state.frozen.clear();
+    // Nonsense parameters and out-of-range bounds are refused too.
+    for (kind, text) in [
+        (MutateKind::Ramp, "0"),
+        (MutateKind::Ramp, "abc"),
+        (MutateKind::Random, "-1"),
+        (MutateKind::Corrupt, "0"),
+    ] {
+        assert!(
+            trainer.start_mutation(&mut mem, base, VType::I32, kind, text).is_err(),
+            "{kind:?} {text:?}"
+        );
+    }
+    assert!(trainer.state.mutations.is_empty());
+    assert_eq!(VType::I32.read_at(&mem, base), Some(100), "a rejected mutation wrote anyway");
+    // Once the allocation is gone the target is refused, not silently armed.
+    mem.free(MutVoidPtr::from_bits(base));
+    assert_eq!(
+        trainer.start_mutation(&mut mem, base, VType::I32, MutateKind::Guard, ""),
+        Err("ADDRESS NO LONGER LIVE")
+    );
+    assert!(trainer.state.mutations.is_empty());
+}
+
+#[test]
+fn hack_file_lines_can_start_a_mutation_on_load() {
+    let (mut mem, base) = memory(64);
+    let mut trainer = Trainer::new(true);
+    trainer.state.results = vec![result(&mut mem, base, VType::I32, "10")];
+    let text = format!("{:#X}=2 # I32 ramp", base);
+    for patch in Trainer::parse_hack_text(&text, None, None) {
+        Trainer::apply_hack_patch(&mut mem, &mut trainer.state, patch);
+    }
+    assert_eq!(trainer.state.mutations.len(), 1);
+    assert_eq!(
+        trainer.state.mutations.mode_of(base, VType::I32),
+        Some(MutateMode::Ramp { step: 2.0 })
+    );
+    for _ in 0..4 {
+        trainer.apply_mutations(&mut mem, 0.25);
+    }
+    assert_eq!(VType::I32.read_at(&mem, base), Some(12));
+}
+
+#[test]
+fn hack_files_express_mutations_and_plain_values_alike() {
+    let text = "\
+# a comment
+0x1000=100
+0x2000=50 # freeze
+0x3000=5 # I32 ramp
+0x4000=100 # U8 random
+0x5000=0 # I32 guard
+com.example.App: 0x6000=2 # I32 corrupt
+com.other.App: 0x7000=2 # I32 ramp
+";
+    let patches = Trainer::parse_hack_text(text, None, Some("com.example.App"));
+    assert_eq!(patches.len(), 6, "the other app's line must be skipped");
+    assert!(matches!(patches[0], HackPatch::Set { addr: 0x1000, bits: 100, freeze: false, .. }));
+    assert!(matches!(patches[1], HackPatch::Set { addr: 0x2000, freeze: true, .. }));
+    assert_eq!(patch_mode(&patches[2]), Some(MutateMode::Ramp { step: 5.0 }));
+    assert_eq!(patch_type(&patches[2]), VType::I32);
+    assert_eq!(
+        patch_mode(&patches[3]),
+        Some(MutateMode::Random { max: 100.0, per_sec: 2.0 })
+    );
+    assert_eq!(patch_type(&patches[3]), VType::U8);
+    assert_eq!(patch_mode(&patches[4]), Some(MutateMode::Guard));
+    assert_eq!(
+        patch_mode(&patches[5]),
+        Some(MutateMode::Corrupt { bits_per_sec: 2.0 })
+    );
+    assert_eq!(patches.iter().filter(|p| patch_mode(p).is_some()).count(), 4);
+}
+
+#[test]
+fn a_type_comment_pins_the_width_a_saved_line_reloads_at() {
+    let patches = Trainer::parse_hack_text(
+        "0x1000=100 # U8\n0x2000=100 # I32\n0x3000=1.5 # F32\n0x4000=999 # U8\n",
+        None,
+        None,
+    );
+    assert_eq!(patch_type(&patches[0]), VType::U8);
+    assert_eq!(patch_type(&patches[1]), VType::I32);
+    assert_eq!(patch_type(&patches[2]), VType::F32);
+    // 999 does not fit a U8: fall back to auto-detection instead of silently
+    // truncating the saved value.
+    assert_eq!(patch_type(&patches[3]), VType::I32);
+    // Without a comment the old integer default still applies.
+    assert_eq!(patch_type(&Trainer::parse_hack_text("0x1000=100", None, None)[0]), VType::I32);
+}
+
+#[test]
+fn saving_a_running_mutation_round_trips_through_a_hack_line() {
+    assert_eq!(hack_line_text(0x1234, VType::U8, 100, false, None), "0x1234=100 # U8");
+    assert_eq!(hack_line_text(0x1234, VType::I32, 7, true, None), "0x1234=7 # I32 freeze");
+    let ramp = hack_line_text(
+        0x1234,
+        VType::I32,
+        0,
+        false,
+        Some(MutateMode::Ramp { step: 5.0 }),
+    );
+    assert_eq!(ramp, "0x1234=5 # I32 ramp");
+    let guard = hack_line_text(0x1234, VType::U8, 0, false, Some(MutateMode::Guard));
+    assert_eq!(guard, "0x1234=0 # U8 guard");
+    for line in [ramp, guard] {
+        let patches = Trainer::parse_hack_text(&line, None, None);
+        assert_eq!(patches.len(), 1, "{line}");
+        assert!(patch_mode(&patches[0]).is_some(), "{line}");
+    }
+    let patches = Trainer::parse_hack_text(&guard, None, None);
+    assert_eq!(patch_mode(&patches[0]), Some(MutateMode::Guard));
+    assert_eq!(patch_type(&patches[0]), VType::U8);
+}

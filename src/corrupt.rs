@@ -37,6 +37,93 @@
 
 use crate::mem::{GuestUSize, Mem};
 use crate::options::CorruptionOptions;
+use std::sync::atomic::{AtomicU8, Ordering};
+
+/// Strength of the blast, as selected from the Cheat Engine-style overlay.
+///
+/// The command-line `--corrupt*` options stay in charge until the overlay
+/// picks a level, so a scripted corruption session is never disturbed by the
+/// presence of the trainer.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum BlastLevel {
+    Off,
+    Light,
+    Medium,
+    Heavy,
+}
+
+/// Sentinel: the overlay has not touched corruption in this session.
+const BLAST_UNSET: u8 = u8::MAX;
+
+static BLAST_LEVEL: AtomicU8 = AtomicU8::new(BLAST_UNSET);
+
+impl BlastLevel {
+    /// Cycling order used by the overlay button.
+    pub const ALL: [BlastLevel; 4] = [
+        BlastLevel::Off,
+        BlastLevel::Light,
+        BlastLevel::Medium,
+        BlastLevel::Heavy,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            BlastLevel::Off => "OFF",
+            BlastLevel::Light => "LIGHT",
+            BlastLevel::Medium => "MEDIUM",
+            BlastLevel::Heavy => "HEAVY",
+        }
+    }
+
+    pub fn next(self) -> BlastLevel {
+        let index = Self::ALL.iter().position(|&level| level == self).unwrap_or(0);
+        Self::ALL[(index + 1) % Self::ALL.len()]
+    }
+
+    /// `(enabled, interval_frames, bytes_per_burst)` for this level. Only the
+    /// rate and the burst size are derived from the level; the seed and the
+    /// optional `--corrupt-max-offset=` restriction are left alone.
+    pub fn settings(self) -> (bool, u32, u32) {
+        match self {
+            // ~1 byte per second at 60fps: glitches, but usually survivable.
+            BlastLevel::Light => (true, 60, 1),
+            BlastLevel::Medium => (true, 20, 4),
+            BlastLevel::Heavy => (true, 5, 16),
+            BlastLevel::Off => (false, 0, 0),
+        }
+    }
+}
+
+/// The overlay-selected level, or `None` if the overlay never touched it.
+pub fn blast_level() -> Option<BlastLevel> {
+    match BLAST_LEVEL.load(Ordering::Relaxed) {
+        BLAST_UNSET => None,
+        index => BlastLevel::ALL.get(index as usize).copied(),
+    }
+}
+
+/// Whether the overlay has taken control of corruption (and so whether the
+/// engine must be polled even though no `--corrupt*` option was given).
+pub fn blast_requested() -> bool {
+    BLAST_LEVEL.load(Ordering::Relaxed) != BLAST_UNSET
+}
+
+/// Take control of corruption from the Cheat Engine overlay's
+/// `BREAK MEMORY` button.
+pub fn set_blast_level(level: BlastLevel) {
+    let index = BlastLevel::ALL
+        .iter()
+        .position(|&candidate| candidate == level)
+        .unwrap_or(0) as u8;
+    BLAST_LEVEL.store(index, Ordering::Relaxed);
+    let (_, interval, bytes) = level.settings();
+    log!(
+        "game corruption blast {}: {} byte(s) every {} frame(s)",
+        level.label(),
+        bytes,
+        interval
+    );
+}
 
 /// A tiny, fast, seedable PRNG (SplitMix64). Self-contained so the corruption
 /// engine adds no new crate dependencies.
@@ -132,6 +219,7 @@ impl Corruptor {
     /// (per [`CorruptionOptions::interval_frames`]) it performs one corruption
     /// burst against `mem`.
     pub fn tick(&mut self, mem: &mut Mem) {
+        self.sync_blast_level();
         if !self.options.enabled {
             return;
         }
@@ -143,6 +231,28 @@ impl Corruptor {
         self.frames_since_burst = 0;
 
         self.blast(mem);
+    }
+
+    /// Apply the overlay-selected blast level, if the overlay picked one. The
+    /// command-line seed and max-offset restriction are preserved.
+    fn sync_blast_level(&mut self) {
+        let Some(level) = blast_level() else { return };
+        let (enabled, interval_frames, bytes_per_burst) = level.settings();
+        if self.options.enabled == enabled
+            && self.options.interval_frames == interval_frames
+            && self.options.bytes_per_burst == bytes_per_burst
+        {
+            return;
+        }
+        log!(
+            "[corrupt] overlay blast level {}: {} byte(s) every {} frame(s)",
+            level.label(),
+            bytes_per_burst,
+            interval_frames
+        );
+        self.options.enabled = enabled;
+        self.options.interval_frames = interval_frames.max(1);
+        self.options.bytes_per_burst = bytes_per_burst.max(1);
     }
 
     /// Perform a single corruption burst: corrupt up to
@@ -267,6 +377,50 @@ mod tests {
 
         assert!(corruptor.total_corrupted() > 0, "engine reported no corruption");
         assert!(changed > 0, "no bytes were actually changed in guest memory");
+    }
+
+    #[test]
+    fn blast_levels_cycle_and_only_the_top_three_are_enabled() {
+        let mut level = BlastLevel::Off;
+        for expected in [
+            BlastLevel::Light,
+            BlastLevel::Medium,
+            BlastLevel::Heavy,
+            BlastLevel::Off,
+        ] {
+            level = level.next();
+            assert_eq!(level, expected);
+        }
+        assert!(!BlastLevel::Off.settings().0, "OFF must stay disabled");
+        let mut previous = (u32::MAX, u32::MAX);
+        for level in [BlastLevel::Light, BlastLevel::Medium, BlastLevel::Heavy] {
+            let (enabled, interval, bytes) = level.settings();
+            assert!(enabled);
+            assert!(interval > 0 && bytes > 0);
+            // Each step up corrupts more, per burst and per frame.
+            assert!(bytes >= previous.1 || interval <= previous.0);
+            previous = (interval, bytes);
+        }
+    }
+
+    #[test]
+    fn the_overlay_level_overrides_the_command_line_without_losing_the_seed() {
+        let mut corruptor = Corruptor::new(CorruptionOptions {
+            enabled: false,
+            interval_frames: 30,
+            bytes_per_burst: 8,
+            max_offset: Some(64),
+            seed: 0x1234,
+        });
+        set_blast_level(BlastLevel::Heavy);
+        assert_eq!(blast_level(), Some(BlastLevel::Heavy));
+        corruptor.sync_blast_level();
+        assert!(corruptor.is_enabled());
+        assert_eq!((corruptor.options.interval_frames, corruptor.options.bytes_per_burst), (5, 16));
+        assert_eq!((corruptor.options.seed, corruptor.options.max_offset), (0x1234, Some(64)));
+        set_blast_level(BlastLevel::Off);
+        corruptor.sync_blast_level();
+        assert!(!corruptor.is_enabled());
     }
 
     #[test]
