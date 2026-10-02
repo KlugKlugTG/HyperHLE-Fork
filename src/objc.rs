@@ -383,7 +383,7 @@ const CONSTANTS: ConstantExports = &[
 const FUNCTIONS: FunctionExports = &[
     export_c_func!(objc_msgSend(_, _)),
     export_c_func!(objc_msgSend_stret(_, _, _)),
-    export_c_func!(objc_msgSendSuper2_stret(_, _)),
+    export_c_func!(objc_msgSendSuper2_stret(_, _, _)),
     export_c_func!(objc_msgSendSuper2(_, _)),
     export_c_func!(objc_getProperty(_, _, _, _)),
     export_c_func!(objc_setProperty(_, _, _, _, _, _)),
