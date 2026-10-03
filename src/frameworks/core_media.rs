@@ -27,6 +27,7 @@
 //! whether the app links CoreMedia or CoreVideo.
 
 use crate::dyld::{export_c_func, ConstantExports, FunctionExports, HostConstant};
+use crate::frameworks::media_toolbox::CMTime;
 use crate::mem::{ConstVoidPtr, MutPtr};
 use crate::Environment;
 
@@ -200,8 +201,13 @@ fn CMTimeMake(env: &mut Environment, out: MutPtr<u8>, value: i64, timescale: i32
     out
 }
 
+fn CMTimeGetSeconds(_env: &mut Environment, time: CMTime) -> f64 {
+    time.as_seconds()
+}
+
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CMTimeMake(_, _, _)),
+    export_c_func!(CMTimeGetSeconds(_)),
     export_c_func!(CMFormatDescriptionGetMediaType(_)),
 ];
 

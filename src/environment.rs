@@ -1012,6 +1012,27 @@ impl Environment {
         env.set_up_initial_env_vars();
         dyld::Dyld::do_late_linking(&mut env);
 
+        if env.bundle.bundle_identifier() == "com.coffeestainstudios.goatsimulator" {
+            const REPLAYKIT_SINGLETON: &str =
+                "__ZN22UPlatformInterfaceBase32GetReplayKitIntegrationSingletonEv";
+            if let Some(address) = env
+                .bins
+                .iter()
+                .find(|bin| bin.name == "GoatGame")
+                .and_then(|bin| bin.exported_symbols.get(REPLAYKIT_SINGLETON))
+                .copied()
+            {
+                let address = address & !1;
+                env.mem
+                    .bytes_at_mut(mem::MutPtr::<u8>::from_bits(address), 4)
+                    .copy_from_slice(&[0x00, 0x20, 0x70, 0x47]);
+                env.cpu.invalidate_cache_range(address, 4);
+                log!("Goat Simulator: disabled unavailable ReplayKit integration.");
+            } else {
+                log!("Goat Simulator: ReplayKit singleton symbol was not found.");
+            }
+        }
+
         env.cpu.set_cpsr(cpu::Cpu::CPSR_USER_MODE);
 
         if let Some(addrs) = env.options.gdb_listen_addrs.take() {

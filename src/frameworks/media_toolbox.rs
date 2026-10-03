@@ -11,12 +11,12 @@
 //! The opaque tap API is exposed only when its callback ABI is available to
 //! the guest; no fake function pointers are installed for unknown symbols.
 
-use crate::abi::{CallFromHost, GuestFunction};
+use crate::abi::{CallFromHost, GuestArg, GuestFunction};
 use crate::dyld::{export_c_func, FunctionExports};
 use crate::frameworks::audio_toolbox::audio_unit::AudioBufferList;
 use crate::frameworks::carbon_core::OSStatus;
 #[repr(C, packed)]
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct CMTime {
     value: i64,
     timescale: i32,
@@ -24,6 +24,109 @@ pub struct CMTime {
     epoch: i64,
 }
 unsafe impl SafeRead for CMTime {}
+crate::abi::impl_GuestRet_for_large_struct!(CMTime);
+
+impl CMTime {
+    pub const fn from_seconds(value: i64) -> Self {
+        Self {
+            value,
+            timescale: 1,
+            flags: 1,
+            epoch: 0,
+        }
+    }
+
+    pub fn as_seconds(self) -> f64 {
+        let value = self.value;
+        let timescale = self.timescale;
+        let flags = self.flags;
+        if flags & 0x1 == 0 || flags & 0x10 != 0 {
+            f64::NAN
+        } else if flags & 0x4 != 0 {
+            f64::INFINITY
+        } else if flags & 0x8 != 0 {
+            f64::NEG_INFINITY
+        } else if timescale == 0 {
+            f64::NAN
+        } else {
+            value as f64 / timescale as f64
+        }
+    }
+}
+
+impl GuestArg for CMTime {
+    const REG_COUNT: usize = 6;
+
+    fn from_regs(regs: &[u32]) -> Self {
+        Self {
+            value: <i64 as GuestArg>::from_regs(&regs[0..2]),
+            timescale: <i32 as GuestArg>::from_regs(&regs[2..3]),
+            flags: <u32 as GuestArg>::from_regs(&regs[3..4]),
+            epoch: <i64 as GuestArg>::from_regs(&regs[4..6]),
+        }
+    }
+
+    fn to_regs(self, regs: &mut [u32]) {
+        let value = self.value;
+        let timescale = self.timescale;
+        let flags = self.flags;
+        let epoch = self.epoch;
+        <i64 as GuestArg>::to_regs(value, &mut regs[0..2]);
+        <i32 as GuestArg>::to_regs(timescale, &mut regs[2..3]);
+        <u32 as GuestArg>::to_regs(flags, &mut regs[3..4]);
+        <i64 as GuestArg>::to_regs(epoch, &mut regs[4..6]);
+    }
+}
+
+#[cfg(test)]
+mod cmtime_tests {
+    use super::{CMTime, GuestArg};
+
+    #[test]
+    fn cm_time_seconds_and_flags() {
+        assert_eq!(CMTime::from_seconds(7).as_seconds(), 7.0);
+        assert!(CMTime::default().as_seconds().is_nan());
+        assert!(
+            CMTime {
+                value: 0,
+                timescale: 0,
+                flags: 0x11,
+                epoch: 0,
+            }
+            .as_seconds()
+            .is_nan()
+        );
+        assert_eq!(
+            CMTime {
+                value: 0,
+                timescale: 0,
+                flags: 0x5,
+                epoch: 0,
+            }
+            .as_seconds(),
+            f64::INFINITY
+        );
+        assert_eq!(
+            CMTime {
+                value: 0,
+                timescale: 0,
+                flags: 0x9,
+                epoch: 0,
+            }
+            .as_seconds(),
+            f64::NEG_INFINITY
+        );
+    }
+
+    #[test]
+    fn cm_time_guest_argument_round_trip() {
+        let time = CMTime::from_seconds(7);
+        let mut registers = [0; 6];
+        time.to_regs(&mut registers);
+        assert_eq!(CMTime::from_regs(&registers).as_seconds(), 7.0);
+    }
+}
+
 
 #[repr(C, packed)]
 #[derive(Copy, Clone, Default)]

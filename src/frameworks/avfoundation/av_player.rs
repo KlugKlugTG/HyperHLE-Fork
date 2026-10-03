@@ -22,6 +22,7 @@
 //! crashing. No actual decoding happens.
 
 use crate::frameworks::core_graphics::CGRect;
+use crate::frameworks::media_toolbox::CMTime;
 use crate::frameworks::foundation::ns_string;
 use crate::objc::{
     autorelease, id, msg, msg_class, msg_super, nil, objc_classes, release, retain, ClassExports,
@@ -39,6 +40,9 @@ impl HostObject for AVAssetHostObject {}
 struct AVPlayerItemHostObject {
     /// AVAsset* (retained), or nil.
     asset: id,
+    current_time: CMTime,
+    duration: CMTime,
+    status: i32,
 }
 impl HostObject for AVPlayerItemHostObject {}
 
@@ -156,7 +160,9 @@ pub const CLASSES: ClassExports = objc_classes! {
     if asset != nil {
         retain(env, asset);
     }
-    env.objc.borrow_mut::<AVPlayerItemHostObject>(this).asset = asset;
+    let host = env.objc.borrow_mut::<AVPlayerItemHostObject>(this);
+    host.asset = asset;
+    host.duration = CMTime::from_seconds(1);
     this
 }
 
@@ -175,8 +181,33 @@ pub const CLASSES: ClassExports = objc_classes! {
     env.objc.borrow::<AVPlayerItemHostObject>(this).asset
 }
 
-// AVPlayerItemStatusReadyToPlay = 1
-- (i32)status { 1 }
+- (CMTime)currentTime {
+    env.objc.borrow::<AVPlayerItemHostObject>(this).current_time
+}
+
+- (CMTime)duration {
+    env.objc.borrow::<AVPlayerItemHostObject>(this).duration
+}
+
+- (())seekToTime:(CMTime)time {
+    env.objc.borrow_mut::<AVPlayerItemHostObject>(this).current_time = time;
+}
+
+- (())addObserver:(id)observer forKeyPath:(id)key_path options:(u32)options context:(id)context {
+    () = msg_super![env; this addObserver:observer forKeyPath:key_path options:options context:context];
+}
+
+- (i32)status {
+    env.objc.borrow::<AVPlayerItemHostObject>(this).status
+}
+
+- (id)valueForKey:(id)key {
+    if ns_string::to_rust_string(env, key) == "status" {
+        let status = env.objc.borrow::<AVPlayerItemHostObject>(this).status;
+        return msg_class![env; NSNumber numberWithInt:status];
+    }
+    msg_super![env; this valueForKey:key]
+}
 
 - (id)tracks {
     msg_class![env; NSArray array]
@@ -232,6 +263,22 @@ pub const CLASSES: ClassExports = objc_classes! {
     env.objc.borrow::<AVPlayerHostObject>(this).current_item
 }
 
+- (CMTime)currentTime {
+    let item = env.objc.borrow::<AVPlayerHostObject>(this).current_item;
+    if item == nil {
+        CMTime::default()
+    } else {
+        env.objc.borrow::<AVPlayerItemHostObject>(item).current_time
+    }
+}
+
+- (())seekToTime:(CMTime)time {
+    let item = env.objc.borrow::<AVPlayerHostObject>(this).current_item;
+    if item != nil {
+        env.objc.borrow_mut::<AVPlayerItemHostObject>(item).current_time = time;
+    }
+}
+
 - (())replaceCurrentItemWithPlayerItem:(id)item {
     let old = env.objc.borrow::<AVPlayerHostObject>(this).current_item;
     if item != nil {
@@ -259,18 +306,27 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (())play {
     env.objc.borrow_mut::<AVPlayerHostObject>(this).rate = 1.0;
-    // We can't decode the video, so immediately signal "finished playing" so
-    // apps that wait for AVPlayerItemDidPlayToEndTimeNotification to advance
-    // (e.g. an intro movie before the main menu) don't get stuck.
     let item = env.objc.borrow::<AVPlayerHostObject>(this).current_item;
     if item != nil {
-        let name = ns_string::get_static_str(
-            env,
-            "AVPlayerItemDidPlayToEndTimeNotification",
+        let selector = env.objc.register_host_selector(
+            "_touchHLE_finishPlaybackForItem:".to_string(),
+            &mut env.mem,
         );
-        let nc: id = msg_class![env; NSNotificationCenter defaultCenter];
-        () = msg![env; nc postNotificationName:name object:item];
+        () = msg![env; this performSelector:selector withObject:item afterDelay:0.0_f64];
     }
+}
+
+- (())_touchHLE_finishPlaybackForItem:(id)item {
+    if item == nil {
+        return;
+    }
+    let duration = env.objc.borrow::<AVPlayerItemHostObject>(item).duration;
+    env.objc
+        .borrow_mut::<AVPlayerItemHostObject>(item)
+        .current_time = duration;
+    let name = ns_string::get_static_str(env, "AVPlayerItemDidPlayToEndTimeNotification");
+    let nc: id = msg_class![env; NSNotificationCenter defaultCenter];
+    () = msg![env; nc postNotificationName:name object:item];
 }
 
 - (())pause {
@@ -325,6 +381,16 @@ pub const CLASSES: ClassExports = objc_classes! {
         .avfoundation
         .av_player_layer_players
         .insert(this, player);
+    if player != nil {
+        let item = env.objc.borrow::<AVPlayerHostObject>(player).current_item;
+        if item != nil && env.objc.borrow::<AVPlayerItemHostObject>(item).status == 0 {
+            let status_key = ns_string::get_static_str(env, "status");
+            () = msg![env; item willChangeValueForKey:status_key];
+            env.objc.borrow_mut::<AVPlayerItemHostObject>(item).status = 1;
+            () = msg![env; item didChangeValueForKey:status_key];
+        }
+    }
+
 }
 
 - (id)videoGravity {
