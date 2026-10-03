@@ -547,6 +547,15 @@ pub enum GuestFile {
     File(File),
     IpaBundleFile(IpaFile),
     ResourceFile(paths::ResourceFile),
+    /// Placeholder for a socket descriptor.
+    ///
+    /// A socket has no data of its own here: the real host socket lives in
+    /// `libc::sys::socket`'s state, keyed by the descriptor number. Guest
+    /// `read(2)`/`write(2)` on a socket are therefore dispatched to
+    /// `libc::sys::socket::{read_socket, write_socket}` *before* reaching this
+    /// type (see `libc::posix_io::{read, write}`), so the "not supported on
+    /// socket via GuestFile" errors below are only a safety net for a host-side
+    /// path that forgot the dispatch — they should never be visible to an app.
     Socket,
     PipeRead(std::rc::Rc<std::cell::RefCell<PipeBuffer>>),
     PipeWrite(std::rc::Rc<std::cell::RefCell<PipeBuffer>>),
@@ -732,9 +741,12 @@ impl Read for GuestFile {
                 std::io::ErrorKind::IsADirectory,
                 "Attempt to read from a directory as a guest file",
             )),
+            // Sockets are dispatched to `libc::sys::socket::read_socket` by
+            // `libc::posix_io::read()`; reaching this arm means a host-side
+            // caller read the placeholder file object directly.
             GuestFile::Socket => Err(std::io::Error::new(
                 std::io::ErrorKind::Unsupported,
-                "read not supported on socket via GuestFile",
+                "read on a socket must go through libc::sys::socket::read_socket",
             )),
         }
     }
@@ -771,9 +783,11 @@ impl Write for GuestFile {
                 std::io::ErrorKind::IsADirectory,
                 "Attempt to write to a directory as a guest file",
             )),
+            // See the note on the `read` arm: guest writes are dispatched to
+            // `libc::sys::socket::write_socket` by `libc::posix_io::write()`.
             GuestFile::Socket => Err(std::io::Error::new(
                 std::io::ErrorKind::Unsupported,
-                "write not supported on socket via GuestFile",
+                "write on a socket must go through libc::sys::socket::write_socket",
             )),
         }
     }
@@ -790,10 +804,10 @@ impl Write for GuestFile {
                 std::io::ErrorKind::IsADirectory,
                 "Attempt to flush a directory as a guest file",
             )),
-            GuestFile::Socket => Err(std::io::Error::new(
-                std::io::ErrorKind::Unsupported,
-                "flush not supported on socket via GuestFile",
-            )),
+            // Flushing a socket has nothing to flush: the host socket is
+            // unbuffered, so report success (and `posix_io::fflush()` already
+            // short-circuits on socket descriptors).
+            GuestFile::Socket => Ok(()),
         }
     }
 }
@@ -823,9 +837,11 @@ impl Seek for GuestFile {
                 std::io::ErrorKind::Unsupported,
                 "attempt to seek a pipe",
             )),
+            // A socket has no file offset (`lseek(2)` fails with ESPIPE, which
+            // `libc::posix_io::lseek()` reports before getting here).
             GuestFile::Socket => Err(std::io::Error::new(
                 std::io::ErrorKind::Unsupported,
-                "seek not supported on socket via GuestFile",
+                "seek not supported on socket (ESPIPE)",
             )),
         }
     }

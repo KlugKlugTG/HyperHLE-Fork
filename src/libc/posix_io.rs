@@ -16,7 +16,7 @@ use crate::libc::errno::{
     set_errno, EAGAIN, EBADF, EFAULT, EINTR, EINVAL, EIO, EISDIR, EMFILE, EOVERFLOW, EPIPE,
     ESPIPE,
 };
-use crate::libc::sys::socket::close_socket;
+use crate::libc::sys::socket::{close_socket, duplicate_socket, read_socket, write_socket};
 use crate::libc::unistd::pid_t;
 use crate::mem::{
     ConstPtr, ConstVoidPtr, GuestISize, GuestUSize, MutPtr, MutVoidPtr, Ptr, SafeRead,
@@ -537,6 +537,22 @@ pub fn read(
         return -1;
     }
 
+    // Sockets are not backed by a real `GuestFile` (see
+    // `GuestFile::Socket`): the host socket lives in `sys::socket`, so
+    // generic reads (`read(2)`, `fread()`, `NSFileHandle`) are served there.
+    // Before this dispatch every one of them failed with "read not supported
+    // on socket via GuestFile".
+    if is_socket(env, fd) {
+        let bytes_read = read_socket(env, fd, buffer, size);
+        if bytes_read == 0 && size != 0 {
+            // The peer shut the connection down: that is EOF for the guest.
+            if let Some(file) = env.libc_state.posix_io.file_for_fd(fd) {
+                file.reached_eof = true;
+            }
+        }
+        return bytes_read;
+    }
+
     // Keep the descriptor borrow inside this block: after an unreadable Unity
     // archive is detected, we need the whole Environment to record it before
     // the guest can reach its fatal exit path.
@@ -679,6 +695,12 @@ pub(super) fn clearerr(env: &mut Environment, fd: FileDescriptor) {
 
 pub(super) fn fflush(env: &mut Environment, fd: FileDescriptor) -> i32 {
     set_errno(env, 0);
+    // Socket writes are unbuffered (they go straight to the host socket in
+    // `sys::socket`), so there is never anything to flush and flushing must
+    // not fail — `fclose()` and `fflush()` on a socket stream report success.
+    if is_socket(env, fd) {
+        return 0;
+    }
     let Some(file) = env.libc_state.posix_io.file_for_fd(fd) else {
         return -1;
     };
@@ -701,6 +723,13 @@ pub fn write(
         let msg = String::from_utf8_lossy(buffer_slice);
         print!("{}", msg);
         return size as GuestISize;
+    }
+
+    // See the note in `read()`: a socket has no `GuestFile` backing, so the
+    // guest's `write(2)`/`fwrite()`/`NSFileHandle` writes go to `sys::socket`
+    // instead of failing with "write not supported on socket via GuestFile".
+    if is_socket(env, fd) {
+        return write_socket(env, fd, buffer, size);
     }
 
     let Some(file) = env.libc_state.posix_io.file_for_fd(fd) else {
@@ -1203,21 +1232,30 @@ fn fcntl(
             // F_DUPFD_CLOEXEC does the same but sets FD_CLOEXEC on the new fd.
             // The new descriptor shares the same underlying file description
             // (seek position, status flags) but has its own fd flags.
+            // Sockets need special handling: their `GuestFile` is only a
+            // placeholder and the host socket is registered per-descriptor in
+            // `sys::socket`, so it is duplicated there once the new descriptor
+            // number is known (see `duplicate_socket`).
+            let src_is_socket = is_socket(env, fd);
             let Some(src_file) = env.libc_state.posix_io.file_for_fd(fd) else {
                 set_errno(env, EBADF);
                 return -1;
             };
-            let cloned = match src_file.file.try_clone() {
-                Ok(f) => f,
-                Err(_e) => {
-                    log!(
-                        "fcntl({}, F_DUPFD, {}) — try_clone failed: {}",
-                        fd,
-                        min_fd,
-                        _e
-                    );
-                    set_errno(env, EMFILE);
-                    return -1;
+            let cloned = if src_is_socket {
+                GuestFile::Socket
+            } else {
+                match src_file.file.try_clone() {
+                    Ok(f) => f,
+                    Err(_e) => {
+                        log!(
+                            "fcntl({}, F_DUPFD, {}) — try_clone failed: {}",
+                            fd,
+                            min_fd,
+                            _e
+                        );
+                        set_errno(env, EMFILE);
+                        return -1;
+                    }
                 }
             };
             let src_status_flags = src_file.status_flags;
@@ -1269,6 +1307,9 @@ fn fcntl(
                 }
             };
             let new_fd = file_idx_to_fd(idx);
+            if src_is_socket {
+                duplicate_socket(env, fd, new_fd);
+            }
             log_dbg!(
                 "fcntl({}, {}, {}) => {} (duplicated fd)",
                 fd,
@@ -1437,6 +1478,13 @@ pub fn fsync(env: &mut Environment, fd: FileDescriptor) -> i32 {
 
 pub fn ftruncate(env: &mut Environment, fd: FileDescriptor, len: off_t) -> i32 {
     set_errno(env, 0);
+    // POSIX: ftruncate(2) is only meaningful for regular files; on a socket it
+    // fails with EINVAL.
+    if is_socket(env, fd) {
+        log_dbg!("ftruncate({}, {}) on socket => -1 (EINVAL)", fd, len);
+        set_errno(env, EINVAL);
+        return -1;
+    }
     let Some(file) = env.libc_state.posix_io.file_for_fd(fd) else {
         set_errno(env, EBADF);
         return -1;
@@ -1720,6 +1768,44 @@ pub fn is_socket(env: &mut Environment, fd: FileDescriptor) -> bool {
     } else {
         false
     }
+}
+
+/// Set or clear `O_NONBLOCK` on `fd`, like `fcntl(F_SETFL)` and
+/// `ioctl(FIONBIO)` do.
+///
+/// The socket implementation honours this when deciding whether `read(2)` and
+/// `write(2)` may wait for the peer, so a socket switched to non-blocking mode
+/// with `ioctl()` behaves the same as one switched with `fcntl()`.
+pub fn set_nonblocking(env: &mut Environment, fd: FileDescriptor, nonblocking: bool) {
+    if fd < NORMAL_FILENO_BASE {
+        return;
+    }
+    if let Some(Some(file_obj)) = env.libc_state.posix_io.files.get_mut(fd_to_file_idx(fd)) {
+        if nonblocking {
+            file_obj.status_flags |= O_NONBLOCK;
+        } else {
+            file_obj.status_flags &= !O_NONBLOCK;
+        }
+    }
+}
+
+/// Whether `fd` is open with `O_NONBLOCK` (set via `open()` or
+/// `fcntl(F_SETFL)`).
+///
+/// The socket implementation uses this to decide whether `read(2)`/`write(2)`
+/// on a socket may wait for the peer or must report `EAGAIN` immediately (see
+/// [crate::libc::sys::socket::read_socket]). Unknown and closed descriptors are
+/// reported as blocking, which is the guest's default.
+pub fn is_nonblocking(env: &Environment, fd: FileDescriptor) -> bool {
+    if fd < NORMAL_FILENO_BASE {
+        return false;
+    }
+    env.libc_state
+        .posix_io
+        .files
+        .get(fd_to_file_idx(fd))
+        .and_then(|file_or_none| file_or_none.as_ref())
+        .is_some_and(|file_obj| file_obj.status_flags & O_NONBLOCK != 0)
 }
 
 /// Resolve an `flock` request to an absolute byte range

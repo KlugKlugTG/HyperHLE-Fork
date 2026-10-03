@@ -24,13 +24,13 @@
 
 use crate::dyld::{export_c_func, FunctionExports};
 use crate::libc::errno::{
-    set_errno, EACCES, EADDRINUSE, EADDRNOTAVAIL, EAFNOSUPPORT, EAGAIN, EBADF, ECONNABORTED,
-    ECONNREFUSED, ECONNRESET, EINVAL, EIO, EISCONN, ENETUNREACH, ENOPROTOOPT, ENOTCONN, ENOTSUP,
-    ENOTTY, EPROTONOSUPPORT, ESOCKTNOSUPPORT, ETIMEDOUT,
+    get_errno, set_errno, EACCES, EADDRINUSE, EADDRNOTAVAIL, EAFNOSUPPORT, EAGAIN, EBADF,
+    ECONNABORTED, ECONNREFUSED, ECONNRESET, EFAULT, EINVAL, EIO, EISCONN, ENETUNREACH,
+    ENOPROTOOPT, ENOTCONN, ENOTSUP, ENOTTY, EPROTONOSUPPORT, ESOCKTNOSUPPORT, ETIMEDOUT,
 };
 use crate::libc::posix_io::{
-    close, find_or_create_socket, is_socket, FileDescriptor, POLLERR, POLLHUP, POLLIN, POLLOUT,
-    POLLPRI, POLLRDNORM, POLLWRNORM,
+    close, find_or_create_socket, is_nonblocking, is_socket, set_nonblocking, FileDescriptor,
+    POLLERR, POLLHUP, POLLIN, POLLOUT, POLLPRI, POLLRDNORM, POLLWRNORM,
 };
 use crate::libc::time::timeval;
 use crate::mem::{
@@ -292,7 +292,10 @@ fn ioctl(env: &mut Environment, fd: i32, request: u32, args: DotDotDot) -> i32 {
         FIONBIO => {
             // Argument is a pointer to int: non-zero enables non-blocking
             // mode. Host sockets are always non-blocking here, so both
-            // directions are accepted; the flag is read only for logging.
+            // directions are accepted, but the flag is recorded on the
+            // descriptor: `read(2)`/`write(2)` have to emulate blocking
+            // themselves, and they must not wait when the guest asked for
+            // non-blocking I/O.
             let mut varargs = args.start();
             let flag_ptr: MutPtr<i32> = varargs.next(env);
             let flag = if flag_ptr.is_null() {
@@ -300,6 +303,7 @@ fn ioctl(env: &mut Environment, fd: i32, request: u32, args: DotDotDot) -> i32 {
             } else {
                 env.mem.read(flag_ptr)
             };
+            set_nonblocking(env, fd, flag != 0);
             log_dbg!(
                 "ioctl({}, FIONBIO, {}) => 0 (host sockets are non-blocking)",
                 fd,
@@ -2208,6 +2212,214 @@ pub fn close_socket(env: &mut Environment, socket: i32) -> bool {
     // True when the socket existed and was removed (the old is_none()
     // check had the sense inverted).
     State::get_mut(env).sockets.remove(&socket).is_some()
+}
+
+/// Duplicate a host socket handle for [duplicate_socket]. A refusal from the
+/// host is logged instead of failing the whole duplication.
+fn try_clone_host_socket<T>(what: &str, result: io::Result<T>) -> Option<T> {
+    match result {
+        Ok(socket) => Some(socket),
+        Err(e) => {
+            log!(
+                "Warning: duplicate_socket: could not clone {}: {}",
+                what,
+                e
+            );
+            None
+        }
+    }
+}
+
+/// Duplicate a socket descriptor: registers `new_fd` as another descriptor for
+/// the same host socket, which is what `dup(2)` / `fcntl(F_DUPFD)` produce.
+///
+/// Returns `false` when `old_fd` is not an open socket.
+pub fn duplicate_socket(env: &mut Environment, old_fd: i32, new_fd: i32) -> bool {
+    let Some(socket) = State::get(env).sockets.get(&old_fd) else {
+        log!(
+            "Warning: duplicate_socket({}, {}): source is not an open socket",
+            old_fd,
+            new_fd
+        );
+        return false;
+    };
+    // try_clone() duplicates the host handle, so both descriptors refer to the
+    // same connection and each can be closed independently.
+    let duplicated = SocketHostObject {
+        type_: socket.type_,
+        options: socket.options.clone(),
+        tcp_listener: socket
+            .tcp_listener
+            .as_ref()
+            .map(|listener| try_clone_host_socket("tcp_listener", listener.try_clone()))
+            .flatten(),
+        pending_tcp_stream: socket
+            .pending_tcp_stream
+            .as_ref()
+            .map(|stream| try_clone_host_socket("pending_tcp_stream", stream.try_clone()))
+            .flatten(),
+        tcp_stream: socket
+            .tcp_stream
+            .as_ref()
+            .map(|stream| try_clone_host_socket("tcp_stream", stream.try_clone()))
+            .flatten(),
+        udp_socket: socket
+            .udp_socket
+            .as_ref()
+            .map(|udp| try_clone_host_socket("udp_socket", udp.try_clone()))
+            .flatten(),
+        domain: socket.domain,
+    };
+    State::get_mut(env).sockets.insert(new_fd, duplicated);
+    log_dbg!("duplicate_socket({}, {})", old_fd, new_fd);
+    true
+}
+
+/// How long a blocking `read(2)`/`write(2)` on a socket keeps polling before it
+/// gives up. Host sockets are always non-blocking, so a blocking guest call is
+/// emulated by polling (the same approach `select()` uses); the bound exists so
+/// that a peer which never sends (or never drains) cannot wedge the emulator.
+const BLOCKING_IO_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+/// How long the guest thread sleeps between polls while waiting for a socket.
+/// [Environment::sleep] yields the thread, so the window and other threads keep
+/// running while we wait.
+const BLOCKING_IO_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(5);
+
+/// `read(2)` on a socket descriptor.
+///
+/// Socket descriptors use a placeholder [crate::fs::GuestFile::Socket] that
+/// cannot do I/O; the real host socket lives in this module's state. Generic
+/// I/O entry points therefore dispatch to here (see
+/// [crate::libc::posix_io::read]) instead of failing with "read not supported
+/// on socket via GuestFile", which broke every app that reads a socket with
+/// `read()`, `fread()` or `NSFileHandle` (e.g. the networking in Minion Rush).
+///
+/// A blocking descriptor (the default) waits for data by polling with
+/// [Environment::sleep]; a descriptor with `O_NONBLOCK` gets the `EAGAIN` that
+/// [recv] produces, like a real non-blocking socket. Errno is left set by
+/// [recv] on failure.
+pub fn read_socket(
+    env: &mut Environment,
+    socket: i32,
+    buffer: MutVoidPtr,
+    length: GuestUSize,
+) -> i32 {
+    // POSIX: a zero-length read has no effect and reports success.
+    if length == 0 {
+        return 0;
+    }
+    if buffer.is_null() {
+        set_errno(env, EFAULT);
+        return -1;
+    }
+
+    let nonblocking = is_nonblocking(env, socket);
+    let deadline = std::time::Instant::now() + BLOCKING_IO_TIMEOUT;
+
+    loop {
+        let res = recv(env, socket, buffer, length, 0);
+        if res >= 0 {
+            // 0 means the peer closed the connection, i.e. EOF.
+            log_dbg!("read on socket {} => {} bytes", socket, res);
+            return res;
+        }
+        // errno is already set by recv(). Retrying only makes sense for a
+        // blocking descriptor that is merely not ready yet.
+        if nonblocking || get_errno(env) != EAGAIN {
+            return -1;
+        }
+        if std::time::Instant::now() >= deadline {
+            log!(
+                "Warning: read on socket {} timed out after {:?}, returning -1 (EAGAIN)",
+                socket,
+                BLOCKING_IO_TIMEOUT
+            );
+            return -1;
+        }
+        env.sleep(BLOCKING_IO_POLL_INTERVAL);
+    }
+}
+
+/// `write(2)` on a socket descriptor. See [read_socket] for why this exists
+/// (it used to fail with "write not supported on socket via GuestFile").
+///
+/// A blocking descriptor keeps sending until every byte has been handed to the
+/// host socket; if the send buffer fills up part-way through, the short count
+/// is returned and the guest retries the rest (which is legal for `write(2)`
+/// and is what a real socket does when the write is interrupted). A descriptor
+/// with `O_NONBLOCK` performs a single [send] and may therefore write fewer
+/// bytes than requested. Errno is left set by [send] on failure.
+pub fn write_socket(
+    env: &mut Environment,
+    socket: i32,
+    buffer: ConstVoidPtr,
+    length: GuestUSize,
+) -> i32 {
+    // POSIX: a zero-length write on a socket sends an empty datagram / nothing
+    // at all and reports success.
+    if length == 0 {
+        return 0;
+    }
+    if buffer.is_null() {
+        set_errno(env, EFAULT);
+        return -1;
+    }
+
+    // Byte-wise base pointer, so partial writes can advance it.
+    let base: ConstPtr<u8> = buffer.cast();
+    let nonblocking = is_nonblocking(env, socket);
+    let deadline = std::time::Instant::now() + BLOCKING_IO_TIMEOUT;
+    let mut written: GuestUSize = 0;
+
+    loop {
+        let chunk: MutVoidPtr = (base + written).cast_void().cast_mut();
+        let res = send(env, socket, chunk, length - written, 0);
+        if res > 0 {
+            written += res as GuestUSize;
+            if written >= length || nonblocking {
+                log_dbg!("write on socket {} => {} bytes", socket, written);
+                return written as i32;
+            }
+            continue;
+        }
+        if res == 0 {
+            // Should be unreachable: the guest asked for at least one byte and
+            // the host reported success with nothing sent. Report an I/O error
+            // (send() leaves errno at 0) instead of spinning forever.
+            log!(
+                "Warning: write on socket {} sent 0 bytes, returning -1 (EIO)",
+                socket
+            );
+            set_errno(env, EIO);
+            return -1;
+        }
+        // errno is already set by send(); anything other than "not ready yet"
+        // is a real error for the guest.
+        if nonblocking || get_errno(env) != EAGAIN {
+            return -1;
+        }
+        if written > 0 {
+            // Some data went out but the send buffer is now full: report the
+            // short count and let the guest retry the rest, rather than
+            // blocking the emulator on a peer that stopped reading.
+            log_dbg!(
+                "write on socket {} wrote {} of {} bytes before it would block",
+                socket,
+                written,
+                length
+            );
+            return written as i32;
+        }
+        if std::time::Instant::now() >= deadline {
+            log!(
+                "Warning: write on socket {} timed out after {:?}, returning -1 (EAGAIN)",
+                socket,
+                BLOCKING_IO_TIMEOUT
+            );
+            return -1;
+        }
+        env.sleep(BLOCKING_IO_POLL_INTERVAL);
+    }
 }
 
 pub fn socket_addr_to_sockaddr_bytes(address: SocketAddr) -> Vec<u8> {
