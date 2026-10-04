@@ -541,6 +541,8 @@ impl Options {
             }
         } else if arg == "--force-composition" {
             self.force_composition = true;
+        } else if arg == "--no-force-composition" {
+            self.force_composition = false;
         } else if let Some(value) = arg.strip_prefix("--present-mode=") {
             self.present_mode = PresentMode::from_short_name(value).map_err(|_| {
                 "Invalid value for --present-mode= (expected auto, direct or readback)"
@@ -715,4 +717,21 @@ fn parse_dump_options(options: &str) -> Result<DumpingOptions, String> {
         }
     }
     Ok(dumping_options)
+}
+
+#[cfg(test)]
+mod force_composition_option_tests {
+    use super::*;
+
+    #[test]
+    fn force_composition_can_be_enabled_and_disabled() {
+        let mut options = Options::default();
+        assert!(!options.force_composition);
+
+        assert!(options.parse_argument("--force-composition").unwrap());
+        assert!(options.force_composition);
+
+        assert!(options.parse_argument("--no-force-composition").unwrap());
+        assert!(!options.force_composition);
+    }
 }

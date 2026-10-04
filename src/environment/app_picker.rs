@@ -176,6 +176,7 @@ struct AppPickerDelegateHostObject {
     show_fps: Option<bool>,
     cheat_engine: Option<bool>,
     trace_gl_errors: Option<bool>,
+    force_composition: Option<bool>,
     gles_native: Option<bool>,
     fullscreen: Option<bool>,
     device_model_tag: Option<i32>,
@@ -260,6 +261,10 @@ const CLASSES: ClassExports = objc_classes! {
 - (())traceGLErrors:(id)switch { // UISwitch*
     let switch_state: bool = msg![env; switch isOn];
     env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).trace_gl_errors = Some(switch_state);
+}
+- (())forceComposition:(id)switch { // UISwitch*
+    let switch_state: bool = msg![env; switch isOn];
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).force_composition = Some(switch_state);
 }
 - (())glesNative:(id)switch { // UISwitch*
     let switch_state: bool = msg![env; switch isOn];
@@ -551,6 +556,7 @@ fn app_picker_inner(
     let angle_backend_available = crate::window::angle_backend_available();
     let (mut quick_options_gles_native, quick_options_gles_native_switch_enabled) =
         quick_options_gles_native_state(&env.options, angle_backend_available);
+    let quick_options_force_composition_enabled = env.options.force_composition;
     let quick_options_stuff = setup_quick_options(
         env,
         delegate,
@@ -559,6 +565,7 @@ fn app_picker_inner(
         quick_options_cheat_engine,
         quick_options_gles_native,
         quick_options_gles_native_switch_enabled,
+        quick_options_force_composition_enabled,
     );
     let mut quick_options_scale_hack: Option<NonZeroU32> = None;
     let mut quick_options_fullscreen: Option<()> = None;
@@ -567,6 +574,7 @@ fn app_picker_inner(
     let mut quick_options_network = false;
     let mut quick_options_show_fps = false;
     let mut quick_options_trace_gl_errors = false;
+    let mut quick_options_force_composition_override: Option<bool> = None;
     let mut quick_options_device_tag: Option<i32> = None;
     let mut quick_options_device_model_open = false;
     let mut quick_options_device_model_scroll: isize = 0;
@@ -822,6 +830,8 @@ fn app_picker_inner(
             quick_options_show_fps = enabled;
         } else if let Some(trace_gl_errors) = std::mem::take(&mut host_obj.trace_gl_errors) {
             quick_options_trace_gl_errors = trace_gl_errors;
+        } else if let Some(force_composition) = std::mem::take(&mut host_obj.force_composition) {
+            quick_options_force_composition_override = Some(force_composition);
         } else if let Some(gles_native) = std::mem::take(&mut host_obj.gles_native) {
             quick_options_gles_native = gles_native || !crate::window::angle_backend_available();
         } else if let Some(fullscreen) = std::mem::take(&mut host_obj.fullscreen) {
@@ -895,6 +905,10 @@ fn app_picker_inner(
         // flag so users don't need to set env vars manually.
         std::env::set_var("TOUCHHLE_ONSCREEN_FPS", "1");
         crate::gles::present::set_onscreen_fps_enabled(true);
+    }
+
+    if let Some(enabled) = quick_options_force_composition_override {
+        option_args.push(quick_options_force_composition_argument(enabled).to_string());
     }
 
     if quick_options_trace_gl_errors {
@@ -1411,6 +1425,7 @@ fn setup_quick_options(
     cheat_engine_enabled: bool,
     gles_native_enabled: bool,
     gles_native_switch_enabled: bool,
+    force_composition_enabled: bool,
 ) -> QuickOptionsStuff {
     // UIView*
     let main_frame = CGRect {
@@ -1429,7 +1444,7 @@ fn setup_quick_options(
     () = msg![env; main_view setHidden:true];
     () = msg![env; super_view addSubview:main_view];
 
-    let divider = 50.0;
+    let divider = 44.0;
 
     // Close button (×) in the upper right corner. It uses an explicit border
     // and a slightly larger frame than the title so the glyph is clearly
@@ -1480,53 +1495,62 @@ fn setup_quick_options(
 
     enum RowKind {
         Label(&'static str),
-        Buttons(&'static [(&'static str, &'static str)]),
+        Buttons(&'static [(&'static str, &'static str)], Option<CGFloat>),
         /// Dropdown listing every selectable device model.
         DeviceDropdown,
-        Switch(&'static str, bool, bool),
+        Toggle(&'static str, &'static str, bool, bool),
     }
     let rows = [
         RowKind::Label("Scale hack"),
-        RowKind::Buttons(&[
-            ("Default", "scaleHackDefault"),
-            ("Off", "scaleHack1"),
-            ("2×", "scaleHack2"),
-            ("3×", "scaleHack3"),
-            ("4×", "scaleHack4"),
-        ]),
+        RowKind::Buttons(
+            &[
+                ("Default", "scaleHackDefault"),
+                ("Off", "scaleHack1"),
+                ("2×", "scaleHack2"),
+                ("3×", "scaleHack3"),
+                ("4×", "scaleHack4"),
+            ],
+            Some(14.0),
+        ),
         RowKind::Label("Orientation"),
-        RowKind::Buttons(&[
-            ("Default", "orientationDefault"),
-            ("←", "orientationLandscapeLeft"),
-            ("→", "orientationLandscapeRight"),
-            ("↓", "orientationPortraitUpsideDown"),
-        ]),
+        RowKind::Buttons(
+            &[
+                ("Default", "orientationDefault"),
+                ("←", "orientationLandscapeLeft"),
+                ("→", "orientationLandscapeRight"),
+                ("↓", "orientationPortraitUpsideDown"),
+            ],
+            None,
+        ),
         RowKind::Label("Device model"),
         RowKind::DeviceDropdown,
-        RowKind::Label("Cheat Engine"),
-        RowKind::Switch("cheatEngine:", cheat_engine_enabled, true),
-        RowKind::Label("Network access"),
-        RowKind::Switch("network:", false, true),
-        RowKind::Label("Show FPS"),
-        RowKind::Switch("showFPS:", false, true),
-        RowKind::Label("Trace GL errors"),
-        RowKind::Switch("traceGLErrors:", false, true),
-        RowKind::Label("GLES Native"),
-        RowKind::Switch(
+        RowKind::Toggle("Cheat Engine", "cheatEngine:", cheat_engine_enabled, true),
+        RowKind::Toggle("Network access", "network:", false, true),
+        RowKind::Toggle("Show FPS", "showFPS:", false, true),
+        RowKind::Toggle("Trace GL errors", "traceGLErrors:", false, true),
+        RowKind::Toggle(
+            "GLES Native",
             "glesNative:",
             gles_native_enabled,
             gles_native_switch_enabled,
         ),
-        RowKind::Label("Use analog sticks for tilt controls"),
-        RowKind::Switch("analogStickTiltControls:", true, true),
-        // ---- (divider for stuff skipped below)
-        RowKind::Label("Fullscreen (override)"),
-        RowKind::Switch("fullscreen:", false, true),
+        RowKind::Toggle(
+            "May fix graphics issues.",
+            "forceComposition:",
+            force_composition_enabled,
+            true,
+        ),
+        RowKind::Toggle(
+            "Use analog sticks for tilt controls",
+            "analogStickTiltControls:",
+            true,
+            true,
+        ),
+        RowKind::Toggle("Fullscreen (override)", "fullscreen:", false, true),
     ];
-    let rows_len_full = rows.len();
     let rows = if crate::window::Window::rotatable_fullscreen() {
         // Fullscreen option doesn't make sense on always-fullscreen platforms
-        &rows[..rows.len() - 2]
+        &rows[..rows.len() - 1]
     } else {
         &rows[..]
     };
@@ -1561,7 +1585,7 @@ fn setup_quick_options(
                 () = msg![env; label setTextAlignment:UITextAlignmentCenter];
                 () = msg![env; main_view addSubview:label];
             }
-            RowKind::Buttons(buttons) => {
+            RowKind::Buttons(buttons, font_size) => {
                 button_rows.push(make_button_row(
                     env,
                     delegate,
@@ -1569,7 +1593,7 @@ fn setup_quick_options(
                     main_frame.size,
                     row_center,
                     buttons,
-                    /* font_size: */ None,
+                    font_size,
                 ));
             }
             RowKind::DeviceDropdown => {
@@ -1585,15 +1609,44 @@ fn setup_quick_options(
                 device_model_items = dropdown.2;
                 device_model_thumb = dropdown.3;
             }
-            RowKind::Switch(selector, default_state, enabled) => {
+            RowKind::Toggle(label_text, selector, default_state, enabled) => {
+                let switch_width: CGFloat = 94.0;
+                let switch_height: CGFloat = 27.0;
+                let side_margin: CGFloat = 12.0;
+                let label_gap: CGFloat = 8.0;
+                let label_width = (main_frame.size.width
+                    - switch_width
+                    - side_margin * 2.0
+                    - label_gap)
+                    .max(0.0);
+                let label_frame = CGRect {
+                    origin: CGPoint {
+                        x: side_margin,
+                        y: row_center - 15.0,
+                    },
+                    size: CGSize {
+                        width: label_width,
+                        height: 30.0,
+                    },
+                };
+                let label: id = msg_class![env; UILabel alloc];
+                let label: id = msg![env; label initWithFrame:label_frame];
+                let text = ns_string::get_static_str(env, label_text);
+                () = msg![env; label setText:text];
+                () = msg![env; label setTextAlignment:UITextAlignmentLeft];
+                let font: id = msg_class![env; UIFont systemFontOfSize:(16.0 as CGFloat)];
+                () = msg![env; label setFont:font];
+                () = msg![env; label setAdjustsFontSizeToFitWidth:true];
+                () = msg![env; label setMinimumFontSize:(12.0 as CGFloat)];
+                () = msg![env; main_view addSubview:label];
+
                 let switch_frame = CGRect {
                     origin: CGPoint {
-                        x: main_frame.size.width / 2.0 - 94.0 / 2.0,
-                        y: row_center - 27.0 / 2.0,
+                        x: main_frame.size.width - side_margin - switch_width,
+                        y: row_center - switch_height / 2.0,
                     },
                     size: Default::default(),
                 };
-
                 let switch: id = msg_class![env; UISwitch alloc];
                 let switch: id = msg![env; switch initWithFrame:switch_frame];
                 () = msg![env; switch setOn:default_state];
@@ -1884,6 +1937,14 @@ fn quick_options_trainer_argument(enabled: bool) -> &'static str {
     }
 }
 
+fn quick_options_force_composition_argument(enabled: bool) -> &'static str {
+    if enabled {
+        "--force-composition"
+    } else {
+        "--no-force-composition"
+    }
+}
+
 /// Returns `(native_enabled, switch_enabled)` for the probed ANGLE state.
 fn quick_options_gles_native_state(options: &Options, angle_available: bool) -> (bool, bool) {
     (options.gles_native || !angle_available, angle_available)
@@ -1961,6 +2022,23 @@ mod quick_options_gles_native_tests {
         assert_eq!(
             quick_options_gles_native_argument(enabled),
             "--no-gles-native"
+        );
+    }
+}
+
+#[cfg(test)]
+mod quick_options_force_composition_tests {
+    use super::*;
+
+    #[test]
+    fn switch_argument_explicitly_sets_or_clears_the_option() {
+        assert_eq!(
+            quick_options_force_composition_argument(true),
+            "--force-composition"
+        );
+        assert_eq!(
+            quick_options_force_composition_argument(false),
+            "--no-force-composition"
         );
     }
 }

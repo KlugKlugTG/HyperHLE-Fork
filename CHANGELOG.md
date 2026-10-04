@@ -169,6 +169,10 @@ Quality and performance:
   - The window framebuffer no longer requests depth/stencil buffers it never uses (everything host-drawn is a flat textured quad), saving a swap chain resolution's worth of bandwidth on tile-based mobile GPUs.
   - Per-frame/per-touch `getenv`-style debug toggle checks (`TOUCHHLE_*` env vars on the present, viewport, draw-call, hit-test and touch-remap paths) are now read once and cached; previously several of them ran an environ scan with locking and allocation on every frame or touch event.
 
+Usability:
+
+- Quick Options now has a “May fix graphics issues.” switch for `--force-composition`, including an explicit off state that overrides app-specific defaults. Switches are aligned beside their labels, and the scale-hack button text no longer gets clipped. (@j92580498-max)
+
 ## v0.2.3 (2026-01-02)
 
 Compatibility:

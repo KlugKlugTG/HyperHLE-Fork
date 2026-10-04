@@ -334,6 +334,10 @@ Other options:
         Enabling this option may solve some rendering issues, but implies
         a performance hit which is undesirable in most of the cases.
 
+    --no-force-composition
+        Disables forced composition, including when it was enabled by an
+        app-specific options file.
+
     --present-mode=...
         How a frame that an app rendered into a fullscreen EAGL layer is put
         on the screen. One of:
