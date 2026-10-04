@@ -8,7 +8,7 @@
 
 use crate::dyld::{export_c_func, export_c_func_aliased, FunctionExports};
 use crate::frameworks::opengles::eagl::{EAGLContextHostObject, GLShadowState};
-use crate::gles::{gles11_raw as gles11, GLES};
+use crate::gles::{gles11_raw as gles11, GuestGlesCallGuard, GLES};
 use crate::mem::{ConstPtr, ConstVoidPtr, GuestISize, GuestUSize, Mem, MutPtr, MutVoidPtr, Ptr};
 use crate::objc::nil;
 use crate::Environment;
@@ -136,13 +136,17 @@ where
     if trace {
         unsafe { gles.GetError() };
     }
-    let res = f(gles.as_mut(), &mut env.mem);
+    let res = {
+        let _guest_call_guard = GuestGlesCallGuard::enter();
+        f(gles.as_mut(), &mut env.mem)
+    };
     if trace {
         let err = unsafe { gles.GetError() };
         if err != 0 {
             log!(
-                "[--trace-gl-errors] glGetError() = {:#x} raised by host GLES call \
+                "[--trace-gl-errors] {} call reported glGetError() = {:#x} \
                  dispatched from {}:{}",
+                gles.diagnostic_profile(),
                 err,
                 caller.file(),
                 caller.line()
@@ -194,13 +198,17 @@ where
     if trace {
         unsafe { gles.GetError() };
     }
-    let res = f(gles.as_mut(), &mut env.mem, shadow);
+    let res = {
+        let _guest_call_guard = GuestGlesCallGuard::enter();
+        f(gles.as_mut(), &mut env.mem, shadow)
+    };
     if trace {
         let err = unsafe { gles.GetError() };
         if err != 0 {
             log!(
-                "[--trace-gl-errors] glGetError() = {:#x} raised by host GLES call \
+                "[--trace-gl-errors] {} call reported glGetError() = {:#x} \
                  dispatched from {}:{}",
+                gles.diagnostic_profile(),
                 err,
                 caller.file(),
                 caller.line()
@@ -242,13 +250,17 @@ where
         );
         return U::default();
     };
-    let res = f(gles.as_mut(), &mut env.mem);
+    let res = {
+        let _guest_call_guard = GuestGlesCallGuard::enter();
+        f(gles.as_mut(), &mut env.mem)
+    };
     if trace {
         let err = unsafe { gles.GetError() };
         if err != 0 {
             log!(
-                "[--trace-gl-errors] glGetError() = {:#x} raised by host GLES call \
+                "[--trace-gl-errors] {} call reported glGetError() = {:#x} \
                  dispatched from {}:{}",
+                gles.diagnostic_profile(),
                 err,
                 caller.file(),
                 caller.line()
@@ -320,12 +332,17 @@ fn glGetError(env: &mut Environment) -> GLenum {
                 }
             }
             if already_seen {
-                log_dbg!("glGetError() returned {:#x} (already reported)", err);
+                log_dbg!(
+                    "{} glGetError() returned {:#x} (already reported)",
+                    gles.diagnostic_profile(),
+                    err
+                );
             } else {
                 log!(
-                    "Warning: glGetError() returned {:#x} (subsequent repeats \
+                    "Warning: {} glGetError() returned {:#x} (subsequent repeats \
                      of the same code are silenced; rerun with \
                      --trace-gl-errors to identify the originating GL call)",
+                    gles.diagnostic_profile(),
                     err
                 );
             }

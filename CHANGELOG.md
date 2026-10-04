@@ -84,6 +84,7 @@ Compatibility:
   - Asphalt 6 (@ciciplusplus)
   - World of Goo (@ciciplusplus)
 - API support improvements:
+  - Unimplemented GLES calls now log the entry point and active guest GLES profile once; unresolved `gl*` symbols get an explicit GLES diagnostic. Existing fallback behavior is unchanged.
   - On hosts without native PVRTC support, full-level `glCompressedTexSubImage2D` updates now reuse the software-decoded RGBA texture instead of issuing an unsupported compressed update. (@j92580498-max)
   - `-[NSObject performSelectorOnMainThread:withObject:waitUntilDone:]` now queues `waitUntilDone:NO` calls made on the main thread for the next run-loop pass instead of invoking them inline. This prevents asynchronous startup callbacks from observing partially initialized state and fixes Battleship FREE's age/terms flow stalling before its first rendered frame.
   - `NSBundle` now retains cached bundle instances, and `UINib` honors the bundle argument instead of asserting that every nib comes from the main app bundle. This allows Battleship FREE to load its nested age-verification nib and localized strings.

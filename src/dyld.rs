@@ -1934,8 +1934,14 @@ impl Dyld {
         // the app), install a stub that logs a warning and returns 0. This
         // lets the emulator keep running for relatively harmless symbols like
         // `_getuid`, `_geteuid`, `_getpid`, etc.
+        let symbol_kind = if is_gles_function_symbol(symbol) {
+            "GLES function"
+        } else {
+            "function"
+        };
         log!(
-            "Warning: call to unimplemented function {} at {:#x}; installing return-0 stub",
+            "Warning: call to unimplemented {} {} at {:#x}; installing return-0 stub",
+            symbol_kind,
             symbol,
             svc_pc
         );
@@ -2154,6 +2160,14 @@ fn dyld_stub_binder(_env: &mut Environment, _arg: u32) {
     );
 }
 
+fn is_gles_function_symbol(symbol: &str) -> bool {
+    let symbol = symbol.trim_start_matches('_');
+    symbol
+        .strip_prefix("gl")
+        .and_then(|rest| rest.chars().next())
+        .is_some_and(|character| character.is_ascii_uppercase())
+}
+
 /// Generic fallback stub for functions referenced by the guest binary but
 /// not implemented by any host dylib. Returns 0 so that calls to things like
 /// `getuid`, `geteuid`, `getpid`, etc. don't panic the emulator.
@@ -2227,6 +2241,29 @@ fn cxxabi_intercept_symbol(name: &str, guest_sjlj_runtime_available: bool) -> Op
         "__cxa_throw" if !guest_sjlj_runtime_available => Some("__cxa_throw"),
         "___cxa_throw" if !guest_sjlj_runtime_available => Some("___cxa_throw"),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod gles_symbol_detection_tests {
+    use super::is_gles_function_symbol;
+
+    #[test]
+    fn recognizes_mangled_and_unmangled_gles_entry_points() {
+        for symbol in [
+            "_glBindBuffer",
+            "glGetAttachedShaders",
+            "_glDiscardFramebufferEXT",
+        ] {
+            assert!(is_gles_function_symbol(symbol));
+        }
+    }
+
+    #[test]
+    fn ignores_non_gles_symbols() {
+        for symbol in ["_getuid", "_global_init", "_GLESContext", "_gl_lowercase"] {
+            assert!(!is_gles_function_symbol(symbol));
+        }
     }
 }
 
