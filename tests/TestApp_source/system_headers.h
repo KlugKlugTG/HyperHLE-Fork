@@ -84,7 +84,19 @@ static inline NSRange NSMakeRange(NSUInteger loc, NSUInteger len) {
 @end
 
 @interface NSSet<ObjectType> : NSObject
++ (instancetype)setWithObject:(ObjectType)object;
+- (NSUInteger)count;
+- (BOOL)containsObject:(ObjectType)object;
+- (id)copy;
+- (id)mutableCopy;
 - (ObjectType)anyObject;
+@end
+
+@interface NSMutableSet<ObjectType> : NSSet<ObjectType>
+- (void)addObject:(ObjectType)object;
+- (void)removeObject:(ObjectType)object;
+- (void)intersectSet:(NSSet<ObjectType> *)other;
+- (void)unionSet:(NSSet<ObjectType> *)other;
 @end
 
 typedef enum {

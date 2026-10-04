@@ -121,6 +121,11 @@ pub const CLASSES: ClassExports = objc_classes! {
     retain(env, this)
 }
 
+- (id)mutableCopyWithZone:(NSZonePtr)_zone {
+    let copy: id = msg_class![env; NSMutableSet alloc];
+    msg![env; copy initWithSet:this]
+}
+
 - (bool)containsObject:(id)object {
     let enumerator: id = msg![env; this objectEnumerator];
     loop {
@@ -357,12 +362,11 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // NSCopying implementation
 // NSMutableSet's -copyWithZone: must produce an immutable NSSet that
-// snapshots the receiver. We materialise the elements via -allObjects
-// (which is implemented for our private subclass) and reuse the
-// +[NSSet setWithArray:] code path to build a fresh immutable set.
+// snapshots the receiver. Both copy methods return an owned (+1) object
+// and retain the original elements without copying the elements themselves.
 - (id)copyWithZone:(NSZonePtr)_zone {
-    let objects: id = msg![env; this allObjects];
-    msg_class![env; NSSet setWithArray:objects]
+    let copy: id = msg_class![env; NSSet alloc];
+    msg![env; copy initWithSet:this]
 }
 
 @end
@@ -490,15 +494,10 @@ pub const CLASSES: ClassExports = objc_classes! {
     env.objc.alloc_object(this, host_object, &mut env.mem)
 }
 
-// NSCopying implementation
-- (id)copyWithZone:(NSZonePtr)_zone {
-    retain(env, this)
-}
-
-// NSCopying implementation
-- (id)mutableCopyWithZone:(NSZonePtr)_zone {
-    retain(env, this)
-}
+// Inherit independent, owned copies from NSMutableSet/NSSet. Returning
+// self here lets mutations of a copy change the original. Cocos's touch
+// dispatcher removes swallowed touches from a mutable copy; aliasing it
+// loses the active touches needed to deliver movement and release events.
 
 - (id)initWithCapacity:(NSUInteger)_numItems {
     // We ignore the requested capacity as Rust's internal data structures
