@@ -75,6 +75,26 @@ struct UIRuntimeEventConnectionHostObject {
 }
 impl_HostObject_with_superclass!(UIRuntimeEventConnectionHostObject);
 
+fn top_level_objects_excluding_file_owner(
+    env: &mut Environment,
+    top_level_objects: id,
+    owner: id,
+) -> id {
+    if top_level_objects == nil {
+        return nil;
+    }
+
+    let count: NSUInteger = msg![env; top_level_objects count];
+    let result: id = msg_class![env; NSMutableArray new];
+    for index in 0..count {
+        let object: id = msg![env; top_level_objects objectAtIndex:index];
+        if object != nil && object != owner {
+            () = msg![env; result addObject:object];
+        }
+    }
+    autorelease(env, result)
+}
+
 pub const CLASSES: ClassExports = objc_classes! {
 
 (env, this, _cmd);
@@ -198,7 +218,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         host.file_owner = nil;
         host.external_objects = nil;
     }
-    top_level_objects
+    top_level_objects_excluding_file_owner(env, top_level_objects, owner)
 }
 
 @end
@@ -580,14 +600,11 @@ fn load_nib_file(env: &mut Environment, ui_nib: id, path: GuestPathBuf) -> Resul
     }
 
     if objects != nil {
-        let enumerator: id = msg![env; objects objectEnumerator];
-        if enumerator != nil {
-            loop {
-                let next: id = msg![env; enumerator nextObject];
-                if next == nil {
-                    break;
-                }
-                () = msg![env; next awakeFromNib];
+        let count: NSUInteger = msg![env; objects count];
+        for index in 0..count {
+            let object: id = msg![env; objects objectAtIndex:index];
+            if object != nil {
+                () = msg![env; object awakeFromNib];
             }
         }
     }

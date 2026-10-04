@@ -55,6 +55,10 @@ const MAGIC_MUTEX_STATIC_FIRSTFIT: u32 = 0x32AAABA3; // first-fit; behaves as no
 const PTHREAD_PROCESS_SHARED: i32 = 1;
 const PTHREAD_PROCESS_PRIVATE: i32 = 2;
 
+fn mutex_address_is_usable(address: u32, null_segment_size: u32) -> bool {
+    address >= null_segment_size
+}
+
 fn pthread_mutexattr_init(env: &mut Environment, attr: MutPtr<pthread_mutexattr_t>) -> i32 {
     env.mem.write(
         attr,
@@ -186,6 +190,9 @@ pub fn pthread_mutex_init(
     mutex: MutPtr<pthread_mutex_t>,
     attr: ConstPtr<pthread_mutexattr_t>,
 ) -> i32 {
+    if !mutex_address_is_usable(mutex.to_bits(), env.mem.null_segment_size()) {
+        return EINVAL;
+    }
     let type_ = if !attr.is_null() {
         check_magic!(env, attr, MAGIC_MUTEXATTR);
         let pthread_mutexattr_t { type_, .. } = env.mem.read(attr);
@@ -229,11 +236,7 @@ enum MutexLookup {
 
 /// Register a host mutex of the given type for a statically-initialized guest
 /// mutex and stamp its guest struct with [MAGIC_MUTEX].
-fn register_mutex_typed(
-    env: &mut Environment,
-    mutex: MutPtr<pthread_mutex_t>,
-    type_: MutexType,
-) {
+fn register_mutex_typed(env: &mut Environment, mutex: MutPtr<pthread_mutex_t>, type_: MutexType) {
     let mutex_id = env.mutex_state.init_mutex(type_);
     env.mem.write(
         mutex,
@@ -245,6 +248,19 @@ fn register_mutex_typed(
 }
 
 fn check_or_register_mutex(env: &mut Environment, mutex: MutPtr<pthread_mutex_t>) -> MutexLookup {
+    if !mutex_address_is_usable(mutex.to_bits(), env.mem.null_segment_size()) {
+        static INVALID_MUTEX_LOGGED: std::sync::atomic::AtomicU32 =
+            std::sync::atomic::AtomicU32::new(0);
+        let n = INVALID_MUTEX_LOGGED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        if n < 8 {
+            log!(
+                "Warning: pthread mutex pointer {:?} is inside the null page; treating the operation as a no-op (occurrence {})",
+                mutex,
+                n + 1
+            );
+        }
+        return MutexLookup::Foreign;
+    }
     let magic: u32 = env.mem.read(mutex.cast());
     match magic {
         // Already one of ours.
@@ -452,3 +468,16 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(pthread_mutex_unlock(_)),
     export_c_func!(pthread_mutex_destroy(_)),
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::mutex_address_is_usable;
+
+    #[test]
+    fn mutex_addresses_in_null_page_are_unusable() {
+        assert!(!mutex_address_is_usable(0, 0x1000));
+        assert!(!mutex_address_is_usable(1, 0x1000));
+        assert!(!mutex_address_is_usable(0xfff, 0x1000));
+        assert!(mutex_address_is_usable(0x1000, 0x1000));
+    }
+}
