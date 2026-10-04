@@ -1790,8 +1790,12 @@ fn glDrawArrays(env: &mut Environment, mode: GLenum, first: GLint, count: GLsize
 
         if trace_potatogold_render() {
             static COUNT: AtomicU32 = AtomicU32::new(0);
+            static LARGE_COUNT: AtomicU32 = AtomicU32::new(0);
             let n = COUNT.fetch_add(1, Ordering::Relaxed);
-            if n < 120 {
+            let log_large = n >= 120
+                && count > 12
+                && LARGE_COUNT.fetch_add(1, Ordering::Relaxed) < 256;
+            if n < 120 || log_large {
                 log!(
                     "[POTATO RENDER TRACE] glDrawArrays #{} mode=0x{:x} first={} count={}",
                     n + 1,
@@ -1832,7 +1836,7 @@ fn glDrawArrays(env: &mut Environment, mode: GLenum, first: GLint, count: GLsize
     })
 }
 
-/// One-shot state dump at the first guest draw call, gated by
+/// One-shot state dump at the first larger indexed draw, gated by
 /// `TOUCHHLE_DEBUG_ES2_DRAW`. Helps diagnose "render loop alive but
 /// renderbuffer stays black" situations.
 unsafe fn log_es2_draw_state_once(gles: &mut dyn GLES, shadow: &GLShadowState, mem: &Mem) {
@@ -2025,8 +2029,12 @@ fn glDrawElements(
 
         if trace_potatogold_render() {
             static COUNT: AtomicU32 = AtomicU32::new(0);
+            static LARGE_COUNT: AtomicU32 = AtomicU32::new(0);
             let n = COUNT.fetch_add(1, Ordering::Relaxed);
-            if n < 160 {
+            let log_large = n >= 160
+                && count > 3
+                && LARGE_COUNT.fetch_add(1, Ordering::Relaxed) < 256;
+            if n < 160 || log_large {
                 log!(
                     "[POTATO RENDER TRACE] glDrawElements #{} mode=0x{:x} count={} type=0x{:x} indices=0x{:x}",
                     n + 1,
@@ -2049,7 +2057,16 @@ fn glDrawElements(
             );
             return;
         }
-        log_es2_draw_state_once(gles, shadow, mem);
+        if count > 3 && crate::env_flag_cached!("TOUCHHLE_DEBUG_ES2_DRAW") {
+            log!(
+                "ES2 first larger indexed draw: mode=0x{:x} count={} type=0x{:x} indices=0x{:x}",
+                mode,
+                count,
+                type_,
+                indices.to_bits()
+            );
+            log_es2_draw_state_once(gles, shadow, mem);
+        }
         let disabled_arrays = guard_client_vertex_arrays(gles, mem, shadow);
         let fog_state_backup = clamp_fog_state_values(gles, shadow);
         if crate::env_flag_cached!("TOUCHHLE_POTATO_NATIVE_GLES2_PC_STATE") {
@@ -2070,7 +2087,7 @@ fn glDrawElements(
         let indices =
             translate_pointer_or_offset_to_host(gles, mem, shadow, indices, ELEMENT_ARRAY_BUFFER);
         gles.DrawElements(mode, count, type_, indices);
-        if crate::env_flag_cached!("TOUCHHLE_DEBUG_ES2_DRAW") {
+        if count > 3 && crate::env_flag_cached!("TOUCHHLE_DEBUG_ES2_DRAW") {
             static FB_DUMPED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
             if !FB_DUMPED.swap(true, std::sync::atomic::Ordering::Relaxed) {
                 let mut vp = [0 as GLint; 4];
@@ -2088,7 +2105,7 @@ fn glDrawElements(
                         0x1401, /* GL_UNSIGNED_BYTE */
                         pix.as_mut_ptr() as *mut _,
                     );
-                    dump_rgb_ppm(&pix, w as u32, h as u32, 0x1908, 0x1401, "/tmp/a8run/fb_after_draw.ppm");
+                    dump_rgb_ppm(&pix, w as u32, h as u32, 0x1908, 0x1401, "/tmp/a8run/fb_after_larger_draw.ppm");
                 }
                 let mut err = gles.GetError();
                 let mut errs = Vec::new();
