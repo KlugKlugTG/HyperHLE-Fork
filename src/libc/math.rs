@@ -700,6 +700,10 @@ fn exp(env: &mut Environment, arg: f64) -> f64 {
     }
     res
 }
+/// Apple libm `__exp10`: 10^x.
+fn exp10_impl(_env: &mut Environment, arg: f64) -> f64 {
+    10f64.powf(arg)
+}
 /// Apple libm `__exp10f`: 10^x.
 fn exp10f_impl(_env: &mut Environment, arg: f32) -> f32 {
     10f32.powf(arg)
@@ -1774,8 +1778,8 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(log10f(_)),
     export_c_func!(exp(_)),
     export_c_func!(expf(_)),
-    // Apple's libm exports __exp10f (the underscore-mangled symbol is
-    // ___exp10f in Mach-O); used by some C++ math headers.
+    // Apple's libm exports __exp10 and __exp10f; Mach-O prepends one underscore.
+    export_c_func_aliased!("__exp10", exp10_impl(_)),
     export_c_func_aliased!("__exp10f", exp10f_impl(_)),
     export_c_func!(expm1(_)),
     export_c_func!(expm1f(_)),

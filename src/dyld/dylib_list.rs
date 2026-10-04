@@ -337,6 +337,18 @@ mod tests {
     }
 
     #[test]
+    fn exp10_double_is_exported() {
+        let is_exported = DYLIB_LIST
+            .iter()
+            .flat_map(|dylib| dylib.function_exports)
+            .copied()
+            .flatten()
+            .any(|(function_name, _)| *function_name == "___exp10");
+
+        assert!(is_exported, "Missing libm export ___exp10");
+    }
+
+    #[test]
     fn no_duplicate_functions() {
         let mut seen = HashSet::new();
 
