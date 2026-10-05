@@ -182,9 +182,9 @@ fn layer_subtree_may_draw_pixels(env: &Environment, layer: id, depth: usize) -> 
     if depth >= MAX_DEPTH {
         return true;
     }
-    let (hidden, opacity, bounds, sublayers) = {
+    let (hidden, opacity, bounds, sublayer_count) = {
         let host = env.objc.borrow::<CALayerHostObject>(layer);
-        (host.hidden, host.opacity, host.bounds, host.sublayers.clone())
+        (host.hidden, host.opacity, host.bounds, host.sublayers.len())
     };
     if hidden || opacity <= 0.0 {
         return false;
@@ -192,9 +192,13 @@ fn layer_subtree_may_draw_pixels(env: &Environment, layer: id, depth: usize) -> 
     if layer_has_visible_area(hidden, opacity, bounds) {
         return true;
     }
-    sublayers
-        .into_iter()
-        .any(|child| layer_subtree_may_draw_pixels(env, child, depth + 1))
+    for index in 0..sublayer_count {
+        let child = env.objc.borrow::<CALayerHostObject>(layer).sublayers[index];
+        if layer_subtree_may_draw_pixels(env, child, depth + 1) {
+            return true;
+        }
+    }
+    false
 }
 
 // =========================================================================
@@ -283,12 +287,16 @@ pub fn find_fullscreen_eagl_layer(env: &mut Environment) -> id {
         return nil;
     }
 
-    let windows = env.framework_state.uikit.ui_view.ui_window.windows.clone();
-    let Some(top_window) = windows
-        .into_iter()
-        .rev()
-        .find(|&window| !msg![env; window isHidden])
-    else {
+    let window_count = env.framework_state.uikit.ui_view.ui_window.windows.len();
+    let mut top_window = None;
+    for index in (0..window_count).rev() {
+        let window = env.framework_state.uikit.ui_view.ui_window.windows[index];
+        if !msg![env; window isHidden] {
+            top_window = Some(window);
+            break;
+        }
+    }
+    let Some(top_window) = top_window else {
         return nil;
     };
 
@@ -309,15 +317,26 @@ pub fn find_fullscreen_eagl_layer(env: &mut Environment) -> id {
     loop {
         // assert!(layer != nil);
 
-        let layer_host_obj: &CALayerHostObject = env.objc.borrow(layer);
-        let transform_kind = classify_fullscreen_layer_transform(
-            layer_host_obj.affine_transform,
-            orientation,
-        );
-        let layer_bounds = layer_host_obj.bounds;
-        let layer_to_screen = layer_host_obj
-            .superlayer_to_layer_transform()
-            .concat(parent_to_screen);
+        let (
+            affine_transform,
+            layer_bounds,
+            superlayer_to_layer_transform,
+            anchor_point,
+            hidden,
+            opacity,
+        ) = {
+            let host = env.objc.borrow::<CALayerHostObject>(layer);
+            (
+                host.affine_transform,
+                host.bounds,
+                host.superlayer_to_layer_transform(),
+                host.anchor_point,
+                host.hidden,
+                host.opacity,
+            )
+        };
+        let transform_kind = classify_fullscreen_layer_transform(affine_transform, orientation);
+        let layer_to_screen = superlayer_to_layer_transform.concat(parent_to_screen);
         let layer_frame = layer_to_screen.apply_to_rect(CGRect {
             origin: layer_bounds.origin,
             size: layer_bounds.size,
@@ -343,19 +362,25 @@ pub fn find_fullscreen_eagl_layer(env: &mut Environment) -> id {
         };
         if !fullscreen_frame_matches_screen(layer_frame, screen_bounds)
             || layer_bounds.origin != (CGPoint { x: 0.0, y: 0.0 })
-            || layer_host_obj.anchor_point != (CGPoint { x: 0.5, y: 0.5 })
-            || layer_host_obj.hidden
-            || layer_host_obj.opacity != 1.0
+            || anchor_point != (CGPoint { x: 0.5, y: 0.5 })
+            || hidden
+            || opacity != 1.0
             || !transform_is_usable
         {
             return nil;
         }
 
-        let sublayers = layer_host_obj.sublayers.clone();
+        let sublayer_count = env.objc.borrow::<CALayerHostObject>(layer).sublayers.len();
         parent_to_screen = layer_to_screen;
-        if let Some(next) = sublayers.into_iter().rev().find(|&candidate| {
-            layer_subtree_may_draw_pixels(env, candidate, 0)
-        }) {
+        let mut next = None;
+        for index in (0..sublayer_count).rev() {
+            let candidate = env.objc.borrow::<CALayerHostObject>(layer).sublayers[index];
+            if layer_subtree_may_draw_pixels(env, candidate, 0) {
+                next = Some(candidate);
+                break;
+            }
+        }
+        if let Some(next) = next {
             layer = next;
         } else {
             break;

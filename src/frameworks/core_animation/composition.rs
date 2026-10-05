@@ -76,8 +76,16 @@ pub fn recomposite_if_necessary(env: &mut Environment, force: bool) -> Option<In
     }
 
     let mut animation_state = animation::State::default();
-    let windows = env.framework_state.uikit.ui_view.ui_window.windows.clone();
-    if !windows.iter().any(|&window| !msg![env; window isHidden]) {
+    let window_count = env.framework_state.uikit.ui_view.ui_window.windows.len();
+    let mut has_visible_window = false;
+    for index in 0..window_count {
+        let window = env.framework_state.uikit.ui_view.ui_window.windows[index];
+        if !msg![env; window isHidden] {
+            has_visible_window = true;
+            break;
+        }
+    }
+    if !has_visible_window {
         log_dbg!("No visible windows, skipping composition");
         return None;
     }
@@ -159,6 +167,7 @@ pub fn recomposite_if_necessary(env: &mut Environment, force: bool) -> Option<In
         .composition
         .recomposite_next = new_recomposite_next;
 
+    let windows = env.framework_state.uikit.ui_view.ui_window.windows.clone();
     let window_layers: Vec<id> = windows
         .into_iter()
         .map(|window| {
