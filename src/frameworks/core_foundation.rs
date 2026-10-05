@@ -17,6 +17,7 @@
 //! - Apple's [Memory Management Programming Guide for Core Foundation](https://developer.apple.com/library/archive/documentation/CoreFoundation/Conceptual/CFMemoryMgmt/CFMemoryMgmt.html)
 
 pub mod cf_allocator;
+pub mod cf_attributed_string;
 pub mod cf_array;
 pub mod cf_binary_heap;
 pub mod cf_bundle;
@@ -69,6 +70,7 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
     function_exports: &[
         FUNCTIONS,
         cf_allocator::FUNCTIONS,
+        cf_attributed_string::FUNCTIONS,
         cf_array::FUNCTIONS,
         cf_dictionary::FUNCTIONS,
         cf_error::FUNCTIONS,

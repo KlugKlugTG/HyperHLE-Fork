@@ -76,6 +76,9 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 + (id)colorWithCGColor:(CGColorRef)cg_color {
+    if cg_color.is_null() {
+        return nil;
+    }
     let new: id = msg![env; this alloc];
     let new: id = msg![env; new initWithCGColor:cg_color];
     autorelease(env, new)
@@ -272,6 +275,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (bool)isEqual:(id)other {
     if this == other { return true; }
+    if other == nil { return false; }
     let (r1, g1, b1, a1) = get_rgba(&env.objc, this);
     let (r2, g2, b2, a2) = get_rgba(&env.objc, other);
     r1 == r2 && g1 == g2 && b1 == b2 && a1 == a2
@@ -285,6 +289,10 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (id)initWithCGColor:(CGColorRef)cg_color {
+    if cg_color.is_null() {
+        let _: () = msg![env; this release];
+        return nil;
+    }
     CGColorRetain(env, cg_color);
     env.objc.borrow_mut::<UIColorHostObject>(this).cg_color = cg_color;
     this

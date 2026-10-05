@@ -1173,6 +1173,16 @@ fn CGContextSetTextMatrix(
         .text_transform = Some(transform);
 }
 
+pub fn CGContextGetTextMatrix(env: &mut Environment, context: CGContextRef) -> CGAffineTransform {
+    if context.is_null() {
+        return CGAffineTransformIdentity;
+    }
+    env.objc
+        .borrow::<CGContextHostObject>(context)
+        .text_transform
+        .unwrap_or(CGAffineTransformIdentity)
+}
+
 fn CGContextSelectFont(
     _env: &mut Environment,
     _context: CGContextRef,
@@ -1501,6 +1511,7 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CGContextSetTextDrawingMode(_, _)),
     export_c_func!(CGContextSetCharacterSpacing(_, _)),
     export_c_func!(CGContextSetTextMatrix(_, _)),
+    export_c_func!(CGContextGetTextMatrix(_)),
     export_c_func!(CGContextSelectFont(_, _, _, _)),
     export_c_func!(CGContextShowTextAtPoint(_, _, _, _, _)),
     export_c_func!(CGContextShowText(_, _, _)),
