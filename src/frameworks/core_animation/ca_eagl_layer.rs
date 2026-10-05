@@ -607,13 +607,6 @@ pub fn present_pixels(env: &mut Environment, layer: id, pixels: Vec<u8>, width: 
     host_obj.gles_texture_is_up_to_date = false;
 }
 
-/// Clears pixels previously presented by a movie player view.
-pub fn clear_presented_pixels(env: &mut Environment, layer: id) {
-    let host_obj = env.objc.borrow_mut::<CALayerHostObject>(layer);
-    host_obj.presented_pixels = None;
-    host_obj.gles_texture_is_up_to_date = false;
-}
-
 /// Returns whether the layer's backing store should be retained after
 /// presentation (i.e. `kEAGLDrawablePropertyRetainedBacking` is YES).
 /// Convenience wrapper for use by `EAGLContext`.
