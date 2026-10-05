@@ -179,6 +179,7 @@ struct AppPickerDelegateHostObject {
     force_composition: Option<bool>,
     gles_native: Option<bool>,
     fullscreen: Option<bool>,
+    media_player: Option<bool>,
     device_model_tag: Option<i32>,
     device_model_toggle: bool,
     device_model_scroll_up: bool,
@@ -291,6 +292,10 @@ const CLASSES: ClassExports = objc_classes! {
 - (())fullscreen:(id)switch { // UISwitch*
     let switch_state: bool = msg![env; switch isOn];
     env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).fullscreen = Some(switch_state);
+}
+- (())mediaPlayer:(id)switch { // UISwitch*
+    let switch_state: bool = msg![env; switch isOn];
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).media_player = Some(switch_state);
 }
 - (())deviceModel:(id)sender { // UIButton*
     let tag: NSInteger = msg![env; sender tag];
@@ -557,6 +562,7 @@ fn app_picker_inner(
     let (mut quick_options_gles_native, quick_options_gles_native_switch_enabled) =
         quick_options_gles_native_state(&env.options, angle_backend_available);
     let quick_options_force_composition_enabled = env.options.force_composition;
+    let quick_options_media_player_enabled = env.options.media_player_enabled;
     let quick_options_stuff = setup_quick_options(
         env,
         delegate,
@@ -566,6 +572,7 @@ fn app_picker_inner(
         quick_options_gles_native,
         quick_options_gles_native_switch_enabled,
         quick_options_force_composition_enabled,
+        quick_options_media_player_enabled,
     );
     let mut quick_options_scale_hack: Option<NonZeroU32> = None;
     let mut quick_options_fullscreen: Option<()> = None;
@@ -575,6 +582,7 @@ fn app_picker_inner(
     let mut quick_options_show_fps = false;
     let mut quick_options_trace_gl_errors = false;
     let mut quick_options_force_composition_override: Option<bool> = None;
+    let mut quick_options_media_player_override: Option<bool> = None;
     let mut quick_options_device_tag: Option<i32> = None;
     let mut quick_options_device_model_open = false;
     let mut quick_options_device_model_scroll: isize = 0;
@@ -832,6 +840,8 @@ fn app_picker_inner(
             quick_options_trace_gl_errors = trace_gl_errors;
         } else if let Some(force_composition) = std::mem::take(&mut host_obj.force_composition) {
             quick_options_force_composition_override = Some(force_composition);
+        } else if let Some(media_player) = std::mem::take(&mut host_obj.media_player) {
+            quick_options_media_player_override = Some(media_player);
         } else if let Some(gles_native) = std::mem::take(&mut host_obj.gles_native) {
             quick_options_gles_native = gles_native || !crate::window::angle_backend_available();
         } else if let Some(fullscreen) = std::mem::take(&mut host_obj.fullscreen) {
@@ -909,6 +919,10 @@ fn app_picker_inner(
 
     if let Some(enabled) = quick_options_force_composition_override {
         option_args.push(quick_options_force_composition_argument(enabled).to_string());
+    }
+
+    if let Some(enabled) = quick_options_media_player_override {
+        option_args.push(quick_options_media_player_argument(enabled).to_string());
     }
 
     if quick_options_trace_gl_errors {
@@ -1426,6 +1440,7 @@ fn setup_quick_options(
     gles_native_enabled: bool,
     gles_native_switch_enabled: bool,
     force_composition_enabled: bool,
+    media_player_enabled: bool,
 ) -> QuickOptionsStuff {
     // UIView*
     let main_frame = CGRect {
@@ -1547,6 +1562,12 @@ fn setup_quick_options(
             true,
         ),
         RowKind::Toggle("Fullscreen (override)", "fullscreen:", false, true),
+        RowKind::Toggle(
+            "Media Player",
+            "mediaPlayer:",
+            false,
+            true,
+        ),
     ];
     let rows = if crate::window::Window::rotatable_fullscreen() {
         // Fullscreen option doesn't make sense on always-fullscreen platforms
@@ -1942,6 +1963,14 @@ fn quick_options_force_composition_argument(enabled: bool) -> &'static str {
         "--force-composition"
     } else {
         "--no-force-composition"
+    }
+}
+
+fn quick_options_media_player_argument(enabled: bool) -> &'static str {
+    if enabled {
+        "--media-player"
+    } else {
+        "--no-media-player"
     }
 }
 

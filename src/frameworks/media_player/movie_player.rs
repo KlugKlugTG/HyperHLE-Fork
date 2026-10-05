@@ -1492,10 +1492,17 @@ fn present_video_frames(env: &mut Environment) {
         if view == nil {
             continue;
         }
-        present_unparented_movie_view(env, player, view);
+        // Check if the view already has a superview BEFORE calling present_unparented_movie_view
+        // to avoid modifying UIKit hierarchy for apps that manage their own views (e.g., Minecraft 0.16.2)
         let superview: id = msg![env; view superview];
         if superview == nil {
-            continue;
+            // View has no superview - try to present it
+            present_unparented_movie_view(env, player, view);
+            // Check again if the view now has a superview
+            let superview_after: id = msg![env; view superview];
+            if superview_after == nil {
+                continue; // Failed to add to hierarchy - skip this frame
+            }
         }
 
         update_movie_view_frame(env, player, view);

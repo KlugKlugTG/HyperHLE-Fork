@@ -435,7 +435,7 @@ pub fn run_run_loop(
         // and dispatch finished completions here.
         tick_system_sound_completions(env);
 
-        if is_main_run_loop {
+        if is_main_run_loop && env.options.media_player_enabled {
             media_player::handle_players(env);
         }
 

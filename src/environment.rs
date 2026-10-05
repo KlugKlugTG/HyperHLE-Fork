@@ -2204,7 +2204,7 @@ impl Environment {
                 let is_code_section = section.type_ == mach_o::SectionType::SymbolStubs
                     || matches!(
                         &*section.name,
-                        "__text" | "__textcoal_nt" | "__stub_helper" | "__StaticInit"
+                        "__text" | "__textcoal" | "__textcoal_nt" | "__stub_helper" | "__StaticInit"
                     );
                 is_code_section
                     && addr >= section.addr

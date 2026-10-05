@@ -136,6 +136,12 @@ pub struct Options {
     pub print_fps: bool,
     pub fps_limit: Option<f64>,
     pub force_composition: bool,
+    /// Enable Media Player framework support. When disabled (default),
+    /// media player functionality is completely stubbed out, preventing
+    /// UIKit hierarchy modifications that can interfere with apps that
+    /// don't use MediaPlayer (e.g., Minecraft 0.16.2). Enable with
+    /// `--media-player` or via the Quick Options menu.
+    pub media_player_enabled: bool,
     /// See [PresentMode]. Can also be set with the `TOUCHHLE_PRESENT_MODE`
     /// environment variable (the option takes precedence).
     pub present_mode: PresentMode,
@@ -264,6 +270,7 @@ impl Default for Options {
             print_fps: false,
             fps_limit: Some(60.0),
             force_composition: false,
+            media_player_enabled: false,
             present_mode: std::env::var("TOUCHHLE_PRESENT_MODE")
                 .ok()
                 .and_then(|value| PresentMode::from_short_name(value.trim()).ok())
@@ -518,6 +525,10 @@ impl Options {
             self.force_composition = true;
         } else if arg == "--no-force-composition" {
             self.force_composition = false;
+        } else if arg == "--media-player" {
+            self.media_player_enabled = true;
+        } else if arg == "--no-media-player" {
+            self.media_player_enabled = false;
         } else if let Some(value) = arg.strip_prefix("--present-mode=") {
             self.present_mode = PresentMode::from_short_name(value).map_err(|_| {
                 "Invalid value for --present-mode= (expected auto, direct or readback)"
