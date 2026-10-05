@@ -968,6 +968,9 @@ impl Dyld {
                     .entry(name.clone())
                     .or_insert_with(|| mem.alloc(16).to_bits());
                 log_dbg!("Patched block class descriptor {} -> {:#x}", name, addr);
+                // Let the Blocks runtime recognise block objects by their
+                // `isa` (see libc::blocks::is_block_object).
+                crate::libc::blocks::register_block_class_descriptor(addr);
                 Ptr::from_bits(addr)
             } else if name == "__ZTVN10__cxxabiv117__class_type_infoE"
                 || name == "__ZTVN10__cxxabiv120__si_class_type_infoE"
@@ -1363,13 +1366,16 @@ impl Dyld {
             // first retain/release of any stack block causes a
             // NULL-page read at 0x0.
             if symbol == "__NSConcreteStackBlock" || symbol == "__NSConcreteGlobalBlock" {
-                let dummy = mem.alloc(16);
-                mem.write(ptr_ptr, dummy.cast().cast_const());
-                log_dbg!(
-                    "Patched non-lazy block class {} -> {:#x}",
-                    symbol,
-                    dummy.to_bits()
-                );
+                // Share one descriptor per symbol name, so `block->isa`
+                // identity checks work (see the cache above), and record it so
+                // the Blocks runtime can recognise block objects by their
+                // `isa` (see libc::blocks::is_block_object).
+                let dummy = *block_class_addrs
+                    .entry(symbol.to_string())
+                    .or_insert_with(|| mem.alloc(16).to_bits());
+                crate::libc::blocks::register_block_class_descriptor(dummy);
+                mem.write(ptr_ptr, MutVoidPtr::from_bits(dummy).cast_const());
+                log_dbg!("Patched non-lazy block class {} -> {:#x}", symbol, dummy);
                 continue;
             }
 

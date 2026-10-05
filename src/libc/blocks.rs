@@ -17,8 +17,9 @@
 use crate::abi::{CallFromHost, GuestFunction};
 use crate::dyld::{export_c_func, FunctionExports};
 use crate::mem::{ConstPtr, ConstVoidPtr, MutVoidPtr, Ptr};
-use crate::objc::{release, retain};
+use crate::objc::{id, release, retain};
 use crate::Environment;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 /// Bit-flag values passed to `_Block_object_assign` / `_Block_object_dispose`.
 /// See the Blocks ABI document referenced above.
@@ -41,6 +42,49 @@ const BLOCK_LAYOUT_FLAGS: u32 = BLOCK_NEEDS_FREE
     | BLOCK_HAS_EXTENDED_LAYOUT;
 const MAX_BLOCK_SIZE: u32 = 64 * 1024 * 1024;
 
+/// How many distinct Blocks runtime class descriptors we remember. dyld
+/// allocates one per symbol name (`_NSConcreteStackBlock`,
+/// `_NSConcreteGlobalBlock`), so a handful of slots is plenty.
+const BLOCK_CLASS_DESCRIPTOR_SLOTS: usize = 8;
+static BLOCK_CLASS_DESCRIPTORS: [AtomicU32; BLOCK_CLASS_DESCRIPTOR_SLOTS] = [
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+];
+
+/// Record the guest address of a Blocks runtime class descriptor allocated by
+/// dyld (`_NSConcreteStackBlock` / `_NSConcreteGlobalBlock`). Every block
+/// literal's `isa` is relocated to one of these, so the `isa` is the only
+/// reliable way to tell a block apart from an ordinary object.
+///
+/// Called by `dyld` when it patches such a relocation; idempotent, and
+/// addresses beyond the slot count are simply not remembered (the layout
+/// fallback in [`is_block_object`] still applies to them).
+pub fn register_block_class_descriptor(addr: u32) {
+    if addr == 0 {
+        return;
+    }
+    for slot in &BLOCK_CLASS_DESCRIPTORS {
+        match slot.compare_exchange(0, addr, Ordering::Relaxed, Ordering::Relaxed) {
+            // Claimed a free slot, or this address is already remembered.
+            Ok(_) => return,
+            Err(current) if current == addr => return,
+            Err(_) => continue,
+        }
+    }
+}
+
+fn isa_is_block_class_descriptor(isa: u32) -> bool {
+    BLOCK_CLASS_DESCRIPTORS
+        .iter()
+        .any(|slot| slot.load(Ordering::Relaxed) == isa)
+}
+
 fn valid_block_layout(
     isa: u32,
     flags: u32,
@@ -55,12 +99,50 @@ fn valid_block_layout(
         && (20..=MAX_BLOCK_SIZE).contains(&descriptor_size)
 }
 
+/// Is `block` an Objective-C block literal?
+///
+/// A block is identified by its `isa`, which dyld relocates to one of the
+/// Blocks runtime class descriptors registered with
+/// [`register_block_class_descriptor`].
+///
+/// The `isa` check matters because guessing from the object layout is not
+/// safe. The old heuristic — non-null `isa`, *some* high bit set in the second
+/// word, a non-null fourth word and a "plausible" descriptor pointer — also
+/// matches plenty of ordinary Objective-C objects: any object whose first ivar
+/// holds a value with bits 24–28/30/31 set (a heap pointer above 128 MiB, a
+/// negative float, a colour, a bitfield, …) and whose fourth word points at
+/// something whose second word happens to be a small number. When such an
+/// object is misidentified, `objc_msgSend` routes its `retain`, `release`,
+/// `copy`, `copyWithZone:` and `autorelease` to `_Block_copy`/`_Block_release`
+/// instead of the class's own implementation: `release` decrements an arbitrary
+/// ivar, then calls whatever pointer sits at `descriptor + 12` and `free()`s
+/// the object, while `copy`/`retain` hand back a freshly allocated alias of it.
+/// The guest then runs on with a corrupted object and a bogus function pointer
+/// — the "UndefinedInstruction spam / the game is broken" symptom.
+///
+/// If the descriptor addresses are unknown (an app that never links the Blocks
+/// runtime through a path dyld registers, e.g. one that ships its own static
+/// copy of libBlocksRuntime), fall back to the ABI layout check, but only for a
+/// receiver whose `isa` is *not* a registered class: every real object's `isa`
+/// resolves to a class in the runtime, so this rejects the ordinary objects the
+/// heuristic used to misfire on.
 pub fn is_block_object(env: &Environment, block: ConstVoidPtr) -> bool {
     if block.is_null() {
         return false;
     }
     let words = block.cast::<u32>();
     let isa: u32 = env.mem.read(words);
+    if isa == 0 {
+        return false;
+    }
+    if isa_is_block_class_descriptor(isa) {
+        return true;
+    }
+    // Unknown `isa`: a real object's class is always registered with the
+    // runtime, so only an unregistered `isa` can still be a block.
+    if env.objc.get_host_object(id::from_bits(isa)).is_some() {
+        return false;
+    }
     let flags: u32 = env.mem.read(words + 1);
     let invoke: u32 = env.mem.read(words + 3);
     let descriptor_addr: u32 = env.mem.read(words + 4);
@@ -251,7 +333,10 @@ pub const FUNCTIONS: FunctionExports = &[
 ];
 #[cfg(test)]
 mod tests {
-    use super::{valid_block_layout, BLOCK_HAS_COPY_DISPOSE, BLOCK_HAS_SIGNATURE, BLOCK_IS_GLOBAL};
+    use super::{
+        isa_is_block_class_descriptor, register_block_class_descriptor, valid_block_layout,
+        BLOCK_HAS_COPY_DISPOSE, BLOCK_HAS_SIGNATURE, BLOCK_IS_GLOBAL,
+    };
 
     #[test]
     fn validates_block_abi_layouts() {
@@ -266,5 +351,29 @@ mod tests {
         assert!(!valid_block_layout(1, 0, 0x1001, 0x2000, 24));
         assert!(!valid_block_layout(1, BLOCK_HAS_COPY_DISPOSE, 0, 0x2000, 24));
         assert!(!valid_block_layout(1, BLOCK_HAS_COPY_DISPOSE, 0x1001, 0x2000, 16));
+    }
+
+    #[test]
+    fn block_class_descriptors_are_remembered_once_registered() {
+        // An address no other test or dyld run can have registered.
+        const DESCRIPTOR: u32 = 0x0bad_f00d;
+        assert!(!isa_is_block_class_descriptor(DESCRIPTOR));
+        register_block_class_descriptor(DESCRIPTOR);
+        assert!(isa_is_block_class_descriptor(DESCRIPTOR));
+        // Registering again must not duplicate the slot.
+        register_block_class_descriptor(DESCRIPTOR);
+        assert!(isa_is_block_class_descriptor(DESCRIPTOR));
+        // Address 0 is never a class descriptor.
+        register_block_class_descriptor(0);
+        assert!(!isa_is_block_class_descriptor(0));
+    }
+
+    #[test]
+    fn addresses_that_are_not_block_descriptors_are_rejected() {
+        // A registered class address (or any other ordinary guest address) is
+        // never a Blocks runtime class descriptor.
+        assert!(!isa_is_block_class_descriptor(0x0030_1000));
+        assert!(!isa_is_block_class_descriptor(0x0abc_def0));
+        assert!(!isa_is_block_class_descriptor(0xffff_ffff));
     }
 }
