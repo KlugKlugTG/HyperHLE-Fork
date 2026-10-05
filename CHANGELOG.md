@@ -132,7 +132,7 @@ Quality and performance:
 
 - The EAGL/Core Animation presentation path avoids recurring HLE allocations and a redundant GL-context lookup: it snapshots only three options, resolves drawable bindings directly, scans fullscreen/window hierarchies by index, and skips the compositor window snapshot on frames that take the direct EAGL path. (@j92580498-max)
 
-- The AudioUnit output renderer now honours the guest's sample rate and interleaves both channel buffers for legacy stereo PCM formats that report a per-channel frame width. Resident Evil 4's 11,025 Hz stereo stream was previously rendered at the hardware rate and decoded from only one buffer, causing pitch and channel corruption. (@j92580498-max)
+- The AudioUnit host decoder repairs Resident Evil 4's under-reported stereo PCM frame width without changing the AudioBufferList or timing passed to the guest callback. The 11,025 Hz stereo stream was previously decoded as mono with a channel-byte swap, causing pitch and channel corruption. (@j92580498-max)
 
 - Native crash reports now name the instruction that actually died. `backtrace()` on bionic cannot unwind past the signal frame, so every frame a FATAL SIGNAL report printed belonged to the crash handler itself (libc, the handler, libsigchain, the vdso trampoline) — accurate, but it identified nothing. The handler now also reads the interrupted thread's PC/LR/SP from the `ucontext_t` the kernel hands a `SA_SIGINFO` handler, calls out the case where PC is 0 ("control was transferred through a NULL function pointer — not a data access"), and feeds both addresses into the existing `/proc/self/maps` attribution so they can be symbolized against the reported `libtouchHLE.so` load base. (@KlugKlugTG)
 

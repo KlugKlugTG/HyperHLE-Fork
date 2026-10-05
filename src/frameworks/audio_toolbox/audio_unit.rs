@@ -70,48 +70,43 @@ fn interleaved_format_for_planar_pcm(
     format
 }
 
-fn uses_planar_stereo_buffers(
+fn repaired_audio_unit_decode_format(
     format: &AudioStreamBasicDescription,
     has_input_format: bool,
-) -> bool {
+) -> Option<AudioStreamBasicDescription> {
     let bytes_per_sample = format.bits_per_channel / 8;
-    if format.format_id != kAudioFormatLinearPCM
-        || format.channels_per_frame != 2
-        || !matches!(format.bits_per_channel, 8 | 16 | 32)
-        || format.bytes_per_frame != bytes_per_sample
-        || format.format_flags & kAudioFormatFlagIsBigEndian != 0
-    {
-        return false;
-    }
-
-    if format.format_flags & kAudioFormatFlagIsNonInterleaved != 0 {
-        return true;
-    }
-
     let packed_signed_integer_flags = kAudioFormatFlagIsPacked | kAudioFormatFlagIsSignedInteger;
-    let legacy_stereo = !has_input_format
+    let needs_repair = !has_input_format
+        && format.format_id == kAudioFormatLinearPCM
+        && format.channels_per_frame == 2
         && format.bits_per_channel == 16
-        && format.format_flags & packed_signed_integer_flags == packed_signed_integer_flags
-        && format.format_flags & kAudioFormatFlagIsFloat == 0
+        && format.bytes_per_frame == bytes_per_sample
         && format.bytes_per_packet == bytes_per_sample
-        && format.frames_per_packet == 1;
-    if legacy_stereo {
-        log_once!("AudioUnit: treating under-reported packed stereo PCM as separate output planes");
+        && format.frames_per_packet == 1
+        && format.format_flags & packed_signed_integer_flags == packed_signed_integer_flags
+        && format.format_flags
+            & (kAudioFormatFlagIsBigEndian
+                | kAudioFormatFlagIsFloat
+                | kAudioFormatFlagIsNonInterleaved)
+            == 0;
+    if !needs_repair {
+        return None;
     }
-    legacy_stereo
+
+    log_once!("AudioUnit: correcting under-reported stereo PCM for host decoding only");
+    let mut repaired = *format;
+    repaired.bytes_per_frame = bytes_per_sample * repaired.channels_per_frame;
+    repaired.bytes_per_packet = repaired.bytes_per_frame * repaired.frames_per_packet;
+    Some(repaired)
 }
 
-fn audio_unit_render_sample_rate(
-    format: &AudioStreamBasicDescription,
+fn audio_unit_callback_sample_rate(
+    input_format: Option<AudioStreamBasicDescription>,
     hardware_sample_rate: f64,
 ) -> f64 {
-    if format.sample_rate.is_finite() && format.sample_rate > 0.0 {
-        format.sample_rate
-    } else if hardware_sample_rate.is_finite() && hardware_sample_rate > 0.0 {
-        hardware_sample_rate
-    } else {
-        44_100.0
-    }
+    input_format
+        .map(|format| format.sample_rate)
+        .unwrap_or(hardware_sample_rate)
 }
 
 type AudioUnitPropertyID = u32;
@@ -1922,8 +1917,8 @@ pub fn render_audio_unit(env: &mut Environment, audio_unit: AudioUnit) {
             .input_stream_format
             .unwrap_or(obj.output_stream_format.unwrap_or(obj.global_stream_format));
         (
-            audio_unit_render_sample_rate(
-                &stream_format,
+            audio_unit_callback_sample_rate(
+                obj.input_stream_format,
                 at.audio_session.current_hardware_sample_rate,
             ),
             obj.started,
@@ -2078,14 +2073,9 @@ pub fn render_audio_unit(env: &mut Environment, audio_unit: AudioUnit) {
             .current_hardware_io_buffer_duration as f64)
         .round() as u32;
     let frames = target_frames.clamp(64, 2048);
-    let planar_stereo_buffers = uses_planar_stereo_buffers(&stream_format, has_input_format);
-    let bytes_per_sample = stream_format.bits_per_channel / 8;
-    let bytes_per_frame = if planar_stereo_buffers {
-        bytes_per_sample
-    } else {
-        stream_format.channels_per_frame * bytes_per_sample
-    };
-    let buffer_size = frames * bytes_per_frame;
+    let buffer_size =
+        frames * stream_format.channels_per_frame * (stream_format.bits_per_channel / 8);
+    let decode_format = repaired_audio_unit_decode_format(&stream_format, has_input_format);
 
     // PERF OPTIMIZATION (audio): top the queue up to AUDIO_RENDER_TARGET_DEPTH
     // in a single run-loop tick instead of exactly one buffer per tick. After
@@ -2111,26 +2101,7 @@ pub fn render_audio_unit(env: &mut Environment, audio_unit: AudioUnit) {
             MutVoidPtr,
             MutVoidPtr,
             Option<MutVoidPtr>,
-        ) = if planar_stereo_buffers {
-            let buf1 = env.mem.alloc(buffer_size);
-            let buf2 = env.mem.alloc(buffer_size);
-            let abl = env.mem.alloc_and_write(AudioBufferList::<2> {
-                number_buffers: 2,
-                buffers: [
-                    AudioBuffer {
-                        number_channels: 1,
-                        data_byte_size: buffer_size,
-                        data: buf1,
-                    },
-                    AudioBuffer {
-                        number_channels: 1,
-                        data_byte_size: buffer_size,
-                        data: buf2,
-                    },
-                ],
-            });
-            (abl.cast(), buf1, Some(buf2))
-        } else if has_input_format {
+        ) = if has_input_format {
             let buf = env.mem.alloc(buffer_size);
             let abl = env.mem.alloc_and_write(AudioBufferList::<1> {
                 number_buffers: 1,
@@ -2197,26 +2168,9 @@ pub fn render_audio_unit(env: &mut Environment, audio_unit: AudioUnit) {
         );
         sample_time += frames as f64;
 
-        let (al_fmt, decoded_sample_rate, processed) = if planar_stereo_buffers {
-            match buffer2_data {
-                Some(buffer2_data) => {
-                    let planes = [
-                        env.mem.bytes_at(buffer1_data.cast(), buffer_size),
-                        env.mem.bytes_at(buffer2_data.cast(), buffer_size),
-                    ];
-                    let interleaved = interleave_planar_pcm(&planes, bytes_per_sample as usize)
-                        .unwrap_or_default();
-                    let interleaved_format = interleaved_format_for_planar_pcm(stream_format);
-                    decode_buffer_from_bytes(&interleaved_format, &interleaved, &[])
-                }
-                None => decode_buffer(
-                    &env.mem,
-                    &stream_format,
-                    buffer1_data.cast(),
-                    buffer_size,
-                    &[],
-                ),
-            }
+        let (al_fmt, _decoded_sample_rate, processed) = if let Some(decode_format) = decode_format {
+            let audio_data = env.mem.bytes_at(buffer1_data.cast(), buffer_size);
+            decode_buffer_from_bytes(&decode_format, audio_data, &[])
         } else {
             decode_buffer(
                 &env.mem,
@@ -2226,11 +2180,10 @@ pub fn render_audio_unit(env: &mut Environment, audio_unit: AudioUnit) {
                 &[],
             )
         };
-        let output_sample_rate = if decoded_sample_rate > 0 {
-            decoded_sample_rate
-        } else {
-            sample_rate as ALsizei
-        };
+        let output_sample_rate = decode_format
+            .map(|format| format.sample_rate)
+            .filter(|rate| rate.is_finite() && *rate > 0.0)
+            .unwrap_or(sample_rate) as ALsizei;
         {
             let context = env
                 .framework_state
@@ -2320,8 +2273,8 @@ pub const FUNCTIONS: FunctionExports = &[
 #[cfg(test)]
 mod tests {
     use super::{
-        audio_unit_render_sample_rate, interleave_planar_pcm, interleaved_format_for_planar_pcm,
-        uses_planar_stereo_buffers,
+        audio_unit_callback_sample_rate, interleave_planar_pcm, interleaved_format_for_planar_pcm,
+        repaired_audio_unit_decode_format,
     };
     use crate::audio::openal::AL_FORMAT_STEREO16;
     use crate::frameworks::audio_toolbox::audio_queue::decode_buffer_from_bytes;
@@ -2347,8 +2300,8 @@ mod tests {
     }
 
     #[test]
-    fn re4_stereo_output_uses_both_buffers_at_guest_sample_rate() {
-        let format = AudioStreamBasicDescription {
+    fn re4_stereo_pcm_repair_is_limited_to_host_decode() {
+        let original = AudioStreamBasicDescription {
             sample_rate: 11_025.0,
             format_id: kAudioFormatLinearPCM,
             format_flags: kAudioFormatFlagIsPacked | kAudioFormatFlagIsSignedInteger,
@@ -2359,33 +2312,57 @@ mod tests {
             bits_per_channel: 16,
             _reserved: 0,
         };
-        assert!(uses_planar_stereo_buffers(&format, false));
-        assert!(!uses_planar_stereo_buffers(&format, true));
+        let repaired = repaired_audio_unit_decode_format(&original, false).unwrap();
 
-        let mut ordinary_interleaved = format;
-        ordinary_interleaved.bytes_per_packet = 4;
-        ordinary_interleaved.bytes_per_frame = 4;
-        assert!(!uses_planar_stereo_buffers(&ordinary_interleaved, false));
-        assert_eq!(audio_unit_render_sample_rate(&format, 44_100.0), 11_025.0);
+        let original_bytes_per_frame = original.bytes_per_frame;
+        let original_bytes_per_packet = original.bytes_per_packet;
+        let repaired_bytes_per_frame = repaired.bytes_per_frame;
+        let repaired_bytes_per_packet = repaired.bytes_per_packet;
+        let repaired_sample_rate = repaired.sample_rate;
+        assert_eq!(original_bytes_per_frame, 2);
+        assert_eq!(original_bytes_per_packet, 2);
+        assert_eq!(repaired_bytes_per_frame, 4);
+        assert_eq!(repaired_bytes_per_packet, 4);
+        assert_eq!(repaired_sample_rate, 11_025.0);
+        assert!(repaired_audio_unit_decode_format(&original, true).is_none());
 
-        let left = [0x34, 0x12, 0x78, 0x56];
-        let right = [0xdc, 0xed, 0xc4, 0xe3];
-        let interleaved = interleave_planar_pcm(&[&left, &right], 2).unwrap();
-        let interleaved_format = interleaved_format_for_planar_pcm(format);
+        let mut interleaved = original;
+        interleaved.bytes_per_frame = 4;
+        interleaved.bytes_per_packet = 4;
+        assert!(repaired_audio_unit_decode_format(&interleaved, false).is_none());
+
+        let samples = [0x34, 0x12, 0xdc, 0xed, 0x78, 0x56, 0xc4, 0xe3];
         let (decoded_format, sample_rate, decoded) =
-            decode_buffer_from_bytes(&interleaved_format, &interleaved, &[]);
+            decode_buffer_from_bytes(&repaired, &samples, &[]);
 
         assert_eq!(decoded_format, AL_FORMAT_STEREO16);
         assert_eq!(sample_rate, 11_025);
-        assert_eq!(decoded, [0x34, 0x12, 0xdc, 0xed, 0x78, 0x56, 0xc4, 0xe3]);
+        assert_eq!(decoded, samples);
+    }
+
+    #[test]
+    fn output_only_audio_unit_uses_hardware_rate_for_callback_timing() {
+        assert_eq!(audio_unit_callback_sample_rate(None, 44_100.0), 44_100.0);
+
+        let input_format = AudioStreamBasicDescription {
+            sample_rate: 11_025.0,
+            format_id: kAudioFormatLinearPCM,
+            format_flags: kAudioFormatFlagIsPacked | kAudioFormatFlagIsSignedInteger,
+            bytes_per_packet: 2,
+            frames_per_packet: 1,
+            bytes_per_frame: 2,
+            channels_per_frame: 2,
+            bits_per_channel: 16,
+            _reserved: 0,
+        };
+        assert_eq!(
+            audio_unit_callback_sample_rate(Some(input_format), 44_100.0),
+            11_025.0
+        );
     }
 
     #[test]
     fn planar_f32_stereo_is_interleaved_and_decoded() {
-        assert!(uses_planar_stereo_buffers(
-            &planar_f32_stereo_format(),
-            false
-        ));
         let left = [0.5_f32, -0.25]
             .into_iter()
             .flat_map(f32::to_le_bytes)
