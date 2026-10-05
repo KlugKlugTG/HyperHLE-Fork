@@ -2308,7 +2308,34 @@ pub const FUNCTIONS: FunctionExports = &[
 
 #[cfg(test)]
 mod tests {
-    use super::downmix_i16_to_mono;
+    use super::{decode_buffer_from_bytes, downmix_i16_to_mono};
+    use crate::audio::openal::AL_FORMAT_MONO16;
+    use crate::frameworks::core_audio_types::{
+        kAudioFormatFlagIsPacked, kAudioFormatFlagIsSignedInteger, kAudioFormatLinearPCM,
+        AudioStreamBasicDescription,
+    };
+
+    #[test]
+    fn re4_underreported_stereo_pcm_uses_big_endian_mono_decode() {
+        let format = AudioStreamBasicDescription {
+            sample_rate: 11_025.0,
+            format_id: kAudioFormatLinearPCM,
+            format_flags: kAudioFormatFlagIsPacked | kAudioFormatFlagIsSignedInteger,
+            bytes_per_packet: 2,
+            frames_per_packet: 1,
+            bytes_per_frame: 2,
+            channels_per_frame: 2,
+            bits_per_channel: 16,
+            _reserved: 0,
+        };
+        let input = [0x34, 0x12, 0xdc, 0xed, 0x78, 0x56, 0xc4, 0xe3];
+
+        let (decoded_format, sample_rate, decoded) = decode_buffer_from_bytes(&format, &input, &[]);
+
+        assert_eq!(decoded_format, AL_FORMAT_MONO16);
+        assert_eq!(sample_rate, 11_025);
+        assert_eq!(decoded, [0xed, 0xdc, 0xe3, 0xc4]);
+    }
 
     #[test]
     fn downmix_averages_each_interleaved_frame() {
