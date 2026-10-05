@@ -6,8 +6,9 @@
  */
 //! Built-in H.264 video decoding for `MPMoviePlayerController`.
 
-use openh264::decoder::Decoder;
+use openh264::decoder::{Decoder, DecoderConfig, Flush};
 use openh264::formats::YUVSource;
+use openh264::OpenH264API;
 use std::collections::VecDeque;
 use std::io::Cursor;
 use std::sync::{Arc, Condvar, Mutex};
@@ -302,7 +303,10 @@ fn decode_movie(
                 return;
             }
         };
-        let mut decoder = match Decoder::new() {
+        // Flushing after every access unit breaks OpenH264 reference state for B-frame streams.
+        let decoder_config = DecoderConfig::new().flush_after_decode(Flush::NoFlush);
+        let mut decoder = match Decoder::with_api_config(OpenH264API::from_source(), decoder_config)
+        {
             Ok(decoder) => decoder,
             Err(error) => {
                 log!("MPMoviePlayerController video: OpenH264 init failed: {error}");
@@ -590,5 +594,41 @@ mod tests {
             frame_count, 8,
             "decoder did not deliver eight frames in time"
         );
+    }
+
+    #[test]
+    fn bundled_h264_decoder_handles_b_frames_without_black_video() {
+        let bytes = include_bytes!("../../../tests/fixtures/h264-bframes.mp4");
+        assert_eq!(
+            MovieVideo::probe(bytes),
+            Some(MovieVideoInfo {
+                width: 64,
+                height: 48,
+            })
+        );
+        let mut movie = MovieVideo::start(bytes, false).expect("B-frame H.264 fixture should open");
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut frame_count = 0;
+        let mut last_pts = -1.0;
+        while frame_count < 48 && Instant::now() < deadline {
+            let playback_time = frame_count as f64 / 24.0;
+            if let Some(frame) = movie.take_frame(playback_time) {
+                assert_eq!((frame.width, frame.height), (64, 48));
+                assert!(frame.pts > last_pts, "non-monotonic B-frame timestamp");
+                assert!(
+                    frame
+                        .rgba
+                        .chunks_exact(4)
+                        .any(|pixel| pixel[0] != 0 || pixel[1] != 0 || pixel[2] != 0),
+                    "decoder produced a black frame"
+                );
+                last_pts = frame.pts;
+                frame_count += 1;
+            } else {
+                thread::sleep(Duration::from_millis(1));
+            }
+        }
+        assert_eq!(frame_count, 48, "decoder did not deliver every B-frame");
     }
 }
