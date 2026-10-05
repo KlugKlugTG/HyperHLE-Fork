@@ -34,29 +34,6 @@ pub enum Button {
 /// Highest iOS version currently exposed by the emulator compatibility layer.
 pub const LATEST_IOS_VERSION: (i32, i32, i32) = (12, 0, 0);
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct CorruptionOptions {
-    pub enabled: bool,
-    pub interval_frames: u32,
-    pub bytes_per_burst: u32,
-    pub max_offset: Option<u32>,
-    pub seed: u64,
-}
-
-impl Default for CorruptionOptions {
-    fn default() -> Self {
-        Self {
-            // RTCV corruption is opt-in only: enabled via touchHLE_options /
-            // --corrupt-game, never by default.
-            enabled: false,
-            interval_frames: 30,
-            bytes_per_burst: 8,
-            max_offset: None,
-            seed: 0x6a09e667f3bcc909,
-        }
-    }
-}
-
 /// How `-[EAGLContext presentRenderbuffer:]` gets a rendered frame onto the
 /// host window when the app draws into a fullscreen `CAEAGLLayer`
 /// (`--present-mode=`).
@@ -247,7 +224,6 @@ pub struct Options {
     /// mipmaps are unaffected.
     pub fix_texture_min_filter: bool,
     pub zero_stack_after_guest_to_host_call: Option<u32>,
-    pub corruption: CorruptionOptions,
     /// device (FMOD streaming bypass). Opt in with `--fix-music` or
     /// `TOUCHHLE_GD_MUSIC_BYPASS=1`; off by default so the bypass only
     /// affects Geometry Dash sessions where the user asked for it.
@@ -337,7 +313,6 @@ impl Default for Options {
             // pixel output for the common case.
             fix_texture_min_filter: cfg!(target_os = "android"),
             zero_stack_after_guest_to_host_call: None,
-            corruption: CorruptionOptions::default(),
             gd_music_bypass: std::env::var_os("TOUCHHLE_GD_MUSIC_BYPASS")
                 .map(|value| value != "0")
                 .unwrap_or(false),
@@ -604,42 +579,10 @@ impl Options {
             self.zero_stack_after_guest_to_host_call = Some(value.parse().map_err(|_| {
                 "Invalid value for --zero-stack-after-guest-to-host-call=".to_string()
             })?);
-        } else if arg == "--corrupt-game" {
-            self.corruption.enabled = true;
-        } else if arg == "--no-corrupt-game" {
-            self.corruption.enabled = false;
         } else if arg == "--no-trainer" {
             self.trainer_disabled = true;
         } else if arg == "--trainer" {
             self.trainer_disabled = false;
-        } else if let Some(value) = arg.strip_prefix("--corrupt-interval=") {
-            let frames: u32 = value
-                .parse()
-                .ok()
-                .filter(|&v| v > 0)
-                .ok_or_else(|| "Invalid value for --corrupt-interval= (must be > 0)".to_string())?;
-            self.corruption.enabled = true;
-            self.corruption.interval_frames = frames;
-        } else if let Some(value) = arg.strip_prefix("--corrupt-intensity=") {
-            let bytes: u32 = value
-                .parse()
-                .ok()
-                .filter(|&v| v > 0)
-                .ok_or_else(|| "Invalid value for --corrupt-intensity= (must be > 0)".to_string())?;
-            self.corruption.enabled = true;
-            self.corruption.bytes_per_burst = bytes;
-        } else if let Some(value) = arg.strip_prefix("--corrupt-seed=") {
-            let seed: u64 = value
-                .parse()
-                .map_err(|_| "Invalid value for --corrupt-seed=".to_string())?;
-            self.corruption.enabled = true;
-            self.corruption.seed = seed;
-        } else if let Some(value) = arg.strip_prefix("--corrupt-max-offset=") {
-            let off: u32 = value
-                .parse()
-                .map_err(|_| "Invalid value for --corrupt-max-offset=".to_string())?;
-            self.corruption.enabled = true;
-            self.corruption.max_offset = Some(off);
         } else {
             return Ok(false);
         };

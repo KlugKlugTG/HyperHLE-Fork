@@ -34,7 +34,6 @@ mod android_media;
 mod android_web_view;
 mod audio;
 mod bundle;
-mod corrupt;
 mod cpu;
 mod crash_handler;
 mod debug;

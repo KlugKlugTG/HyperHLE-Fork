@@ -197,9 +197,6 @@ pub struct Environment {
     /// Synthetic guest frames installed by `GuestFunction::call_from_host`.
     /// They are host-call boundaries, not safe recovery targets.
     host_to_guest_stack_frames: Vec<(usize, u32)>,
-    /// Optional RTCV-style game-corruption engine. Always present, but only
-    /// does anything when enabled via the `--corrupt*` options.
-    corruptor: crate::corrupt::Corruptor,
     trainer: crate::trainer::Trainer,
 }
 
@@ -985,24 +982,10 @@ impl Environment {
             missing_unity_player_archive: None,
             guest_control_flow_redirected: false,
             host_to_guest_stack_frames: Vec::new(),
-            corruptor: crate::corrupt::Corruptor::default(),
             trainer: crate::trainer::Trainer::new(false),
         };
 
         env.trainer = crate::trainer::Trainer::new(!env.options.trainer_disabled);
-        env.corruptor = crate::corrupt::Corruptor::new(env.options.corruption.clone());
-        if env.corruptor.is_enabled() {
-            log!(
-                "[corrupt] RTCV-style game corruption ENABLED: every {} frame(s), {} byte(s) per burst, seed {:#x}{}",
-                env.options.corruption.interval_frames.max(1),
-                env.options.corruption.bytes_per_burst.max(1),
-                env.options.corruption.seed,
-                match env.options.corruption.max_offset {
-                    Some(o) => format!(", max offset {}", o),
-                    None => String::new(),
-                }
-            );
-        }
 
         if env.options.dumping_options.any() {
             env.dump_file =
@@ -1175,7 +1158,6 @@ impl Environment {
             missing_unity_player_archive: None,
             guest_control_flow_redirected: false,
             host_to_guest_stack_frames: Vec::new(),
-            corruptor: crate::corrupt::Corruptor::default(),
             trainer: crate::trainer::Trainer::new(false),
         };
 
@@ -1247,7 +1229,6 @@ impl Environment {
             missing_unity_player_archive: None,
             guest_control_flow_redirected: false,
             host_to_guest_stack_frames: Vec::new(),
-            corruptor: crate::corrupt::Corruptor::default(),
             trainer: crate::trainer::Trainer::new(false),
         }
     }
@@ -1835,14 +1816,6 @@ impl Environment {
                 } else {
                     1_000_000
                 });
-            }
-            // RTCV-style game corruption: once per main-loop iteration, give the
-            // corruption engine a chance to mangle live guest memory. This is a
-            // no-op unless enabled via the `--corrupt*` options.
-            if self.corruptor.is_enabled() {
-                let mut corruptor = std::mem::take(&mut self.corruptor);
-                corruptor.tick(&mut self.mem);
-                self.corruptor = corruptor;
             }
             // Game trainer (Cheat Engine-style memory search/patch + on-screen
             // UI). Disabled by default; skip it unless `--trainer` is enabled.

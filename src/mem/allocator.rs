@@ -546,11 +546,7 @@ impl Allocator {
     /// Returns a snapshot of all currently-live allocations as
     /// `(base_address, size_in_bytes)` pairs.
     ///
-    /// This is used by the optional RTCV-style game-corruption engine
-    /// (see [`crate::corrupt`]) so that random byte corruption can be
-    /// restricted to memory the guest has actually allocated, instead of
-    /// blindly poking anywhere in the 4 GiB address space (which would
-    /// almost always hit unmapped pages and crash immediately).
+    /// The game trainer uses this to search and inspect guest heap allocations.
     pub fn live_allocations(&self) -> Vec<(VAddr, GuestUSize)> {
         self.used_chunks
             .iter()
