@@ -14,18 +14,19 @@
 //!    posts `MPMoviePlayerLoadStateDidChangeNotification` once the content is
 //!    determined to be playable (transitioning `loadState` from `Unknown` to
 //!    `Playable | PlaythroughOK`).
-//! 2. The player then posts `MPMovieNaturalSizeAvailableNotification`,
-//!    `MPMovieDurationAvailableNotification` and
-//!    `MPMoviePlayerReadyForDisplayDidChangeNotification` so callers that
-//!    listen for them know the metadata is now valid.
-//! 3. For backwards compatibility with apps written against the
+//! 2. The player posts `MPMovieNaturalSizeAvailableNotification` and
+//!    `MPMovieDurationAvailableNotification` once the metadata is valid.
+//! 3. `MPMoviePlayerReadyForDisplayDidChangeNotification` follows the first
+//!    presented video frame, or metadata availability when no supported video
+//!    track is present.
+//! 4. For backwards compatibility with apps written against the
 //!    `MPMoviePlayerController` introduced in iPhone OS 2 the player also
 //!    posts the (now deprecated) `MPMoviePlayerContentPreloadDidFinishNotification`.
-//! 4. If `shouldAutoplay` is `YES`, playback transitions to
+//! 5. If `shouldAutoplay` is `YES`, playback transitions to
 //!    `MPMoviePlaybackStatePlaying`, posting
 //!    `MPMoviePlayerNowPlayingMovieDidChangeNotification` and
 //!    `MPMoviePlayerPlaybackStateDidChangeNotification`.
-//! 5. Finally `MPMoviePlayerPlaybackDidFinishNotification` is posted with a
+//! 6. Finally `MPMoviePlayerPlaybackDidFinishNotification` is posted with a
 //!    `userInfo` dictionary containing
 //!    `MPMoviePlayerPlaybackDidFinishReasonUserInfoKey` set to either
 //!    `MPMovieFinishReasonPlaybackEnded` (file existed) or
@@ -305,6 +306,7 @@ struct MPMoviePlayerControllerHostObject {
     content_url: id,
     // UIView *
     view: id,
+    presentation_view_controller: id,
     background_view: id,
     audio_player: id,
 
@@ -323,8 +325,7 @@ struct MPMoviePlayerControllerHostObject {
     duration: f64,
     /// Playback clock: position (seconds) accumulated before the current
     /// play run, and when the current run started (`None` unless playing).
-    /// We can't decode the video, but apps still time their UI against
-    /// `currentPlaybackTime` (e.g. fading a menu in over a background movie).
+    /// Apps use `currentPlaybackTime` to synchronize their UI with playback.
     clock_offset: f64,
     clock_started: Option<Instant>,
     ready_for_display: bool,
@@ -470,6 +471,124 @@ fn ensure_background_view(env: &mut Environment, this: id) -> id {
         .borrow_mut::<MPMoviePlayerControllerHostObject>(this)
         .background_view = view;
     view
+}
+
+fn present_unparented_movie_view(env: &mut Environment, player: id, view: id) {
+    if view == nil {
+        return;
+    }
+    let superview: id = msg![env; view superview];
+    if superview != nil {
+        return;
+    }
+    let presentation_view_controller = env
+        .objc
+        .borrow::<MPMoviePlayerControllerHostObject>(player)
+        .presentation_view_controller;
+    if presentation_view_controller != nil {
+        return;
+    }
+
+    let app: id = msg_class![env; UIApplication sharedApplication];
+    let mut window: id = msg![env; app keyWindow];
+    if window == nil {
+        let windows = env.framework_state.uikit.ui_view.ui_window.windows.clone();
+        for candidate in windows.into_iter().rev() {
+            let hidden: bool = msg![env; candidate isHidden];
+            if !hidden {
+                window = candidate;
+                break;
+            }
+        }
+    }
+    if window == nil {
+        return;
+    }
+
+    let mut presenter: id = msg![env; window rootViewController];
+    if presenter == nil {
+        let content_view: id = msg![env; window contentView];
+        if content_view != nil {
+            let candidate: id = msg![env; content_view nextResponder];
+            let view_controller_class: id = msg_class![env; UIViewController class];
+            if candidate != nil && msg![env; candidate isKindOfClass:view_controller_class] {
+                presenter = candidate;
+            }
+        }
+    }
+    if presenter != nil {
+        for _ in 0..16 {
+            let presented: id = msg![env; presenter presentedViewController];
+            if presented == nil {
+                break;
+            }
+            presenter = presented;
+        }
+    }
+
+    let bounds: CGRect = msg![env; window bounds];
+    if bounds.size.width <= 0.0 || bounds.size.height <= 0.0 {
+        return;
+    }
+    let controller_alloc: id = msg_class![env; UIViewController alloc];
+    let controller: id = msg![env; controller_alloc init];
+    () = msg![env; controller setView:view];
+    () = msg![env; view setFrame:bounds];
+    let resize_mask: NSUInteger = (1 << 1) | (1 << 4);
+    () = msg![env; view setAutoresizingMask:resize_mask];
+
+    if presenter != nil {
+        () = msg![env; presenter presentModalViewController:controller animated:false];
+    }
+    let mut superview: id = msg![env; view superview];
+    if superview == nil {
+        () = msg![env; window addSubview:view];
+        superview = msg![env; view superview];
+    }
+    if superview == nil {
+        () = msg![env; controller setView:nil];
+        release(env, controller);
+        return;
+    }
+
+    env.objc
+        .borrow_mut::<MPMoviePlayerControllerHostObject>(player)
+        .presentation_view_controller = controller;
+    log!(
+        "MPMoviePlayerController {:?}: presenting unparented movie view fullscreen",
+        player
+    );
+}
+fn dismiss_unparented_movie_view(env: &mut Environment, player: id) {
+    let (controller, view) = {
+        let host = env
+            .objc
+            .borrow_mut::<MPMoviePlayerControllerHostObject>(player);
+        (
+            std::mem::replace(&mut host.presentation_view_controller, nil),
+            host.view,
+        )
+    };
+    if controller == nil {
+        return;
+    }
+
+    let presenter: id = msg![env; controller presentingViewController];
+    let presented: id = if presenter != nil {
+        msg![env; presenter presentedViewController]
+    } else {
+        nil
+    };
+    if presenter != nil && presented == controller {
+        () = msg![env; presenter dismissModalViewControllerAnimated:false];
+    } else if view != nil {
+        let superview: id = msg![env; view superview];
+        if superview != nil {
+            () = msg![env; view removeFromSuperview];
+        }
+    }
+    () = msg![env; controller setView:nil];
+    release(env, controller);
 }
 
 /// Enqueue a pending notification, retaining the player so it stays alive
@@ -727,6 +846,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     let host_object = Box::new(MPMoviePlayerControllerHostObject {
         content_url: nil,
         view: nil,
+        presentation_view_controller: nil,
         background_view: nil,
         audio_player: nil,
 
@@ -786,6 +906,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     cancel_pending_playback_finish(env, this);
     State::get(env).videos.remove(&this);
     stop_movie_audio(env, this);
+    dismiss_unparented_movie_view(env, this);
 
     let (old_url, was_preloaded) = {
         let host = env
@@ -823,6 +944,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 - (())dealloc {
     State::get(env).videos.remove(&this);
     stop_movie_audio(env, this);
+    dismiss_unparented_movie_view(env, this);
 
     // No need to drain pending notifications: each pending entry holds a
     // +1 retain on the player, so dealloc can only run once all queued
@@ -1098,6 +1220,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     }
     State::get(env).videos.remove(&this);
     enqueue(env, PendingNotification::PlaybackStateChange(this), Instant::now());
+    dismiss_unparented_movie_view(env, this);
     if env
         .framework_state
         .media_player
@@ -1276,9 +1399,13 @@ fn start_video_if_playing(env: &mut Environment, player: id) {
 }
 
 fn update_movie_view_frame(env: &mut Environment, player: id, view: id) {
-    let (video_info, scaling_mode) = {
+    let (video_info, scaling_mode, fullscreen) = {
         let host = env.objc.borrow::<MPMoviePlayerControllerHostObject>(player);
-        (host.video_info, host.scaling_mode)
+        (
+            host.video_info,
+            host.scaling_mode,
+            host.presentation_view_controller != nil,
+        )
     };
     let Some(video_info) = video_info else {
         return;
@@ -1288,6 +1415,18 @@ fn update_movie_view_frame(env: &mut Environment, player: id, view: id) {
         return;
     }
     let bounds: CGRect = msg![env; parent bounds];
+    if fullscreen {
+        let old_frame: CGRect = msg![env; view frame];
+        if (old_frame.origin.x - bounds.origin.x).abs() > 0.01
+            || (old_frame.origin.y - bounds.origin.y).abs() > 0.01
+            || (old_frame.size.width - bounds.size.width).abs() > 0.01
+            || (old_frame.size.height - bounds.size.height).abs() > 0.01
+        {
+            () = msg![env; view setFrame:bounds];
+        }
+        return;
+    }
+
     let video_width = video_info.width as f32;
     let video_height = video_info.height as f32;
     let bounds_width = bounds.size.width;
@@ -1334,7 +1473,6 @@ fn update_movie_view_frame(env: &mut Environment, player: id, view: id) {
 /// Show the latest decoded frame of each playing movie in its player's view.
 fn present_video_frames(env: &mut Environment) {
     let players: Vec<id> = State::get(env).videos.keys().copied().collect();
-    let mut frames = Vec::new();
     for player in players {
         let playback_time = {
             let host = env.objc.borrow::<MPMoviePlayerControllerHostObject>(player);
@@ -1347,6 +1485,29 @@ fn present_video_frames(env: &mut Environment) {
         let Some(frame) = frame else {
             continue;
         };
+        let view = env
+            .objc
+            .borrow::<MPMoviePlayerControllerHostObject>(player)
+            .view;
+        if view == nil {
+            continue;
+        }
+        present_unparented_movie_view(env, player, view);
+        let superview: id = msg![env; view superview];
+        if superview == nil {
+            continue;
+        }
+
+        update_movie_view_frame(env, player, view);
+        let layer: id = msg![env; view layer];
+        let pts = frame.pts;
+        crate::frameworks::core_animation::ca_eagl_layer::present_pixels(
+            env,
+            layer,
+            frame.rgba,
+            frame.width,
+            frame.height,
+        );
         let became_ready = {
             let host = env
                 .objc
@@ -1364,27 +1525,12 @@ fn present_video_frames(env: &mut Environment) {
                 PendingNotification::ReadyForDisplayChange(player),
                 Instant::now(),
             );
+            log!(
+                "MPMoviePlayerController {:?}: first video frame presented at {:.3}s",
+                player,
+                pts
+            );
         }
-        frames.push((player, frame));
-    }
-
-    for (player, frame) in frames {
-        let view = env
-            .objc
-            .borrow::<MPMoviePlayerControllerHostObject>(player)
-            .view;
-        if view == nil {
-            continue;
-        }
-        update_movie_view_frame(env, player, view);
-        let layer: id = msg![env; view layer];
-        crate::frameworks::core_animation::ca_eagl_layer::present_pixels(
-            env,
-            layer,
-            frame.rgba,
-            frame.width,
-            frame.height,
-        );
     }
 }
 
@@ -1451,6 +1597,7 @@ pub(super) fn handle_players(env: &mut Environment) {
             host.finish_scheduled = false;
             State::get(env).videos.remove(&player);
             stop_movie_audio(env, player);
+            dismiss_unparented_movie_view(env, player);
         }
 
         if matches!(notif, PendingNotification::PlaybackStateChange(_)) {
