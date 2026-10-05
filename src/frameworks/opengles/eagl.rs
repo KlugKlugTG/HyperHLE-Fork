@@ -31,6 +31,13 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 
+#[derive(Copy, Clone)]
+struct EaglPresentOptions {
+    trace_gl_errors: bool,
+    present_mode: PresentMode,
+    present_finish: bool,
+}
+
 // These are used by the EAGLDrawable protocol implemented by CAEAGLayer.
 // Since these have the ABI of constant symbols rather than literal constants,
 // the values shouldn't matter, and haven't been checked against real iPhone OS.
@@ -943,22 +950,24 @@ pub const CLASSES: ClassExports = objc_classes! {
         return false;
     };
 
-    let renderbuffer: GLuint = unsafe {
+    let (renderbuffer, backend_is_translator, backend_is_native_es1, backend_is_es2) = unsafe {
         let mut renderbuffer = 0;
         gles.GetIntegerv(gles11::RENDERBUFFER_BINDING_OES, &mut renderbuffer);
-        renderbuffer as _
+        (
+            renderbuffer as _,
+            gles.is_translator(),
+            gles.is_native_es1(),
+            gles.is_es2(),
+        )
     };
 
     std::mem::drop(gles);
 
-    let bindings: Vec<(GLuint, id)> = env
+    let bindings = env
         .objc
         .borrow::<EAGLContextHostObject>(this)
         .renderbuffer_drawable_bindings
-        .borrow()
-        .iter()
-        .map(|(&rb, &drawable)| (rb, drawable))
-        .collect();
+        .borrow();
 
     // The renderbuffer reported by the driver must be the drawable's colour
     // renderbuffer, and that is what gets keyed in the map. Some engines
@@ -968,11 +977,11 @@ pub const CLASSES: ClassExports = objc_classes! {
     // presented, so fall back to the single registered binding instead of
     // silently dropping the frame (the silent drop manifests as a permanent
     // black screen).
-    let drawable = match bindings.iter().find(|(rb, _)| *rb == renderbuffer) {
-        Some(&(_, drawable)) => drawable,
+    let drawable = match bindings.get(&renderbuffer) {
+        Some(&drawable) => drawable,
         None => {
             if bindings.len() == 1 {
-                let (rb, drawable) = bindings[0];
+                let (&rb, &drawable) = bindings.iter().next().unwrap();
                 {
                     static MISMATCH_LOGGED: std::sync::Once = std::sync::Once::new();
                     MISMATCH_LOGGED.call_once(|| {
@@ -993,8 +1002,9 @@ pub const CLASSES: ClassExports = objc_classes! {
                      drawable ({} bound renderbuffer(s): {:?}) - frame skipped.",
                     renderbuffer,
                     bindings.len(),
-                    bindings.iter().map(|(rb, _)| *rb).collect::<Vec<_>>(),
+                    bindings.keys().copied().collect::<Vec<_>>(),
                 );
+                drop(bindings);
                 if let Some(frame_due) = frame_due {
                     pace_frame(env, frame_due);
                 }
@@ -1021,17 +1031,6 @@ pub const CLASSES: ClassExports = objc_classes! {
         // the biggest per-frame cost. It's now an explicit choice
         // (--present-mode=readback) or an automatic fallback when the GPU
         // route demonstrably produces black frames on this driver.
-        let (backend_is_translator, backend_is_native_es1, backend_is_es2) = {
-            let maybe_gles = super::sync_context(
-                &mut env.framework_state.opengles,
-                &mut env.objc,
-                env.window.as_mut().unwrap(),
-                env.current_thread,
-            );
-            maybe_gles
-                .map(|gles| (gles.is_translator(), gles.is_native_es1(), gles.is_es2()))
-                .unwrap_or((false, false, false))
-        };
         let use_readback = match env.options.present_mode {
             PresentMode::Readback => {
                 if backend_is_es2 && !backend_is_translator {
@@ -1098,9 +1097,13 @@ pub const CLASSES: ClassExports = objc_classes! {
                 drawable,
                 renderbuffer,
             );
-            let options = env.options.clone();
+            let options = EaglPresentOptions {
+                trace_gl_errors: env.options.trace_gl_errors,
+                present_mode: env.options.present_mode,
+                present_finish: env.options.present_finish,
+            };
             unsafe {
-                present_renderbuffer(env, renderbuffer, drawable, &options, this.to_bits() as usize);
+                present_renderbuffer(env, renderbuffer, drawable, options, this.to_bits() as usize);
             }
         }
     } else {
@@ -2393,7 +2396,7 @@ unsafe fn present_renderbuffer(
     env: &mut Environment,
     renderbuffer: GLuint,
     _drawable: id,
-    options: &crate::options::Options,
+    options: EaglPresentOptions,
     context_token: usize,
 ) {
     // Capture this up front because the env borrow is moved into the GL
@@ -3519,12 +3522,24 @@ fn attach_orphaned_eagl_view_to_root(env: &mut Environment, drawable: id) -> boo
     {
         return false;
     }
-    let mut windows = env.framework_state.uikit.ui_view.ui_window.windows.clone();
-    if let Some(key_window) = env.framework_state.uikit.ui_view.ui_window.key_window {
-        windows.retain(|&window| window != key_window);
-        windows.push(key_window);
-    }
-    for window in windows.into_iter().rev() {
+    let window_count = env.framework_state.uikit.ui_view.ui_window.windows.len();
+    let key_window = env.framework_state.uikit.ui_view.ui_window.key_window;
+    let search_count = window_count + if key_window.is_some() { 1 } else { 0 };
+    for search_index in 0..search_count {
+        let window = match key_window {
+            Some(key_window) if search_index == 0 => key_window,
+            Some(key_window) => {
+                let window = env.framework_state.uikit.ui_view.ui_window.windows
+                    [window_count - search_index];
+                if window == key_window {
+                    continue;
+                }
+                window
+            }
+            None => {
+                env.framework_state.uikit.ui_view.ui_window.windows[window_count - search_index - 1]
+            }
+        };
         let window_hidden: bool = msg![env; window isHidden];
         if window_hidden {
             continue;
