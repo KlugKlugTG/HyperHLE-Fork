@@ -334,43 +334,22 @@ impl ObjC {
     }
 }
 
-fn object_ivar_location(
-    objc: &ObjC,
-    mem: &Mem,
-    object: id,
-    ivar: ConstVoidPtr,
-) -> Option<(MutPtr<id>, u32)> {
+fn object_ivar_value(objc: &ObjC, mem: &Mem, object: id, ivar: ConstVoidPtr) -> Option<id> {
     if object == nil || ivar.is_null() {
         return None;
     }
     let class = ObjC::read_isa(object, mem);
     let offset_pointer = objc.class_lookup_ivar_offset_by_metadata(class, ivar)?;
-    let offset = mem.read(offset_pointer);
+    if offset_pointer.is_null() {
+        return None;
+    }
+    let offset_bytes = mem.get_bytes_fallible(offset_pointer.cast(), 4)?;
+    let offset = u32::from_le_bytes(offset_bytes.try_into().ok()?);
     let field_address = object.to_bits().checked_add(offset)?;
-    let location = MutPtr::<id>::from_bits(field_address);
-    mem.get_bytes_fallible(location.cast_const().cast(), 4)?;
-    Some((location, offset))
-}
-
-fn object_ivar_value(objc: &ObjC, mem: &Mem, object: id, ivar: ConstVoidPtr) -> Option<id> {
-    let (location, _) = object_ivar_location(objc, mem, object, ivar)?;
-    let value_bytes = mem.get_bytes_fallible(location.cast_const().cast(), 4)?;
+    let value_bytes = mem.get_bytes_fallible(ConstVoidPtr::from_bits(field_address), 4)?;
     Some(id::from_bits(u32::from_le_bytes(
         value_bytes.try_into().ok()?,
     )))
-}
-
-fn set_object_ivar_value(
-    objc: &ObjC,
-    mem: &mut Mem,
-    object: id,
-    ivar: ConstVoidPtr,
-    value: id,
-) -> Option<(u32, id)> {
-    let (location, offset) = object_ivar_location(objc, mem, object, ivar)?;
-    let previous = object_ivar_value(objc, mem, object, ivar)?;
-    mem.write(location, value);
-    Some((offset, previous))
 }
 
 /// Returns the named ivar metadata, searching the class and its superclasses.
@@ -417,33 +396,6 @@ pub fn object_getIvar(env: &mut Environment, object: id, ivar: MutVoidPtr) -> id
         class_name, object, ivar, offset, value
     ));
     value
-}
-
-/// Writes an object reference to the specified ivar, ignoring nil or invalid inputs.
-pub fn object_setIvar(env: &mut Environment, object: id, ivar: MutVoidPtr, value: id) {
-    let class_name = if object == nil {
-        "nil".to_string()
-    } else {
-        env.objc
-            .get_class_name(ObjC::read_isa(object, &env.mem))
-            .to_string()
-    };
-    let result = set_object_ivar_value(
-        &env.objc,
-        &mut env.mem,
-        object,
-        ivar.cast_const(),
-        value,
-    );
-    trace_ivar_access(&format!(
-        "object_setIvar class={} object={:?} ivar={:?} offset={:?} old_value={:?} value={:?}",
-        class_name,
-        object,
-        ivar,
-        result.map(|(offset, _)| offset),
-        result.map(|(_, old_value)| old_value),
-        value
-    ));
 }
 
 /// Acquire the per-object recursive mutex used to protect `atomic`
@@ -961,12 +913,6 @@ mod trainer_metadata_tests {
         let ivar = objc.class_lookup_ivar(subclass, "_context").unwrap();
         assert_eq!(ivar.to_bits(), expected_ivar_metadata.to_bits());
         assert_eq!(object_ivar_value(&objc, &mem, object, ivar), Some(expected));
-        let replacement = id::from_bits(0x8765_4321);
-        assert_eq!(
-            set_object_ivar_value(&objc, &mut mem, object, ivar, replacement),
-            Some((12, expected))
-        );
-        assert_eq!(object_ivar_value(&objc, &mem, object, ivar), Some(replacement));
         assert_eq!(objc.class_lookup_ivar(subclass, "_missing"), None);
         assert_eq!(object_ivar_value(&objc, &mem, nil, ivar), None);
         assert_eq!(

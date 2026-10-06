@@ -16,7 +16,7 @@
 
 use crate::abi::{CallFromHost, GuestFunction};
 use crate::dyld::{export_c_func, FunctionExports};
-use crate::mem::{ConstPtr, ConstVoidPtr, MutVoidPtr, Ptr};
+use crate::mem::{ConstVoidPtr, MutVoidPtr, Ptr};
 use crate::objc::{release, retain};
 use crate::Environment;
 
@@ -32,45 +32,6 @@ const BLOCK_NEEDS_FREE: u32 = 1 << 24;
 const BLOCK_HAS_COPY_DISPOSE: u32 = 1 << 25;
 const BLOCK_IS_GLOBAL: u32 = 1 << 28;
 const REFCOUNT_MASK: u32 = 0xffff;
-const BLOCK_HAS_SIGNATURE: u32 = 1 << 30;
-const BLOCK_HAS_EXTENDED_LAYOUT: u32 = 1 << 31;
-const BLOCK_LAYOUT_FLAGS: u32 = BLOCK_NEEDS_FREE
-    | BLOCK_HAS_COPY_DISPOSE
-    | BLOCK_IS_GLOBAL
-    | BLOCK_HAS_SIGNATURE
-    | BLOCK_HAS_EXTENDED_LAYOUT;
-const MAX_BLOCK_SIZE: u32 = 64 * 1024 * 1024;
-
-fn valid_block_layout(
-    isa: u32,
-    flags: u32,
-    invoke: u32,
-    descriptor: u32,
-    descriptor_size: u32,
-) -> bool {
-    isa != 0
-        && flags & BLOCK_LAYOUT_FLAGS != 0
-        && invoke & !1 != 0
-        && descriptor != 0
-        && (20..=MAX_BLOCK_SIZE).contains(&descriptor_size)
-}
-
-pub fn is_block_object(env: &Environment, block: ConstVoidPtr) -> bool {
-    if block.is_null() {
-        return false;
-    }
-    let words = block.cast::<u32>();
-    let isa: u32 = env.mem.read(words);
-    let flags: u32 = env.mem.read(words + 1);
-    let invoke: u32 = env.mem.read(words + 3);
-    let descriptor_addr: u32 = env.mem.read(words + 4);
-    if descriptor_addr == 0 {
-        return false;
-    }
-    let descriptor = ConstPtr::<u32>::from_bits(descriptor_addr);
-    let descriptor_size: u32 = env.mem.read(descriptor + 1);
-    valid_block_layout(isa, flags, invoke, descriptor_addr, descriptor_size)
-}
 
 fn add_reference(env: &mut Environment, flags_ptr: crate::mem::MutPtr<u32>) {
     let flags: u32 = env.mem.read(flags_ptr);
@@ -249,22 +210,3 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(_Block_object_assign(_, _, _)),
     export_c_func!(_Block_object_dispose(_, _)),
 ];
-#[cfg(test)]
-mod tests {
-    use super::{valid_block_layout, BLOCK_HAS_COPY_DISPOSE, BLOCK_HAS_SIGNATURE, BLOCK_IS_GLOBAL};
-
-    #[test]
-    fn validates_block_abi_layouts() {
-        assert!(valid_block_layout(1, BLOCK_HAS_COPY_DISPOSE, 0x1001, 0x2000, 24));
-        assert!(valid_block_layout(
-            1,
-            BLOCK_IS_GLOBAL | BLOCK_HAS_SIGNATURE,
-            0x1000,
-            0x2000,
-            20,
-        ));
-        assert!(!valid_block_layout(1, 0, 0x1001, 0x2000, 24));
-        assert!(!valid_block_layout(1, BLOCK_HAS_COPY_DISPOSE, 0, 0x2000, 24));
-        assert!(!valid_block_layout(1, BLOCK_HAS_COPY_DISPOSE, 0x1001, 0x2000, 16));
-    }
-}
