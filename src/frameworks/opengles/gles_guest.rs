@@ -986,6 +986,13 @@ fn glBindBuffer(env: &mut Environment, target: GLenum, buffer: GLuint) {
         gles.BindBuffer(target, buffer)
     })
 }
+/// DIAG: host-side cache of ARRAY_BUFFER contents keyed by buffer name, so
+/// TOUCHHLE_TRACE_DRAW can read actual vertex (texcoord) values at draw time.
+fn diag_buffer_cache() -> &'static std::sync::Mutex<HashMap<GLuint, Vec<u8>>> {
+    static CACHE: std::sync::OnceLock<std::sync::Mutex<HashMap<GLuint, Vec<u8>>>> =
+        std::sync::OnceLock::new();
+    CACHE.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
+}
 unsafe fn debug_log_buffer_upload(
     gles: &mut dyn GLES,
     mem: &Mem,
@@ -1044,6 +1051,32 @@ fn glBufferData(
 ) {
     with_ctx_and_mem(env, |gles, mem| unsafe {
         debug_log_buffer_upload(gles, mem, "BufferData", target, 0, size, data);
+        if crate::env_flag_cached!("TOUCHHLE_TRACE_DRAW") && target == ARRAY_BUFFER && !data.is_null()
+        {
+            let mut bound: GLint = 0;
+            gles.GetIntegerv(0x8894 /*ARRAY_BUFFER_BINDING*/, &mut bound);
+            if bound > 0 && (1..=1_048_576).contains(&size) {
+                let bytes = mem.bytes_at(data.cast::<u8>(), size as GuestUSize).to_vec();
+                diag_buffer_cache().lock().unwrap().insert(bound as GLuint, bytes);
+            }
+        }
+        if crate::env_flag_cached!("TOUCHHLE_TRACE_DRAW")
+            && target == ARRAY_BUFFER
+            && !data.is_null()
+            && (1..=256).contains(&size)
+        {
+            use std::sync::atomic::{AtomicU32, Ordering};
+            static BN: AtomicU32 = AtomicU32::new(0);
+            let bn = BN.fetch_add(1, Ordering::Relaxed);
+            if bn < 10 {
+                let bytes = mem.bytes_at(data.cast::<u8>(), size as GuestUSize);
+                let floats: Vec<f32> = bytes
+                    .chunks_exact(4)
+                    .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                    .collect();
+                log!("BUFDATA-DIAG #{} ARRAY_BUFFER size={} floats={:?}", bn, size, floats);
+            }
+        }
         let data: *const GLvoid = if data.is_null() {
             std::ptr::null()
         } else {
@@ -1062,6 +1095,23 @@ fn glBufferSubData(
 ) {
     with_ctx_and_mem(env, |gles, mem| unsafe {
         debug_log_buffer_upload(gles, mem, "BufferSubData", target, offset, size, data);
+        if crate::env_flag_cached!("TOUCHHLE_TRACE_DRAW") && target == ARRAY_BUFFER && !data.is_null()
+        {
+            let mut bound: GLint = 0;
+            gles.GetIntegerv(0x8894 /*ARRAY_BUFFER_BINDING*/, &mut bound);
+            if bound > 0 && offset >= 0 && size > 0 {
+                let src = mem.bytes_at(data.cast::<u8>(), size as GuestUSize);
+                let mut cache = diag_buffer_cache().lock().unwrap();
+                let buf = cache.entry(bound as GLuint).or_default();
+                let start = offset as usize;
+                if let Some(end) = start.checked_add(size as usize).filter(|end| *end <= 4_194_304) {
+                    if buf.len() < end {
+                        buf.resize(end, 0);
+                    }
+                    buf[start..end].copy_from_slice(src);
+                }
+            }
+        }
         let data = if data.is_null() {
             std::ptr::null()
         } else {
@@ -1356,6 +1406,25 @@ fn glCompressedTexSubImage2D(
                     height as u32,
                     is_opaque,
                 );
+                // DIAG (TOUCHHLE_DUMP_TEX=1): dump a few decoded PVRTC atlases
+                // (RGBA) so we can see whether the decoder output is correct
+                // vs scrambled/blank — the suspected source of texture glitches.
+                if crate::env_flag_cached!("TOUCHHLE_DUMP_TEX") {
+                    use std::sync::atomic::{AtomicU32, Ordering};
+                    static N: AtomicU32 = AtomicU32::new(0);
+                    let k = N.fetch_add(1, Ordering::Relaxed);
+                    if k < 8 {
+                        let w = width as usize;
+                        let h = height as usize;
+                        let mut ppm = format!("P6\n{} {}\n255\n", w, h).into_bytes();
+                        for &px in pixels.iter() {
+                            let b = (px as u32).to_le_bytes();
+                            ppm.extend_from_slice(&[b[0], b[1], b[2]]);
+                        }
+                        let _ = std::fs::write(format!("tex_{}_{}x{}_fmt{:#x}.ppm", k, w, h, format), &ppm);
+                        log!("DUMP-TEX wrote tex_{}_{}x{}_fmt{:#x}.ppm", k, w, h, format);
+                    }
+                }
                 // PVRTC compressed subimages may only replace a complete level.
                 gles.TexSubImage2D(
                     target,
@@ -1380,6 +1449,17 @@ fn glCompressedTexSubImage2D(
             mem.ptr_at(data.cast::<u8>(), image_size_usize as GuestUSize)
                 .cast()
         };
+        // DIAG: a PVRTC sub-update that did NOT take the decode path above
+        // (partial / non-full-level) falls through to the raw driver call on
+        // RGBA storage, which fails → that region of the atlas stays blank.
+        if crate::env_flag_cached!("TOUCHHLE_TRACE_TEX") {
+            let is_pvrtc = crate::gles::util::pvrtc_format_properties(format).is_some();
+            log!(
+                "TEX-DIAG SUBIMAGE-FALLTHROUGH format={:#x} pvrtc={} off=({},{}) {}x{} image_size={} level_known={}",
+                format, is_pvrtc, xoffset, yoffset, width, height, image_size,
+                texture_level.is_some()
+            );
+        }
         gles.CompressedTexSubImage2D(
             target, level, xoffset, yoffset, width, height, format, image_size, data,
         )
@@ -1811,6 +1891,105 @@ fn glDrawArrays(env: &mut Environment, mode: GLenum, first: GLint, count: GLsize
         return;
     }
     with_ctx_mem_and_shadow(env, |gles, mem, shadow| unsafe {
+        // DIAG (TOUCHHLE_TRACE_DRAW=1): dump the vertex-attribute + texture
+        // state for the first several draws, to see whether the texcoord
+        // attribute (A1 / loc 1) is actually fed and a texture is bound.
+        if crate::env_flag_cached!("TOUCHHLE_TRACE_DRAW") {
+            use std::sync::atomic::{AtomicU32, Ordering};
+            static DN: AtomicU32 = AtomicU32::new(0);
+            let dn = DN.fetch_add(1, Ordering::Relaxed);
+            if dn < 12 {
+                let mut prog: GLint = 0;
+                gles.GetIntegerv(0x8B8D /*CURRENT_PROGRAM*/, &mut prog);
+                let mut tex: GLint = 0;
+                gles.GetIntegerv(0x8069 /*TEXTURE_BINDING_2D*/, &mut tex);
+                let mut maxa: GLint = 0;
+                gles.GetIntegerv(0x8869 /*MAX_VERTEX_ATTRIBS*/, &mut maxa);
+                // Blend / depth / scissor state (layering suspects).
+                let blend_on = gles.IsEnabled(0x0BE2 /*BLEND*/);
+                let depth_on = gles.IsEnabled(0x0B71 /*DEPTH_TEST*/);
+                let scissor_on = gles.IsEnabled(0x0C11 /*SCISSOR_TEST*/);
+                let mut bsrc: GLint = 0;
+                let mut bdst: GLint = 0;
+                gles.GetIntegerv(0x0BE1 /*BLEND_SRC_RGB*/, &mut bsrc);
+                gles.GetIntegerv(0x0BE0 /*BLEND_DST_RGB*/, &mut bdst);
+                let mut dfunc: GLint = 0;
+                gles.GetIntegerv(0x0B74 /*DEPTH_FUNC*/, &mut dfunc);
+                let mut vp = [0i32; 4];
+                gles.GetIntegerv(0x0BA2 /*VIEWPORT*/, vp.as_mut_ptr());
+                // Bound-texture filter/wrap (mipmap-incompleteness suspect).
+                let mut minf: GLint = 0;
+                let mut magf: GLint = 0;
+                let mut wraps: GLint = 0;
+                gles.GetTexParameteriv(0x0DE1, 0x2801 /*MIN_FILTER*/, &mut minf);
+                gles.GetTexParameteriv(0x0DE1, 0x2800 /*MAG_FILTER*/, &mut magf);
+                gles.GetTexParameteriv(0x0DE1, 0x2802 /*WRAP_S*/, &mut wraps);
+                let mut line = format!(
+                    "DRAW-DIAG #{} mode={:#x} count={} program={} tex2d={} minf={:#x} magf={:#x} wrapS={:#x} blend={} src={:#x} dst={:#x} depth={} dfunc={:#x} scissor={} vp={:?} attribs:",
+                    dn, mode, count, prog, tex, minf, magf, wraps, blend_on, bsrc, bdst, depth_on, dfunc, scissor_on, vp
+                );
+                for i in 0..(maxa.clamp(0, 16) as GLuint) {
+                    let mut en: GLint = 0;
+                    gles.GetVertexAttribiv(i, 0x8622 /*ARRAY_ENABLED*/, &mut en);
+                    if en == 0 {
+                        continue;
+                    }
+                    let mut sz: GLint = 0;
+                    gles.GetVertexAttribiv(i, 0x8623 /*ARRAY_SIZE*/, &mut sz);
+                    let mut buf: GLint = 0;
+                    gles.GetVertexAttribiv(i, 0x889F /*ARRAY_BUFFER_BINDING*/, &mut buf);
+                    let mut ty: GLint = 0;
+                    gles.GetVertexAttribiv(i, 0x8625 /*ARRAY_TYPE*/, &mut ty);
+                    let mut norm: GLint = 0;
+                    gles.GetVertexAttribiv(i, 0x886A /*ARRAY_NORMALIZED*/, &mut norm);
+                    let mut strd: GLint = 0;
+                    gles.GetVertexAttribiv(i, 0x8624 /*ARRAY_STRIDE*/, &mut strd);
+                    let mut p: *mut GLvoid = std::ptr::null_mut();
+                    gles.GetVertexAttribPointerv(i, 0x8645 /*ARRAY_POINTER*/, &mut p);
+                    line.push_str(&format!(
+                        " [#{} sz={} type={:#x} norm={} stride={} vbo={} off={:?}]",
+                        i, sz, ty, norm, strd, buf, p
+                    ));
+                }
+                log!("{}", line);
+                // Read the ACTUAL texcoord values for attr #1 from the cached
+                // VBO content, for `first..first+count` vertices.
+                {
+                    let mut en: GLint = 0;
+                    gles.GetVertexAttribiv(1, 0x8622, &mut en);
+                    let mut vbo: GLint = 0;
+                    gles.GetVertexAttribiv(1, 0x889F, &mut vbo);
+                    let mut strd: GLint = 0;
+                    gles.GetVertexAttribiv(1, 0x8624, &mut strd);
+                    let mut p: *mut GLvoid = std::ptr::null_mut();
+                    gles.GetVertexAttribPointerv(1, 0x8645, &mut p);
+                    if en != 0 && vbo > 0 {
+                        let off = p as usize;
+                        let stride = if strd > 0 { strd as usize } else { 16 };
+                        let cache = diag_buffer_cache().lock().unwrap();
+                        if let Some(bytes) = cache.get(&(vbo as GLuint)) {
+                            let mut tc = String::new();
+                            for v in 0..(count.min(6) as usize) {
+                                let base = off + (first as usize + v) * stride;
+                                if base + 8 <= bytes.len() {
+                                    let rd = |o: usize| {
+                                        f32::from_le_bytes([
+                                            bytes[o], bytes[o + 1], bytes[o + 2], bytes[o + 3],
+                                        ])
+                                    };
+                                    tc.push_str(&format!(" ({:.4},{:.4})", rd(base), rd(base + 4)));
+                                } else {
+                                    tc.push_str(" (oob)");
+                                }
+                            }
+                            log!("  DRAW-TC vbo={} off={} stride={} tc:{}", vbo, off, stride, tc);
+                        } else {
+                            log!("  DRAW-TC vbo={} not in cache", vbo);
+                        }
+                    }
+                }
+            }
+        }
         let disabled_arrays = guard_client_vertex_arrays(gles, mem, shadow);
         let fog_state_backup = clamp_fog_state_values(gles, shadow);
         if crate::env_flag_cached!("TOUCHHLE_POTATO_NATIVE_GLES2_PC_STATE") {
@@ -2830,6 +3009,12 @@ fn glCompressedTexImage2D(
             );
         }
     }
+    if crate::env_flag_cached!("TOUCHHLE_TRACE_TEX") {
+        log!(
+            "TEX-DIAG glCompressedTexImage2D target={:#x} level={} internalformat={:#x} {}x{} border={} image_size={} data={:#x}",
+            target, level, internalformat, width, height, border, image_size, data.to_bits()
+        );
+    }
     let fix_filter = env.options.fix_texture_min_filter && level == 0;
     with_ctx_mem_and_shadow(env, |gles, mem, shadow| unsafe {
         let bound_texture = current_bound_texture(gles, target);
@@ -2863,9 +3048,23 @@ fn glCompressedTexImage2D(
             Ok(size) => size,
             Err(_) => return,
         };
-        let data: *const GLvoid = mem
-            .ptr_at(data.cast::<u8>(), image_size_usize as GuestUSize)
-            .cast();
+        // A guest NULL data pointer is legal for (Compressed)TexImage2D: it
+        // allocates texture storage without initialising it (the app fills it
+        // later with CompressedTexSubImage2D). We MUST detect it on the GUEST
+        // pointer: `mem.ptr_at(NULL, image_size)` returns the 4 KiB null-stub
+        // page clamped to one page, and building an `image_size`-length slice
+        // over that (e.g. 512 KiB for a 1024x1024 PVRTC level) and handing it
+        // to the PVRTC decoder reads ~508 KiB off the end of the stub page —
+        // a host access violation outside the guest region that the
+        // lazy-commit handler can't satisfy, crashing the process. (Minecraft
+        // Story Mode allocates its 1024x1024 PVRTC atlases exactly this way.)
+        let data_was_null = data.is_null();
+        let data: *const GLvoid = if data_was_null {
+            std::ptr::null()
+        } else {
+            mem.ptr_at(data.cast::<u8>(), image_size_usize as GuestUSize)
+                .cast()
+        };
         let is_pvrtc = matches!(
             internalformat,
             gles11::COMPRESSED_RGBA_PVRTC_2BPPV1_IMG
@@ -2873,6 +3072,45 @@ fn glCompressedTexImage2D(
                 | gles11::COMPRESSED_RGB_PVRTC_2BPPV1_IMG
                 | gles11::COMPRESSED_RGB_PVRTC_4BPPV1_IMG
         );
+        // PVRTC storage allocated with no data: desktop GL can't honour the
+        // PVRTC internalformat, so our decode path uploads RGBA instead.
+        // Mirror that for the allocate-only case by reserving RGBA storage of
+        // the same dimensions (uninitialised), so the texture object is
+        // complete and later CompressedTexSubImage2D updates have somewhere to
+        // land. Without this the texture would be left in its default state.
+        if is_pvrtc && data_was_null && width > 0 && height > 0 {
+            gles.TexImage2D(
+                target,
+                level,
+                gles11::RGBA as GLint,
+                width,
+                height,
+                border,
+                gles11::RGBA,
+                gles11::UNSIGNED_BYTE,
+                std::ptr::null(),
+            );
+            // Record this as a PVRTC level so later glCompressedTexSubImage2D
+            // updates (how MCSM actually fills these atlases) take the
+            // software-decode-into-RGBA path instead of handing PVRTC bytes to
+            // a desktop driver that rejects them (leaving the atlas empty).
+            if border == 0 {
+                if let Some(texture) = bound_texture {
+                    shadow.record_pvrtc_texture_level(
+                        target,
+                        texture,
+                        level,
+                        width,
+                        height,
+                        internalformat,
+                    );
+                }
+            }
+            if fix_filter {
+                gles.TexParameteri(target, gles11::TEXTURE_MIN_FILTER, gles11::LINEAR as GLint);
+            }
+            return;
+        }
         if is_pvrtc && !data.is_null() && image_size > 0 {
             let payload = std::slice::from_raw_parts(data.cast::<u8>(), image_size_usize);
             if crate::gles::try_decode_pvrtc(
@@ -3591,6 +3829,21 @@ fn unmap_buffer(env: &mut Environment, target: GLenum, oes: bool) -> GLboolean {
                 .as_ptr() as *mut GLvoid,
             buffer_size,
         );
+    }
+    // DIAG: cache the unmapped buffer content so TOUCHHLE_TRACE_DRAW can read
+    // texcoords at draw time (the game streams its vertex data via map/unmap,
+    // not glBufferData, so it was otherwise invisible to the cache).
+    if crate::env_flag_cached!("TOUCHHLE_TRACE_DRAW") && target == ARRAY_BUFFER {
+        let bytes = env
+            .mem
+            .bytes_at(guest_buffer.cast(), buffer_size as GuestUSize)
+            .to_vec();
+        if bytes.len() <= 4_194_304 {
+            diag_buffer_cache()
+                .lock()
+                .unwrap()
+                .insert(buffer_object_name, bytes);
+        }
     }
     env.mem.free(guest_buffer);
     with_ctx_and_mem(env, |gles, _mem| unsafe {
@@ -5460,7 +5713,7 @@ fn glShaderSource(
         String::from_utf8_lossy(cs.as_bytes()).into_owned(),
     );
     if crate::env_flag_cached!("TOUCHHLE_DUMP_SHADER_SOURCE") {
-        let _ = std::fs::write(format!("/tmp/a8run/shader_{}.glsl", shader), cs.as_bytes());
+        let _ = std::fs::write(format!("shader_dump_{}.glsl", shader), cs.as_bytes());
     }
     with_ctx_and_mem(env, |gles, _mem| unsafe {
         gles.ShaderSource(shader, 1, &ptr, std::ptr::null());
@@ -5592,6 +5845,14 @@ fn glUniform4f(
     v3: GLfloat,
 ) {
     with_ctx_and_mem(env, |gles, _mem| unsafe {
+        if crate::env_flag_cached!("TOUCHHLE_TRACE_DRAW") && location >= 0 {
+            use std::sync::atomic::{AtomicU32, Ordering};
+            static UN: AtomicU32 = AtomicU32::new(0);
+            let un = UN.fetch_add(1, Ordering::Relaxed);
+            if un < 40 {
+                log!("UNIFORM4F loc={} vals=[{},{},{},{}]", location, v0, v1, v2, v3);
+            }
+        }
         gles.Uniform4f(location, v0, v1, v2, v3)
     });
 }
@@ -5648,6 +5909,28 @@ fn glUniform4fv(env: &mut Environment, location: GLint, count: GLsizei, value: C
     with_ctx_and_mem(env, |gles, mem| unsafe {
         let n = (count as usize) * 4;
         let ptr = mem.ptr_at(value, n.try_into().unwrap_or(0));
+        if crate::env_flag_cached!("TOUCHHLE_TRACE_DRAW") && location >= 0 {
+            use std::sync::atomic::{AtomicU32, Ordering};
+            static UN: AtomicU32 = AtomicU32::new(0);
+            let un = UN.fetch_add(1, Ordering::Relaxed);
+            if un < 40 {
+                let mut v = vec![0.0f32; n.min(16)];
+                std::ptr::copy_nonoverlapping(ptr, v.as_mut_ptr(), v.len());
+                log!("UNIFORM4FV loc={} count={} vals={:?}", location, count, v);
+            }
+        }
+        // EXPERIMENT (TOUCHHLE_FORCE_IDENTITY_TC): rewrite a shear-looking
+        // texcoord-matrix uniform [1,-0,1,1] to identity [1,0,0,1] to test
+        // whether the shear is what breaks textured rendering.
+        if count == 1 && crate::env_flag_cached!("TOUCHHLE_FORCE_IDENTITY_TC") {
+            let mut v = [0.0f32; 4];
+            std::ptr::copy_nonoverlapping(ptr, v.as_mut_ptr(), 4);
+            if v[0] == 1.0 && v[1] == 0.0 && v[2] == 1.0 && v[3] == 1.0 {
+                let ident = [1.0f32, 0.0, 0.0, 1.0];
+                gles.Uniform4fv(location, 1, ident.as_ptr());
+                return;
+            }
+        }
         gles.Uniform4fv(location, count, ptr);
     });
 }

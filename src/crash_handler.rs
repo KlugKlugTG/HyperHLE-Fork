@@ -451,5 +451,130 @@ pub use imp::{install, native_backtrace_lines, set_log_fd};
 #[cfg(not(unix))]
 pub fn set_log_fd(_fd: i32) {}
 
-#[cfg(not(unix))]
+#[cfg(all(not(unix), not(windows)))]
 pub fn install() {}
+
+/// Windows native crash diagnostics via a Vectored Exception Handler.
+///
+/// The Unix handler above is a POSIX-signal handler and does nothing on the
+/// MSVC build, so a host access violation (e.g. a guest wild branch that lands
+/// dynarmic on a bad host pointer) used to kill the process with no log at all
+/// — the log just stopped mid-line. This VEH prints the faulting address and
+/// the last guest PC/LR plus the recent guest-PC ring (both updated every CPU
+/// batch in `Environment::run`, independent of OS) so the guest instruction
+/// that triggered the fault can be identified, then returns
+/// EXCEPTION_CONTINUE_SEARCH so the process still dies as before.
+#[cfg(windows)]
+mod win_imp {
+    use std::ffi::c_void;
+    use std::io::Write;
+    use std::sync::atomic::Ordering;
+
+    #[repr(C)]
+    struct ExceptionRecord {
+        exception_code: u32,
+        exception_flags: u32,
+        nested: *mut ExceptionRecord,
+        exception_address: *mut c_void,
+        number_parameters: u32,
+        exception_information: [usize; 15],
+    }
+
+    #[repr(C)]
+    struct ExceptionPointers {
+        exception_record: *mut ExceptionRecord,
+        context_record: *mut c_void,
+    }
+
+    const EXCEPTION_ACCESS_VIOLATION: u32 = 0xC000_0005;
+    const EXCEPTION_ILLEGAL_INSTRUCTION: u32 = 0xC000_001D;
+    const EXCEPTION_STACK_OVERFLOW: u32 = 0xC000_00FD;
+    const EXCEPTION_CONTINUE_SEARCH: i32 = 0;
+
+    extern "system" {
+        fn AddVectoredExceptionHandler(
+            first: u32,
+            handler: extern "system" fn(*mut ExceptionPointers) -> i32,
+        ) -> *mut c_void;
+    }
+
+    extern "system" fn handler(info: *mut ExceptionPointers) -> i32 {
+        // Only report the fatal, non-recoverable exceptions; let everything
+        // else (including the guard-page probes dynarmic may rely on) pass
+        // straight through untouched.
+        let rec = unsafe { &*(*info).exception_record };
+        let code = rec.exception_code;
+        let fatal = matches!(
+            code,
+            EXCEPTION_ACCESS_VIOLATION | EXCEPTION_ILLEGAL_INSTRUCTION | EXCEPTION_STACK_OVERFLOW
+        );
+        if !fatal {
+            return EXCEPTION_CONTINUE_SEARCH;
+        }
+        let kind = match code {
+            EXCEPTION_ACCESS_VIOLATION => "ACCESS_VIOLATION",
+            EXCEPTION_ILLEGAL_INSTRUCTION => "ILLEGAL_INSTRUCTION",
+            EXCEPTION_STACK_OVERFLOW => "STACK_OVERFLOW",
+            _ => "FATAL",
+        };
+        let (access, fault_addr) = if code == EXCEPTION_ACCESS_VIOLATION {
+            let kind = match rec.exception_information[0] {
+                0 => "read",
+                1 => "write",
+                8 => "execute",
+                _ => "?",
+            };
+            (kind, rec.exception_information[1])
+        } else {
+            ("", 0)
+        };
+
+        let mut msg = String::new();
+        msg.push_str(&format!(
+            "\ntouchHLE: FATAL host exception {} ({:#010x}) at host addr {:?}",
+            kind, code, rec.exception_address
+        ));
+        if code == EXCEPTION_ACCESS_VIOLATION {
+            msg.push_str(&format!(" — {} of guest/host addr {:#x}", access, fault_addr));
+        }
+        msg.push('\n');
+        msg.push_str(&format!(
+            "last guest PC: {:#x}, LR: {:#x}\n",
+            crate::environment::LAST_GUEST_PC.load(Ordering::Relaxed),
+            crate::environment::LAST_GUEST_LR.load(Ordering::Relaxed),
+        ));
+        let oldest = crate::environment::GUEST_PC_RING_IDX.load(Ordering::Relaxed) % 32;
+        let mut ring = String::from("recent guest PCs:");
+        for i in 0..32 {
+            let idx = oldest.wrapping_add(i) % 32;
+            ring.push_str(&format!(
+                " {:#x}",
+                crate::environment::GUEST_PC_RING[idx].load(Ordering::Relaxed)
+            ));
+        }
+        msg.push_str(&ring);
+        msg.push('\n');
+
+        if let Ok(mut err) = std::io::stderr().lock().write_all(msg.as_bytes()).map(|_| ()) {
+            let _ = &mut err;
+        }
+        let _ = std::io::stderr().flush();
+        // Let the default handler run so the process still terminates (and any
+        // attached debugger / WER still sees the original exception).
+        EXCEPTION_CONTINUE_SEARCH
+    }
+
+    pub fn install() {
+        // first = 0: run us LAST, after the memory subsystem's own
+        // lazy-commit VEH (registered with first=1) has had its chance to
+        // commit a reserved-but-uncommitted guest page and resume. We only
+        // want to report faults that nobody could recover — i.e. the real
+        // fatal crash — not the routine lazy-commit page faults.
+        unsafe {
+            AddVectoredExceptionHandler(0, handler);
+        }
+    }
+}
+
+#[cfg(windows)]
+pub use win_imp::install;

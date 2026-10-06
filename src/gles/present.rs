@@ -26,8 +26,32 @@ static GLYPH_TEXTURES: OnceLock<Mutex<Option<Vec<u32>>>> = OnceLock::new();
 // Runtime-controlled flag to enable the on-screen FPS overlay without requiring
 // an environment variable. Use set_onscreen_fps_enabled(true/false) to control it
 // from other parts of the runtime (e.g., the app picker or window input).
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 static ONSCREEN_FPS_ENABLED: OnceLock<AtomicBool> = OnceLock::new();
+
+// DIAG (TOUCHHLE_STALL_DIAG): epoch-millis of the last presented frame, updated
+// at the top of present_frame. The main run loop reads this to detect a guest
+// hang (frames stop being presented while the guest keeps burning CPU) and dump
+// the spinning thread's stack. 0 = nothing presented yet.
+static LAST_PRESENT_MS: AtomicU64 = AtomicU64::new(0);
+
+fn epoch_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+/// Milliseconds since the last presented frame, or `None` if no frame has been
+/// presented yet.
+pub fn ms_since_last_present() -> Option<u64> {
+    let last = LAST_PRESENT_MS.load(Ordering::Relaxed);
+    if last == 0 {
+        None
+    } else {
+        Some(epoch_ms().saturating_sub(last))
+    }
+}
 
 impl FpsCounter {
     pub fn start() -> Self {
@@ -91,6 +115,9 @@ pub unsafe fn present_frame(
     // so these need to be updated in tandem.
 
     use gles11::types::*;
+
+    // DIAG: record that a frame reached the present path.
+    LAST_PRESENT_MS.store(epoch_ms(), Ordering::Relaxed);
 
     // Draw the quad
     gles.Viewport(

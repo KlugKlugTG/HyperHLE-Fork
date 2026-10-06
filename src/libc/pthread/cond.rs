@@ -247,7 +247,7 @@ pub fn pthread_cond_wait(
         .get_mut(&cond)
         .unwrap();
 
-    assert!(!host_object.timed_out.contains(&current_thread));
+    host_object.timed_out.remove(&current_thread);
     0 // success
 }
 

@@ -165,6 +165,14 @@ pub struct Options {
     /// command line. Apps that legitimately rely on the ES 1.1 fixed-function
     /// pipeline should NOT enable this flag.
     pub prefer_gles2_context: bool,
+    /// Override the EAGL present rotation with a fixed clockwise angle in
+    /// degrees (0, 90, 180 or 270), replacing the orientation-derived rotation
+    /// and the iPad autorotation compensation. Some apps (e.g. the universal
+    /// iPhone+iPad binary of Minecraft: Story Mode, com.telltalegames.MC100)
+    /// draw their frame already upright for the display, so the heuristic
+    /// rotation turns the picture sideways; `--present-rotate=0` presents it
+    /// as-is. `None` keeps the automatic behaviour.
+    pub present_rotate: Option<u32>,
     /// Force EAGL `initWithAPI:` to create an OpenGL ES 1.1 (fixed-function)
     /// context even when the app requested an OpenGL ES 2.0/3.x context.
     ///
@@ -279,6 +287,7 @@ impl Default for Options {
                 .map(|value| value != "0")
                 .unwrap_or(true),
             prefer_gles2_context: false,
+            present_rotate: None,
             force_gles1_context: std::env::var("TOUCHHLE_FORCE_GLES1_CONTEXT")
                 .map(|value| {
                     let value = value.trim();
@@ -535,6 +544,23 @@ impl Options {
             self.vsync = VsyncMode::On;
         } else if arg == "--no-vsync" {
             self.vsync = VsyncMode::Off;
+        } else if arg == "--landscape-uiscreen-bounds" {
+            // Report UIScreen.bounds (and therefore the EAGL layer / renderbuffer
+            // size) as landscape instead of the iOS-accurate portrait-native
+            // bounds. Apps that lay their render target out directly from
+            // UIScreen.bounds without applying the interface-orientation
+            // rotation (e.g. Minecraft: Story Mode) otherwise render a portrait
+            // frame that gets stretched into the landscape window. The GLES
+            // layer reads this via the env var, so set it here.
+            std::env::set_var("TOUCHHLE_LANDSCAPE_UISCREEN_BOUNDS", "1");
+        } else if let Some(value) = arg.strip_prefix("--present-rotate=") {
+            let deg: u32 = value
+                .parse()
+                .map_err(|_| "Invalid value for --present-rotate= (expected 0, 90, 180 or 270)".to_string())?;
+            if !matches!(deg, 0 | 90 | 180 | 270) {
+                return Err("Invalid value for --present-rotate= (expected 0, 90, 180 or 270)".to_string());
+            }
+            self.present_rotate = Some(deg);
         } else if arg == "--perf-hints" {
             self.perf_hints = true;
         } else if arg == "--no-perf-hints" {

@@ -332,7 +332,7 @@ com.gamehivecorp.superbattleracers: --landscape-right --gles1=gles1_on_gl2
 com.blackstoneaudio.enhancedaudioplayer.bsa-Animal-Farm: --device-family=ipad --landscape-right --force-composition
 
 # Minecraft: Story Mode
-com.telltalegames.MC100: --device-family=ipad --landscape-left --prefer-gles2-context
+com.telltalegames.MC100: --device-family=ipad --landscape-left --prefer-gles2-context --landscape-uiscreen-bounds --present-rotate=0
 
 # Drive Ahead! / Crash On Wheels requests an ES1 EAGL context but uses the Cocos2d GLES2 shader pipeline.
 com.dodreams.crashonwheels: --landscape-left --prefer-gles2-context --force-composition

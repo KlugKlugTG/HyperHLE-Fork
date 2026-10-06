@@ -700,6 +700,13 @@ pub const CLASSES: ClassExports = objc_classes! {
                 height = height.min(MAX_RENDERBUFFER_DIMENSION);
             }
 
+            // RBSIZE-DIAG: log renderbuffer storage dimensions each time so a
+            // mid-run resize (loading screen vs game scene) is visible.
+            log!(
+                "RBSIZE-DIAG renderbufferStorage drawable={:?} -> {}x{} (contents_scale={}, scale_hack={})",
+                drawable, width, height, contents_scale, scale_hack
+            );
+
             if std::env::var_os("TOUCHHLE_FORCE_LANDSCAPE_RENDERBUFFER").is_some() {
                 let is_landscape = env
                     .window
@@ -1019,7 +1026,16 @@ pub const CLASSES: ClassExports = objc_classes! {
 
     // We're presenting to the opaque CAEAGLLayer that covers the screen.
     // We can use the fast path where we skip composition and present directly.
-    if drawable == fullscreen_layer {
+    //
+    // We also take this fast path when a *different* full-screen layer was
+    // discovered (`fullscreen_layer != nil && != drawable`). The game only
+    // issues `presentRenderbuffer:` for the EAGL view it is actively drawing,
+    // so that drawable is what should appear; some apps (Minecraft: Story
+    // Mode) also keep a second full-screen layer in the window tree, and the
+    // old code treated "this isn't the one layer I found" as "skip the frame",
+    // which left the window black. Presenting the drawable the game just
+    // rendered is the correct, visible choice.
+    if drawable == fullscreen_layer || fullscreen_layer != nil {
         // Decide between presenting on the GPU (copy the renderbuffer into a
         // texture and draw it into the window — cheap) and reading the frame
         // back to RAM and pushing it through the compositor (a full pipeline
@@ -1201,6 +1217,24 @@ pub const CLASSES: ClassExports = objc_classes! {
             return false;
         };
         dump_readback_ppm(&pixels_vec, width, height);
+        // DIAG (TOUCHHLE_TRACE_PRESENT=1): is the frame we read back actually
+        // non-black? This tells apart "renderer produced a black frame"
+        // (content/loading) from "we present fine but the pixels never reach
+        // the window" (compositor/layer bug). Sample the max channel + count
+        // of non-zero bytes, rate-limited.
+        if crate::env_flag_cached!("TOUCHHLE_TRACE_PRESENT") {
+            use std::sync::atomic::{AtomicU32, Ordering};
+            static N: AtomicU32 = AtomicU32::new(0);
+            let n = N.fetch_add(1, Ordering::Relaxed);
+            if n < 8 || n % 60 == 0 {
+                let max = pixels_vec.iter().copied().max().unwrap_or(0);
+                let nonzero = pixels_vec.iter().filter(|&&b| b != 0).count();
+                log!(
+                    "PRESENT-DIAG slow-path frame #{} {}x{} max_channel={} nonzero_bytes={}/{}",
+                    n, width, height, max, nonzero, pixels_vec.len()
+                );
+            }
+        }
         present_pixels(env, drawable, pixels_vec, width, height);
 
         // The slow path stores the freshly rendered frame in `presented_pixels`
@@ -2442,7 +2476,35 @@ unsafe fn present_renderbuffer(
     } else {
         env.window.as_mut().unwrap().rotation_matrix()
     };
+    // Fixed present-rotation override: the `--present-rotate=N` option (per-app
+    // via the default options file) takes precedence, then the live
+    // TOUCHHLE_PRESENT_ROTATE env var, else the orientation-derived matrix.
+    let rotate_override = env
+        .options
+        .present_rotate
+        .map(|d| d.to_string())
+        .or_else(|| crate::env_var_cached!("TOUCHHLE_PRESENT_ROTATE").map(|s| s.to_string()));
+    let rotation_matrix = match rotate_override.as_deref() {
+        Some("0") => crate::matrix::Matrix::<2>::identity(),
+        Some("90") => crate::matrix::Matrix::z_rotation(std::f32::consts::FRAC_PI_2),
+        Some("180") => crate::matrix::Matrix::z_rotation(std::f32::consts::PI),
+        Some("270") => crate::matrix::Matrix::z_rotation(-std::f32::consts::FRAC_PI_2),
+        _ => rotation_matrix,
+    };
     let virtual_cursor_visible_at = env.window.as_mut().unwrap().virtual_cursor_visible_at();
+
+    if crate::env_flag_cached!("TOUCHHLE_TRACE_PRESENT") {
+        static GEOM_LOGGED: std::sync::Once = std::sync::Once::new();
+        GEOM_LOGGED.call_once(|| {
+            log!(
+                "PRESENT-GEOM viewport={:?} device_family_ipad={} orientation={:?} needs_autorot={}",
+                viewport,
+                device_family.is_ipad(),
+                device_orientation,
+                needs_autorotation_compensation
+            );
+        });
+    }
 
     let Some(gles_ctx) = super::get_thread_context(
         &mut env.framework_state.opengles,
@@ -2472,6 +2534,25 @@ unsafe fn present_renderbuffer(
     let gles = gles_boxed.as_mut();
 
     invalidate_present_cache_for_context(context_token);
+
+    // DIAG (TOUCHHLE_TRACE_PRESENT=1): dump the raw renderbuffer the game drew,
+    // at its native size, placed EARLY so later early-returns can't skip it.
+    if crate::env_flag_cached!("TOUCHHLE_TRACE_PRESENT") {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static N: AtomicU32 = AtomicU32::new(0);
+        let n = N.fetch_add(1, Ordering::Relaxed);
+        if matches!(n, 600 | 1200 | 1700) {
+            let (px, w, h) = read_renderbuffer(gles, renderbuffer, Vec::new());
+            let mut out = format!("P6\n{} {}\n255\n", w, h).into_bytes();
+            for c in px.chunks_exact(4) {
+                out.extend_from_slice(&[c[0], c[1], c[2]]);
+            }
+            match std::fs::write(format!("rb_dump_{}.ppm", n), &out) {
+                Ok(()) => log!("DUMP-RB wrote rb_dump_{}.ppm ({}x{})", n, w, h),
+                Err(e) => log!("DUMP-RB failed: {}", e),
+            }
+        }
+    }
 
     // Per-section diagnostic checkpoint helper. When --trace-gl-errors is
     // on, this drains GL errors after each named section of
@@ -3275,6 +3356,27 @@ unsafe fn present_renderbuffer(
     gles.DepthMask(gles11::TRUE);
     gles.StencilMask(!0);
     gles.Disable(gles11::STENCIL_TEST);
+
+    // DIAG (TOUCHHLE_DUMP_RB=1): dump the raw renderbuffer the game drew, at
+    // its native size, to compare the game's render against what we present.
+    if crate::env_flag_cached!("TOUCHHLE_DUMP_RB") {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static N: AtomicU32 = AtomicU32::new(0);
+        let n = N.fetch_add(1, Ordering::Relaxed);
+        log_once!("DUMP-RB: present_renderbuffer reached, dumping enabled");
+        if matches!(n, 600 | 1200 | 1700) {
+            let (px, w, h) = read_renderbuffer(gles, renderbuffer, Vec::new());
+            let mut out = format!("P6\n{} {}\n255\n", w, h).into_bytes();
+            for c in px.chunks_exact(4) {
+                out.extend_from_slice(&[c[0], c[1], c[2]]);
+            }
+            let path = format!("rb_dump_{}.ppm", n);
+            match std::fs::write(&path, &out) {
+                Ok(()) => log!("DUMP-RB wrote {} ({}x{})", path, w, h),
+                Err(e) => log!("DUMP-RB failed {}: {}", path, e),
+            }
+        }
+    }
 
     // Draw the quad
     present_frame(gles, viewport, rotation_matrix, virtual_cursor_visible_at);

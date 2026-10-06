@@ -503,6 +503,18 @@ pub fn open_direct(env: &mut Environment, path: ConstPtr<u8>, flags: i32) -> Fil
     if res == -1 && (flags & O_CREAT) == 0 {
         env.note_missing_unity_player_archive(&path_string);
     }
+    // DIAG (TOUCHHLE_TRACE_OPEN=1): trace every file open with its result, so a
+    // guest stuck waiting on data can be traced back to the file it wanted.
+    if crate::env_flag_cached!("TOUCHHLE_TRACE_OPEN") {
+        log!(
+            "OPEN-DIAG t={} req={:?} resolved={:?} flags={:#x} => fd={}",
+            env.current_thread,
+            path_string,
+            actual_path_string,
+            flags,
+            res
+        );
+    }
     if res != -1 && (flags & O_SHLOCK) != 0 {
         flock(env, res, LOCK_SH);
     }

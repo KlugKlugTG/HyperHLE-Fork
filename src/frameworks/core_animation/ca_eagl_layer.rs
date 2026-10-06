@@ -291,7 +291,12 @@ pub fn find_fullscreen_eagl_layer(env: &mut Environment) -> id {
     let mut top_window = None;
     for index in (0..window_count).rev() {
         let window = env.framework_state.uikit.ui_view.ui_window.windows[index];
-        if !msg![env; window isHidden] {
+        if msg![env; window isHidden] {
+            continue;
+        }
+        let layer: id = msg![env; window layer];
+        let bounds = env.objc.borrow::<CALayerHostObject>(layer).bounds;
+        if bounds.size.width > 0.0 && bounds.size.height > 0.0 {
             top_window = Some(window);
             break;
         }
@@ -367,20 +372,50 @@ pub fn find_fullscreen_eagl_layer(env: &mut Environment) -> id {
             || opacity != 1.0
             || !transform_is_usable
         {
+            if crate::env_flag_cached!("TOUCHHLE_TRACE_PRESENT") {
+                log!(
+                    "FULLSCREEN-DIAG layer {:?} rejected: frame={:?} screen={:?} frame_match={} bounds_origin={:?} anchor={:?} hidden={} opacity={} transform_kind={:?} transform_usable={}",
+                    layer,
+                    layer_frame,
+                    screen_bounds,
+                    fullscreen_frame_matches_screen(layer_frame, screen_bounds),
+                    layer_bounds.origin,
+                    anchor_point,
+                    hidden,
+                    opacity,
+                    transform_kind,
+                    transform_is_usable
+                );
+            }
             return nil;
         }
 
-        let sublayer_count = env.objc.borrow::<CALayerHostObject>(layer).sublayers.len();
+        let sublayers = env
+            .objc
+            .borrow::<CALayerHostObject>(layer)
+            .sublayers
+            .clone();
         parent_to_screen = layer_to_screen;
-        let mut next = None;
-        for index in (0..sublayer_count).rev() {
-            let candidate = env.objc.borrow::<CALayerHostObject>(layer).sublayers[index];
-            if layer_subtree_may_draw_pixels(env, candidate, 0) {
-                next = Some(candidate);
+        let eagl_class: Class = msg_class![env; CAEAGLLayer class];
+        let mut fallback = None;
+        let mut eagl_pick = None;
+        for &candidate in sublayers.iter().rev() {
+            if !layer_subtree_may_draw_pixels(env, candidate, 0) {
+                continue;
+            }
+            if fallback.is_none() {
+                fallback = Some(candidate);
+            }
+            let bounds = env.objc.borrow::<CALayerHostObject>(candidate).bounds;
+            if bounds.size.width > 0.0
+                && bounds.size.height > 0.0
+                && msg![env; candidate isKindOfClass:eagl_class]
+            {
+                eagl_pick = Some(candidate);
                 break;
             }
         }
-        if let Some(next) = next {
+        if let Some(next) = eagl_pick.or(fallback) {
             layer = next;
         } else {
             break;
@@ -388,11 +423,17 @@ pub fn find_fullscreen_eagl_layer(env: &mut Environment) -> id {
     }
 
     if !env.objc.borrow::<CALayerHostObject>(layer).opaque {
+        if crate::env_flag_cached!("TOUCHHLE_TRACE_PRESENT") {
+            log!("FULLSCREEN-DIAG layer {:?} rejected: not opaque", layer);
+        }
         return nil;
     }
 
     let ca_eagl_layer_class: Class = msg_class![env; CAEAGLLayer class];
     if !msg![env; layer isKindOfClass:ca_eagl_layer_class] {
+        if crate::env_flag_cached!("TOUCHHLE_TRACE_PRESENT") {
+            log!("FULLSCREEN-DIAG layer {:?} rejected: not a CAEAGLLayer", layer);
+        }
         return nil;
     }
 

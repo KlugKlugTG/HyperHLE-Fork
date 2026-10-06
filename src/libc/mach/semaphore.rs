@@ -42,6 +42,57 @@ const MAX_TIMED_WAIT_SECS: u32 = 3600;
 /// uses (they typically wait in 5–50ms slices) while costing almost nothing.
 const TIMED_WAIT_POLL_INTERVAL: Duration = Duration::from_millis(1);
 
+/// Deadlock-breaker for the otherwise-infinite [semaphore_wait].
+///
+/// FMOD's worker threads (its AsyncManager command pump and the Studio
+/// BankLoader queue) park on a Mach semaphore that the producer is supposed to
+/// signal when it posts work. In Minecraft: Story Mode (com.telltalegames.MC100)
+/// that producer-side signal never reaches the workers under our cooperative
+/// scheduler, so `Studio::System::loadBankFile` blocks forever in
+/// `system_checkBlockingBank` during `SoundSystem::Initialize` and the game
+/// never renders a second frame.
+///
+/// Rather than block a worker forever, cap the wait: after this much guest time
+/// with no real signal, return KERN_SUCCESS *spuriously* so the worker loops
+/// back and re-checks its own queue/command-buffer state. Both FMOD workers are
+/// written to tolerate a spurious wake — `AsyncManager::asyncThreadLoop`
+/// re-runs `asyncProcessAndUpdate` (a no-op on an empty buffer) and
+/// `ThreadsafeQueue::pop` re-takes its lock and returns an empty result when the
+/// queue is empty — so a spurious wake is safe, and when work *is* pending it
+/// lets the worker finally process it. Normal waiters are signalled within
+/// milliseconds, far below this cap, so correctly-paced code is unaffected.
+const SEMAPHORE_WAIT_SPURIOUS_WAKE: Duration = Duration::from_millis(100);
+
+/// DIAG (TOUCHHLE_TRACE_MACHSEM=1): trace Mach semaphore traffic. FMOD drives
+/// its async/bank-loader threads entirely through these, so a lost signal shows
+/// up here as a wait with no matching signal.
+fn machsem_trace(env: &Environment, op: &str, sem: semaphore_t) {
+    if !crate::env_flag_cached!("TOUCHHLE_TRACE_MACHSEM") {
+        return;
+    }
+    let value = env
+        .libc_state
+        .semaphore
+        .open_semaphores
+        .get(&sem)
+        .map(|rc| (**rc).borrow().value);
+    let waiters = env
+        .libc_state
+        .semaphore
+        .open_semaphores
+        .get(&sem)
+        .map(|rc| (**rc).borrow().waiting.len());
+    log!(
+        "MACHSEM t={} {} sem={:?} value={:?} waiters={:?} lr={:#x}",
+        env.current_thread,
+        op,
+        sem,
+        value,
+        waiters,
+        env.cpu.regs()[14]
+    );
+}
+
 fn semaphore_create(
     env: &mut Environment,
     task: task_t,
@@ -57,6 +108,12 @@ fn semaphore_create(
     assert_eq!(res, 0);
 
     env.mem.write(semaphore, open_semaphore);
+    let caller_lr = env.cpu.regs()[14];
+    machsem_trace(env, "create", open_semaphore);
+    if crate::env_flag_cached!("TOUCHHLE_TRACE_MACHSEM") {
+        // Log the creator's LR so we can trace which code path owns each semaphore
+        log!("  MACHSEM-CREATE-BT lr={:#x}", caller_lr);
+    }
     let result = KERN_SUCCESS;
     log_dbg!(
         "semaphore_create({:?}, {:?}, {:?}, {:?}) -> {:?}",
@@ -74,6 +131,13 @@ fn semaphore_signal(env: &mut Environment, semaphore: semaphore_t) -> kern_retur
     // an invalid handle maps to KERN_INVALID_ARGUMENT rather than aborting the
     // process. (Mach's `semaphore_signal` returns KERN_INVALID_ARGUMENT for a
     // bad semaphore port.)
+    let caller_lr = env.cpu.regs()[14];
+    machsem_trace(env, "signal", semaphore);
+    if crate::env_flag_cached!("TOUCHHLE_TRACE_MACHSEM") {
+        // Also log a symbolized backtrace for every signal, so we can trace
+        // which code path is (or isn't) waking the worker.
+        log!("  MACHSEM-BT signal lr={:#x}", caller_lr);
+    }
     let result = if sem_post(env, semaphore) == 0 {
         KERN_SUCCESS
     } else {
@@ -148,13 +212,40 @@ fn semaphore_signal_thread(
 }
 
 fn semaphore_wait(env: &mut Environment, semaphore: semaphore_t) -> kern_return_t {
-    // Mirror `sem_wait`: KERN_SUCCESS once the semaphore is acquired, or
-    // KERN_INVALID_ARGUMENT for an invalid semaphore port instead of a panic.
-    let result = if sem_wait(env, semaphore) == 0 {
-        KERN_SUCCESS
-    } else {
-        KERN_INVALID_ARGUMENT
+    machsem_trace(env, "wait-enter", semaphore);
+    if !is_known_semaphore(env, semaphore) {
+        log!(
+            "Warning: semaphore_wait({:?}) called with an unknown semaphore; \
+             returning KERN_INVALID_ARGUMENT.",
+            semaphore
+        );
+        return KERN_INVALID_ARGUMENT;
+    }
+    // Bounded wait with a spurious-wake deadlock-breaker (see
+    // SEMAPHORE_WAIT_SPURIOUS_WAKE). Poll for a real signal; if none arrives
+    // within the cap, wake the caller anyway so an FMOD worker can re-check its
+    // own state instead of deadlocking the whole game.
+    let deadline = env.guest_clock.now() + SEMAPHORE_WAIT_SPURIOUS_WAKE;
+    let result = loop {
+        if env.sem_decrement(semaphore, false) {
+            break KERN_SUCCESS;
+        }
+        if !is_known_semaphore(env, semaphore) {
+            break KERN_INVALID_ARGUMENT;
+        }
+        let now = env.guest_clock.now();
+        if now >= deadline {
+            // Spurious wake: no real signal arrived in time. Report success so
+            // the (re-check-on-wake) FMOD worker loop makes progress.
+            break KERN_SUCCESS;
+        }
+        env.sleep_guest((deadline - now).min(TIMED_WAIT_POLL_INTERVAL));
     };
+    if crate::env_flag_cached!("TOUCHHLE_TRACE_MACHSEM") {
+        let ret_lr = env.cpu.regs()[14];
+        let ret_pc = env.cpu.regs()[15];
+        log!("MACHSEM t={} wait-exit sem={:?} result={:?} returning-to-lr={:#x} pc={:#x}", env.current_thread, semaphore, result, ret_lr, ret_pc);
+    }
     log_dbg!("semaphore_wait({:?}) -> {:?}", semaphore, result);
     result
 }

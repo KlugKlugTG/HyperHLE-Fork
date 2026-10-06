@@ -1309,6 +1309,52 @@ impl Environment {
         frames
     }
 
+    /// DIAG (TOUCHHLE_STALL_DIAG): detect a guest hang — frames stopped being
+    /// presented while the guest keeps executing — and periodically dump every
+    /// active thread's stack so the spinning function can be located.
+    fn stall_diag(&self) {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static LAST_DUMP_MS: AtomicU64 = AtomicU64::new(0);
+        static FIRST_SEEN_MS: AtomicU64 = AtomicU64::new(0);
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        // Record when the run loop first started polling us (proxy for guest
+        // start), so we can also catch a guest that hangs BEFORE presenting its
+        // very first frame.
+        let _ = FIRST_SEEN_MS.compare_exchange(0, now, Ordering::Relaxed, Ordering::Relaxed);
+        let since_present = match crate::gles::present::ms_since_last_present() {
+            // A frame has been presented: stall = >3s since the last one.
+            Some(ms) if ms >= 3000 => ms,
+            Some(_) => return,
+            // No frame ever presented: stall = >6s since guest start.
+            None => {
+                let since_start = now.saturating_sub(FIRST_SEEN_MS.load(Ordering::Relaxed));
+                if since_start < 6000 {
+                    return;
+                }
+                since_start
+            }
+        };
+        // Throttle dumps to once every ~2s.
+        if now.saturating_sub(LAST_DUMP_MS.load(Ordering::Relaxed)) < 2000 {
+            return;
+        }
+        LAST_DUMP_MS.store(now, Ordering::Relaxed);
+        let regs = *self.cpu.regs();
+        echo_no_panic!(
+            "STALL-DIAG no frame presented for {} ms; current thread #{} PC={:#x} LR={:#x} FP={:#x} SP={:#x}",
+            since_present,
+            self.current_thread,
+            regs[cpu::Cpu::PC],
+            regs[cpu::Cpu::LR],
+            regs[abi::FRAME_POINTER],
+            regs[cpu::Cpu::SP],
+        );
+        self.stack_trace_all();
+    }
+
     fn dump_all_regs(&self) {
         echo_no_panic!(
             "Dumping registers for current thread (#{})",
@@ -1898,6 +1944,14 @@ impl Environment {
             };
             if let Some(w) = self.window.as_mut() {
                 w.on_main_stack = true;
+            }
+
+            // DIAG (TOUCHHLE_STALL_DIAG=1): if the guest keeps running but stops
+            // presenting frames, it is hung/spinning. Periodically dump the
+            // stack of every active thread so the spinning function can be
+            // identified. Env-gated so it costs nothing in normal runs.
+            if crate::env_flag_cached!("TOUCHHLE_STALL_DIAG") {
+                self.stall_diag();
             }
 
             if kill_current_thread && self.guest_termination_requested {

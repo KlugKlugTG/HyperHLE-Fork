@@ -15,6 +15,7 @@ use crate::abi::{CallFromHost, GuestFunction};
 use crate::dyld::{
     export_c_func, export_c_func_aliased, ConstantExports, FunctionExports, HostConstant,
 };
+use crate::libc::semaphore::{host_create_semaphore, host_destroy_semaphore, sem_t};
 use crate::mem::{ConstVoidPtr, MutPtr, MutVoidPtr, Ptr};
 use crate::Environment;
 use std::collections::HashMap;
@@ -97,8 +98,10 @@ pub const CONSTANTS: ConstantExports = &[(
 pub struct State {
     /// Set of `dispatch_once_t` guest addresses that have already fired.
     once_tokens: std::collections::HashSet<u32>,
-    /// Semaphore values keyed by guest pointer bits.
-    semaphores: HashMap<u32, i64>,
+    /// Backing POSIX semaphore for each dispatch semaphore handle. Dispatch
+    /// semaphores must really block, so they are backed by the same host
+    /// semaphore objects as `sem_t` rather than a bare counter.
+    semaphores: HashMap<u32, MutPtr<sem_t>>,
     /// Named queues keyed by label.
     named_queues: HashMap<String, u32>,
     /// Next queue handle to hand out.
@@ -267,8 +270,10 @@ fn dispatch_retain(_env: &mut Environment, _obj: MutVoidPtr) {
     // no-op for all dispatch objects
 }
 
-fn dispatch_release(_env: &mut Environment, _obj: MutVoidPtr) {
-    // no-op
+fn dispatch_release(env: &mut Environment, obj: MutVoidPtr) {
+    // Dispatch semaphores own a host semaphore and guest allocation; free them
+    // so a guest that churns through semaphores does not leak.
+    release_if_semaphore(env, obj);
 }
 
 // MARK: - Dispatch async / sync
@@ -452,38 +457,115 @@ fn dispatch_group_notify_f(
 // MARK: - dispatch_semaphore
 
 fn dispatch_semaphore_create(env: &mut Environment, value: i64) -> dispatch_semaphore_t {
+    // A dispatch semaphore has to be able to actually block a waiter, so back
+    // it with the same host semaphore object `sem_t` uses: that machinery is
+    // already integrated with the thread scheduler
+    // (`ThreadBlock::Semaphore`). A bare counter cannot block, which turns a
+    // worker thread's "wait for work" into a busy spin and deadlocks any guest
+    // that hands work to a thread pool.
+    let backing = host_create_semaphore(env, value.max(0) as u32);
     let handle = {
         let st = get_state(env);
         st.next_queue_handle += 2;
         let h = st.next_queue_handle | 0x0300_0000;
-        st.semaphores.insert(h, value);
+        st.semaphores.insert(h, backing);
         h
     };
     MutVoidPtr::from_bits(handle)
 }
 
-fn dispatch_semaphore_wait(env: &mut Environment, sem: dispatch_semaphore_t, _timeout: u64) -> i32 {
+fn dispatch_semaphore_wait(env: &mut Environment, sem: dispatch_semaphore_t, timeout: u64) -> i32 {
     let key = sem.to_bits();
-    let st = get_state(env);
-    if let Some(val) = st.semaphores.get_mut(&key) {
-        *val -= 1;
-        0 // success
-    } else {
+    let Some(&backing) = get_state(env).semaphores.get(&key) else {
         log!("dispatch_semaphore_wait: unknown semaphore {:?}", sem);
-        -1
+        return -1;
+    };
+    // `DISPATCH_TIME_NOW` means "poll": return non-zero instead of blocking
+    // when the semaphore is unavailable. Any other timeout blocks; we do not
+    // model a finite timeout yet, so those wait until signalled (documented
+    // below) rather than spinning.
+    if timeout == DISPATCH_TIME_NOW {
+        if env.sem_decrement(backing, false) {
+            0
+        } else {
+            // Non-zero return == timed out, per dispatch_semaphore_wait(3).
+            -1
+        }
+    } else if timeout == DISPATCH_TIME_FOREVER {
+        // Block until signalled. (Must stay a real block: Telltale's
+        // JobScheduler counts jobs via dispatch semaphores and does not
+        // tolerate a wait returning without a real signal.)
+        if crate::env_flag_cached!("TOUCHHLE_TRACE_DISPATCHSEM") {
+            log!(
+                "DSEM t={} wait-enter sem={:#x} lr={:#x}",
+                env.current_thread, sem.to_bits(), env.cpu.regs()[14]
+            );
+        }
+        env.sem_decrement(backing, true);
+        if crate::env_flag_cached!("TOUCHHLE_TRACE_DISPATCHSEM") {
+            log!("DSEM t={} wait-exit sem={:#x}", env.current_thread, sem.to_bits());
+        }
+        0
+    } else {
+        // Finite timeout: wait up to `timeout` and return non-zero (timed out)
+        // if no signal arrives. This MUST be honored, not treated as infinite:
+        // touchHLE's `dispatch_time(DISPATCH_TIME_NOW, ns)` returns the
+        // relative nanosecond delta (it adds to a zero base), so `timeout` is
+        // that duration. Telltale's `PlatformSemaphore::TimedWait` — the
+        // render thread's frame handshake — depends on the wait actually
+        // timing out so the render loop can poll and advance; treating it as
+        // infinite deadlocked `RenderThread::FinishFrame` (the frozen-spinner
+        // hang). Poll like semaphore_timedwait does.
+        if crate::env_flag_cached!("TOUCHHLE_TRACE_DISPATCHSEM") {
+            log!(
+                "DSEM t={} timedwait-enter sem={:#x} timeout_ns={} lr={:#x}",
+                env.current_thread, sem.to_bits(), timeout, env.cpu.regs()[14]
+            );
+        }
+        let timeout_ns = timeout.min(3_600_000_000_000); // cap at 1 hour
+        let deadline = env.guest_clock.now() + std::time::Duration::from_nanos(timeout_ns);
+        const POLL: std::time::Duration = std::time::Duration::from_millis(1);
+        loop {
+            if env.sem_decrement(backing, false) {
+                return 0;
+            }
+            let now = env.guest_clock.now();
+            if now >= deadline {
+                // Timed out: dispatch_semaphore_wait returns non-zero.
+                return 1;
+            }
+            env.sleep_guest((deadline - now).min(POLL));
+        }
     }
 }
 
 fn dispatch_semaphore_signal(env: &mut Environment, sem: dispatch_semaphore_t) -> i32 {
     let key = sem.to_bits();
-    let st = get_state(env);
-    if let Some(val) = st.semaphores.get_mut(&key) {
-        *val += 1;
-        0
-    } else {
+    let Some(&backing) = get_state(env).semaphores.get(&key) else {
         log!("dispatch_semaphore_signal: unknown semaphore {:?}", sem);
-        0
+        return 0;
+    };
+    if crate::env_flag_cached!("TOUCHHLE_TRACE_DISPATCHSEM") {
+        log!(
+            "DSEM t={} signal sem={:#x} lr={:#x}",
+            env.current_thread, sem.to_bits(), env.cpu.regs()[14]
+        );
     }
+    env.sem_increment(backing);
+    // Returns non-zero if a thread was woken. We do not track that here, and
+    // every in-tree caller ignores the result.
+    0
+}
+
+/// Release the backing semaphore for a dispatch semaphore handle, if `obj` is
+/// one. Returns whether it was.
+fn release_if_semaphore(env: &mut Environment, obj: MutVoidPtr) -> bool {
+    let key = obj.to_bits();
+    let Some(backing) = get_state(env).semaphores.remove(&key) else {
+        return false;
+    };
+    host_destroy_semaphore(env, backing);
+    true
 }
 
 // MARK: - dispatch_source (stub)
