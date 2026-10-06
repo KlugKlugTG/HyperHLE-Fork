@@ -35,7 +35,7 @@ if sys.platform == "win32":
     import win32gui
     from PIL import ImageGrab
 
-FPS_RE = re.compile(r"(?:EAGLContext .*|Core Animation compositor) FPS: ([0-9.]+)")
+FPS_RE = re.compile(r"EAGLContext .* FPS: ([0-9.]+)")
 
 
 def find_window(pid_hint_title="touchHLE"):
@@ -250,7 +250,7 @@ def main():
             screenshot(hwnd, out / "final.png")
             alive = proc.poll() is None
             tail = [f for t, f in fps_samples[-5:]]
-            print(f"Frame-rate reports: {len(fps_samples)}, last: {tail}")
+            print(f"EAGL FPS reports: {len(fps_samples)}, last: {tail}")
             if not alive:
                 print(f"FAIL: emulator exited with code {proc.returncode}")
                 ok = False
