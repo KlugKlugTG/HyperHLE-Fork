@@ -161,10 +161,8 @@ fn decode_scalar_number(
     })
 }
 
-fn raw_struct_size(encoding: &str) -> Option<usize> {
-    if encoding.contains("_ccColor3B=") {
-        Some(3)
-    } else if encoding.contains("_GLKMatrix4=") {
+fn glk_raw_struct_size(encoding: &str) -> Option<usize> {
+    if encoding.contains("_GLKMatrix4=") {
         Some(64)
     } else if encoding.contains("_GLKVector4=") {
         Some(16)
@@ -219,7 +217,7 @@ fn decode_struct_value(
     } else if enc.contains("NSRange") {
         let range: NSRange = env.mem.read(value.cast::<NSRange>());
         Some(NSValueHostObject::NSRange(range))
-    } else if let Some(size) = raw_struct_size(enc) {
+    } else if let Some(size) = glk_raw_struct_size(enc) {
         let bytes = env.mem.get_bytes_fallible(value, size as u32)?.to_vec();
         Some(NSValueHostObject::RawStruct {
             encoding: enc.to_owned(),
@@ -1298,27 +1296,26 @@ pub fn is_conversion_lossless(env: &mut Environment, this: id, type_: CFNumberTy
 
 #[cfg(test)]
 mod tests {
-    use super::raw_struct_size;
+    use super::glk_raw_struct_size;
 
     #[test]
-    fn raw_struct_sizes_match_guest_encodings() {
-        assert_eq!(raw_struct_size(r"{_ccColor3B=CCC}"), Some(3));
+    fn glk_opaque_value_sizes_match_guest_encodings() {
         assert_eq!(
-            raw_struct_size(r"(_GLKMatrix4={?=ffffffffffffffff}[16f])"),
+            glk_raw_struct_size(r"(_GLKMatrix4={?=ffffffffffffffff}[16f])"),
             Some(64)
         );
         assert_eq!(
-            raw_struct_size(r"(_GLKVector2={?=ff}{?=ff}[2f])"),
+            glk_raw_struct_size(r"(_GLKVector2={?=ff}{?=ff}[2f])"),
             Some(8)
         );
         assert_eq!(
-            raw_struct_size(r"(_GLKVector4={?=ffff}{?=ffff}{?=ffff}[4f])"),
+            glk_raw_struct_size(r"(_GLKVector4={?=ffff}{?=ffff}{?=ffff}[4f])"),
             Some(16)
         );
         assert_eq!(
-            raw_struct_size(r"(_GLKVector3={?=fff}{?=fff}{?=fff}[3f])"),
+            glk_raw_struct_size(r"(_GLKVector3={?=fff}{?=fff}{?=fff}[3f])"),
             Some(12)
         );
-        assert_eq!(raw_struct_size("{CGPoint=ff}"), None);
+        assert_eq!(glk_raw_struct_size("{CGPoint=ff}"), None);
     }
 }

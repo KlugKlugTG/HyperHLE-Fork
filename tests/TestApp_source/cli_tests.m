@@ -65,57 +65,6 @@
 
 extern NSString *const NSDefaultRunLoopMode;
 
-@interface UIWebView : UIView
-- (void)setDelegate:(id)delegate;
-- (void)loadRequest:(id)request;
-- (BOOL)isLoading;
-@end
-
-@interface NSURLRequest : NSObject
-+ (instancetype)requestWithURL:(NSURL *)url;
-- (NSString *)valueForHTTPHeaderField:(NSString *)field;
-@end
-
-typedef struct objc_ivar *Ivar;
-extern Ivar class_getInstanceVariable(Class cls, const char *name);
-extern id object_getIvar(id object, Ivar ivar);
-extern void object_setIvar(id object, Ivar ivar, id value);
-
-@interface ObjCSetIvarProbe : NSObject {
-@public
-  id storedObject;
-}
-@end
-
-@implementation ObjCSetIvarProbe
-@end
-
-static int uiwebview_should_start_calls;
-static NSInteger uiwebview_navigation_type;
-static BOOL uiwebview_user_agent_present;
-static BOOL uiwebview_allow_navigation;
-
-@interface UIWebViewLoadDelegateProbe : NSObject
-- (BOOL)webView:(UIWebView *)webView
-    shouldStartLoadWithRequest:(NSURLRequest *)request
-                navigationType:(NSInteger)navigationType;
-@end
-
-@implementation UIWebViewLoadDelegateProbe
-- (BOOL)webView:(UIWebView *)webView
-    shouldStartLoadWithRequest:(NSURLRequest *)request
-                navigationType:(NSInteger)navigationType {
-  if (webView == nil || request == nil)
-    return NO;
-  NSString *userAgent = [request valueForHTTPHeaderField:@"User-Agent"];
-  uiwebview_user_agent_present =
-      userAgent != nil && ![userAgent isEqualToString:@""];
-  uiwebview_should_start_calls++;
-  uiwebview_navigation_type = navigationType;
-  return uiwebview_allow_navigation;
-}
-@end
-
 static int perform_selector_on_main_thread_calls;
 
 @interface PerformSelectorOnMainThreadProbe : NSObject
@@ -182,74 +131,6 @@ int test_UIApplication_canOpenURL_own_registered_scheme(void) {
   }
   [pool drain];
   return 0;
-}
-
-int test_UIWebView_delegateCanCancelProgrammaticLoad(void) {
-  NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
-  UIWebView *webView = [[UIWebView alloc] init];
-  UIWebViewLoadDelegateProbe *delegate =
-      [[UIWebViewLoadDelegateProbe alloc] init];
-  NSURL *url = [NSURL URLWithString:@"http://example.invalid/"];
-  NSURLRequest *request = [NSURLRequest requestWithURL:url];
-  if (webView == nil || delegate == nil || url == nil || request == nil) {
-    [delegate release];
-    [webView release];
-    [pool drain];
-    return -1;
-  }
-
-  uiwebview_should_start_calls = 0;
-  uiwebview_navigation_type = -1;
-  uiwebview_user_agent_present = NO;
-  uiwebview_allow_navigation = NO;
-  [webView setDelegate:delegate];
-  [webView loadRequest:request];
-
-  int result = 0;
-  if (uiwebview_should_start_calls != 1)
-    result = -2;
-  else if (uiwebview_navigation_type != 5)
-    result = -3;
-  else if (!uiwebview_user_agent_present)
-    result = -4;
-  else if ([webView isLoading])
-    result = -5;
-
-  [delegate release];
-  [webView release];
-  [pool drain];
-  return result;
-}
-
-int test_object_setIvar_roundTripsGuestIvar(void) {
-  NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
-  ObjCSetIvarProbe *probe = [[ObjCSetIvarProbe alloc] init];
-  NSObject *first = [[NSObject alloc] init];
-  NSObject *second = [[NSObject alloc] init];
-  Ivar ivar =
-      class_getInstanceVariable([ObjCSetIvarProbe class], "storedObject");
-  int result = -1;
-
-  if (probe != nil && first != nil && second != nil && ivar != NULL) {
-    object_setIvar(probe, ivar, first);
-    if (object_getIvar(probe, ivar) != first) {
-      result = -2;
-    } else {
-      object_setIvar(probe, ivar, second);
-      if (object_getIvar(probe, ivar) != second) {
-        result = -3;
-      } else {
-        object_setIvar(probe, ivar, nil);
-        result = object_getIvar(probe, ivar) == nil ? 0 : -4;
-      }
-    }
-  }
-
-  [probe release];
-  [second release];
-  [first release];
-  [pool drain];
-  return result;
 }
 
 int test_NSBundle_subbundleCacheRetainsAutoreleasedBundle(void) {
@@ -6508,8 +6389,6 @@ struct {
     FUNC_DEF(test_NSNotificationCenter_addObserver_nilName_removeObserver),
     FUNC_DEF(test_performSelectorOnMainThread_mainThreadDeferred),
     FUNC_DEF(test_UIApplication_canOpenURL_own_registered_scheme),
-    FUNC_DEF(test_UIWebView_delegateCanCancelProgrammaticLoad),
-    FUNC_DEF(test_object_setIvar_roundTripsGuestIvar),
     FUNC_DEF(test_NSBundle_subbundleCacheRetainsAutoreleasedBundle),
 };
 // clang-format on

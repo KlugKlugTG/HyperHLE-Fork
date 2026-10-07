@@ -86,69 +86,6 @@ struct UIWebViewHostObject {
 }
 impl_HostObject_with_superclass!(UIWebViewHostObject);
 
-fn web_view_user_agent(env: &Environment) -> String {
-    let family = env
-        .window
-        .as_ref()
-        .map(|window| window.device_family())
-        .or(env.options.as_ref().device_family)
-        .unwrap_or(crate::window::DeviceFamily::iPhone);
-    let (device, cpu) = if family.is_ipad() {
-        ("iPad", "OS")
-    } else if family.is_ipod_touch() {
-        ("iPod touch", "iPhone OS")
-    } else {
-        ("iPhone", "iPhone OS")
-    };
-    let (major, minor, patch) = env
-        .options
-        .as_ref()
-        .ios_version
-        .unwrap_or(crate::options::LATEST_IOS_VERSION);
-    let os_version = if patch == 0 {
-        format!("{major}_{minor}")
-    } else {
-        format!("{major}_{minor}_{patch}")
-    };
-    let webkit_version = match major {
-        0..=3 => "528.18",
-        4 => "533.17.9",
-        5 => "534.46",
-        6 => "536.26",
-        7 => "537.51.1",
-        8 => "600.1.4",
-        9 => "601.1.46",
-        10 => "602.1.50",
-        11 => "604.1.38",
-        _ => "605.1.15",
-    };
-    format!(
-        "Mozilla/5.0 ({device}; CPU {cpu} {os_version} like Mac OS X) \
-         AppleWebKit/{webkit_version} (KHTML, like Gecko) Mobile"
-    )
-}
-
-fn request_with_web_view_user_agent(env: &mut Environment, request: id) -> (id, bool) {
-    if request == nil {
-        return (request, false);
-    }
-    let field = ns_string::get_static_str(env, "User-Agent");
-    let existing: id = msg![env; request valueForHTTPHeaderField:field];
-    if existing != nil {
-        return (request, false);
-    }
-    let request_copy: id = msg![env; request mutableCopy];
-    if request_copy == nil {
-        return (request, false);
-    }
-    let user_agent = web_view_user_agent(env);
-    let user_agent = ns_string::from_rust_string(env, user_agent);
-    () = msg![env; request_copy setValue:user_agent forHTTPHeaderField:field];
-    release(env, user_agent);
-    (request_copy, true)
-}
-
-
 pub const CLASSES: ClassExports = objc_classes! {
 
 (env, this, _cmd);
@@ -250,29 +187,6 @@ pub const CLASSES: ClassExports = objc_classes! {
         String::new()
     };
     log!("UIWebView loadRequest: {}", url_string);
-
-    let delegate = env.objc.borrow::<UIWebViewHostObject>(this).delegate;
-    if delegate != nil
-        && env.objc.object_has_method_named(
-            &env.mem,
-            delegate,
-            "webView:shouldStartLoadWithRequest:navigationType:",
-        )
-    {
-        let (delegate_request, owns_delegate_request) =
-            request_with_web_view_user_agent(env, request);
-        let should_start: bool = msg![
-            env;
-            delegate webView:this shouldStartLoadWithRequest:delegate_request
-            navigationType:UIWebViewNavigationTypeOther
-        ];
-        if owns_delegate_request {
-            release(env, delegate_request);
-        }
-        if !should_start {
-            return;
-        }
-    }
 
     // Push current URL onto back stack before navigating.
     let old_url = env.objc.borrow::<UIWebViewHostObject>(this).current_url;

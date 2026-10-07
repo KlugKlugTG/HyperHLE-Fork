@@ -298,47 +298,6 @@ fn objc_msgSend_inner(
     }
 
     if super2.is_none()
-        && matches!(
-            selector.as_str(&env.mem),
-            "copy" | "copyWithZone:" | "retain" | "autorelease" | "release" | "invoke"
-        )
-        && crate::libc::blocks::is_block_object(env, receiver.cast_const().cast())
-    {
-        match selector.as_str(&env.mem) {
-            "copy" | "copyWithZone:" | "retain" => {
-                let copy = crate::libc::blocks::_Block_copy(env, receiver.cast_const().cast());
-                env.cpu.regs_mut()[0] = copy.to_bits();
-                env.cpu.regs_mut()[1] = 0;
-                return;
-            }
-            "autorelease" => {
-                let copy = crate::libc::blocks::_Block_copy(env, receiver.cast_const().cast());
-                let copy_object: id = copy.cast_mut().cast();
-                let _: () = crate::objc::msg_class![env; NSAutoreleasePool addObject:copy_object];
-                env.cpu.regs_mut()[0] = copy.to_bits();
-                env.cpu.regs_mut()[1] = 0;
-                return;
-            }
-            "release" => {
-                crate::libc::blocks::_Block_release(env, receiver.cast_const().cast());
-                env.cpu.regs_mut()[0..2].fill(0);
-                return;
-            }
-            "invoke" => {
-                let invoke_ptr: u32 = env.mem.read(receiver.cast::<u32>() + 3);
-                if invoke_ptr != 0 {
-                    let invoke = crate::abi::GuestFunction::from_addr_with_thumb_bit(invoke_ptr);
-                    let block: crate::mem::ConstVoidPtr = receiver.cast_const().cast();
-                    let _: () = invoke.call_from_host(env, (block,));
-                }
-                env.cpu.regs_mut()[0..2].fill(0);
-                return;
-            }
-            _ => (),
-        }
-    }
-
-    if super2.is_none()
         && try_nsarray_indexed_subscript_interpose(env, receiver, selector, orig_class)
     {
         return;

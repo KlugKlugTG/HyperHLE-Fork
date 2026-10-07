@@ -2216,11 +2216,15 @@ pub fn objc_autorelease(env: &mut crate::Environment, obj: id) -> id {
 /// id objc_retainBlock(id x) { return (id)_Block_copy(x); }
 /// ```
 ///
-/// touchHLE's Blocks runtime promotes stack blocks and retains heap blocks.
+/// touchHLE's `_Block_copy` (see `src/libc/blocks.rs`) does not physically
+/// duplicate the block — global blocks (the common case for static literal
+/// blocks) are not reference-counted, and stack-block promotion needs deeper
+/// Block ABI work — so it returns the same pointer. Mirroring that here keeps
+/// `objc_retainBlock` consistent with the rest of the Block runtime, while
+/// still providing the correct return value the ARC-generated code expects.
 pub fn objc_retainBlock(env: &mut crate::Environment, block: id) -> id {
-    crate::libc::blocks::_Block_copy(env, block.cast_const().cast())
-        .cast_mut()
-        .cast()
+    let _ = env;
+    block
 }
 
 /// `IMP imp_implementationWithBlock(id block)` — returns an IMP that invokes

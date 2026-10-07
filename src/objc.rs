@@ -60,7 +60,7 @@ pub use methods::{HostIMP, IMP};
 pub use objects::{
     id, impl_HostObject_with_superclass, nil, AnyHostObject, HostObject, TrivialHostObject,
 };
-pub use properties::{class_getInstanceVariable, object_getIvar, object_setIvar, todo_objc_setter};
+pub use properties::{class_getInstanceVariable, object_getIvar, todo_objc_setter};
 pub use selectors::{selector, SEL};
 
 use crate::objc::classes::___objc_personality_v0;
@@ -420,7 +420,6 @@ const FUNCTIONS: FunctionExports = &[
     export_c_func!(class_getInstanceSize(_, _)),
     export_c_func!(class_getInstanceVariable(_, _)),
     export_c_func!(object_getIvar(_, _)),
-    export_c_func!(object_setIvar(_, _, _)),
     export_c_func!(class_isMetaClass(_)),
     export_c_func!(class_getInstanceMethod(_, _)),
     export_c_func!(class_getClassMethod(_, _)),
