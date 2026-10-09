@@ -1390,8 +1390,13 @@ fn ease_in_out_cubic(t: f64) -> f64 {
 const PAGE_SLIDE_DURATION: Duration = Duration::from_millis(320);
 /// Duration of the "app icon zooms to the middle, screen fades to black"
 /// animation played when an app is picked.
-const APP_LAUNCH_ANIMATION_DURATION: Duration = Duration::from_millis(600);
-/// How long the black screen stays up after the icon has dissolved into it.
+/// Duration of the icon's move to the middle of the screen.
+const APP_LAUNCH_MOVE_DURATION: Duration = Duration::from_millis(600);
+/// How long the icon rests in the middle before it dissolves.
+const APP_LAUNCH_CENTER_HOLD_DURATION: Duration = Duration::from_millis(400);
+/// Duration of the dissolve of the icon into the black screen.
+const APP_LAUNCH_DISSOLVE_DURATION: Duration = Duration::from_millis(500);
+/// How long the black screen stays up before the app takes over.
 const APP_LAUNCH_BLACK_HOLD_DURATION: Duration = Duration::from_millis(250);
 /// Side length of the app icon at the centre of the launch animation.
 const APP_LAUNCH_ICON_SIZE: CGFloat = 120.0;
@@ -1449,14 +1454,12 @@ fn play_app_launch_animation(
 
     let target_x = (screen_size.width - APP_LAUNCH_ICON_SIZE) / 2.0;
     let target_y = (screen_size.height - APP_LAUNCH_ICON_SIZE) / 2.0;
-    // Phase 1: the icon moves to the middle and grows while the screen
-    // darkens. Phase 2: the icon dissolves into the black screen. Only then
-    // does the caller start the app.
+    // 1. The icon travels to the middle of the screen and grows.
     animate_for(
         env,
         run_loop,
         delegate,
-        APP_LAUNCH_ANIMATION_DURATION,
+        APP_LAUNCH_MOVE_DURATION,
         |env, t| {
             let p = ease_in_out_cubic(t.min(1.0)) as CGFloat;
             let frame = rect(
@@ -1466,12 +1469,29 @@ fn play_app_launch_animation(
                 lerp_f(icon_frame.size.height, APP_LAUNCH_ICON_SIZE, p),
             );
             () = msg![env; icon_view setFrame:frame];
-            () = msg![env; overlay setAlpha:p];
-            let icon_alpha = (1.0 - (t - 0.5) * 2.0).clamp(0.0, 1.0) as CGFloat;
-            () = msg![env; icon_view setAlpha:icon_alpha];
         },
     );
-    // Hold on the black screen for a moment before the app takes over.
+    // 2. The icon rests in the middle for a moment.
+    animate_for(
+        env,
+        run_loop,
+        delegate,
+        APP_LAUNCH_CENTER_HOLD_DURATION,
+        |_env, _t| {},
+    );
+    // 3. The icon dissolves into the screen, which fades to black.
+    animate_for(
+        env,
+        run_loop,
+        delegate,
+        APP_LAUNCH_DISSOLVE_DURATION,
+        |env, t| {
+            let p = ease_in_out_cubic(t.min(1.0));
+            () = msg![env; overlay setAlpha:(p as CGFloat)];
+            () = msg![env; icon_view setAlpha:((1.0 - p) as CGFloat)];
+        },
+    );
+    // 4. Hold on the black screen before the app takes over.
     animate_for(
         env,
         run_loop,
