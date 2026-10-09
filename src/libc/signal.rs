@@ -17,8 +17,9 @@
 //!
 //! * `sigprocmask`/`pthread_sigmask` — signal masks are accepted but
 //!   never block delivery, because delivery is synchronous.
-//! * `SA_SIGINFO` — handlers always receive just the signal number; the
-//!   `siginfo_t`/`ucontext_t` arguments are not synthesized.
+//! * `SA_SIGINFO` — handlers receive a synthesized `siginfo_t` and
+//!   `ucontext_t` built from the current guest CPU state, not the real
+//!   kernel-captured fault context.
 //! * Asynchronous signals from outside the process (`kill()` from
 //!   another process, timers, faults) — there is no other process.
 //!
@@ -116,6 +117,89 @@ pub struct State {
     /// screen in Turbo Dismount), so recovery must refuse and the session
     /// must end instead.
     pub(crate) fatal_delivered: bool,
+}
+
+// Guest-visible sizes from Darwin's `sys/signal.h` and `mach/arm/_structs.h`
+// for 32-bit ARM. Only the fields crash reporters actually read are filled in;
+// the rest is zeroed, which is a valid `siginfo_t`/`ucontext_t` as far as the
+// guest is concerned.
+/// `siginfo_t`: `si_signo`, `si_errno`, `si_code`, `si_pid`, `si_uid`,
+/// `si_status`, `si_addr`, `si_value`, `si_band`, `__pad[7]`.
+const SIGINFO_SIZE: u32 = 64;
+const SIGINFO_SI_SIGNO: u32 = 0;
+const SIGINFO_SI_CODE: u32 = 8;
+const SIGINFO_SI_ADDR: u32 = 24;
+/// `ucontext_t`: `uc_onstack`, `uc_sigmask`, `uc_stack`, `uc_link`,
+/// `uc_mcsize`, `uc_mcontext`.
+const UCONTEXT_SIZE: u32 = 32;
+const UCONTEXT_UC_MCSIZE: u32 = 24;
+const UCONTEXT_UC_MCONTEXT: u32 = 28;
+/// `_STRUCT_MCONTEXT`: ARM exception state (3 words), thread state
+/// (`r[13]`, `sp`, `lr`, `pc`, `cpsr` = 17 words) and VFP state (65 words).
+const MCONTEXT_SIZE: u32 = (3 + 17 + 65) * 4;
+const MCONTEXT_THREAD_STATE: u32 = 3 * 4;
+
+/// Allocate and populate the `siginfo_t` and `ucontext_t` an `SA_SIGINFO`
+/// handler is entitled to.
+///
+/// Crash reporters (Unity's shim, PLCrashReporter, Crashlytics, ...) read
+/// `si_signo`/`si_addr` and walk `ucontext->uc_mcontext->__ss` to produce a
+/// backtrace. Handing them garbage or NULL registers turns a survivable
+/// delivery into a nil-page fault inside the handler.
+fn alloc_siginfo_context(env: &mut Environment, signum: i32) -> (MutVoidPtr, MutVoidPtr) {
+    let siginfo: MutVoidPtr = env.mem.alloc(SIGINFO_SIZE);
+    env.mem.bytes_at_mut(siginfo.cast(), SIGINFO_SIZE).fill(0);
+    let siginfo_words: MutPtr<u32> = siginfo.cast();
+    env.mem
+        .write(siginfo_words + SIGINFO_SI_SIGNO / 4, signum as u32);
+    // si_code 0 == SI_USER: the signal came from `raise()`, which is exactly
+    // how touchHLE delivers every signal.
+    env.mem.write(siginfo_words + SIGINFO_SI_CODE / 4, 0u32);
+    // For a fault signal, the faulting address is the best approximation we
+    // have: the PC the guest was executing when it raised.
+    let regs = env.cpu.regs();
+    let fault_addr = if is_fault_signal(signum) {
+        regs[crate::cpu::Cpu::PC]
+    } else {
+        0
+    };
+    env.mem
+        .write(siginfo_words + SIGINFO_SI_ADDR / 4, fault_addr);
+
+    let mcontext: MutVoidPtr = env.mem.alloc(MCONTEXT_SIZE);
+    env.mem.bytes_at_mut(mcontext.cast(), MCONTEXT_SIZE).fill(0);
+    let mcontext_words: MutPtr<u32> = mcontext.cast();
+    // __ss: r0-r12, sp, lr, pc, cpsr, in that order.
+    for i in 0..13 {
+        env.mem
+            .write(mcontext_words + MCONTEXT_THREAD_STATE / 4 + i, regs[i as usize]);
+    }
+    let thread_state = mcontext_words + MCONTEXT_THREAD_STATE / 4;
+    env.mem.write(thread_state + 13, regs[crate::cpu::Cpu::SP]);
+    env.mem.write(thread_state + 14, regs[crate::cpu::Cpu::LR]);
+    env.mem.write(thread_state + 15, regs[crate::cpu::Cpu::PC]);
+    env.mem.write(thread_state + 16, env.cpu.cpsr());
+
+    let ucontext: MutVoidPtr = env.mem.alloc(UCONTEXT_SIZE);
+    env.mem.bytes_at_mut(ucontext.cast(), UCONTEXT_SIZE).fill(0);
+    let ucontext_words: MutPtr<u32> = ucontext.cast();
+    env.mem
+        .write(ucontext_words + UCONTEXT_UC_MCSIZE / 4, MCONTEXT_SIZE);
+    env.mem.write(
+        ucontext_words + UCONTEXT_UC_MCONTEXT / 4,
+        mcontext.to_bits(),
+    );
+
+    (siginfo, ucontext)
+}
+
+/// Release what [alloc_siginfo_context] allocated, once the handler returned.
+fn free_siginfo_context(env: &mut Environment, siginfo: MutVoidPtr, ucontext: MutVoidPtr) {
+    let ucontext_words: MutPtr<u32> = ucontext.cast();
+    let mcontext: u32 = env.mem.read(ucontext_words + UCONTEXT_UC_MCONTEXT / 4);
+    env.mem.free(Ptr::from_bits(mcontext));
+    env.mem.free(ucontext);
+    env.mem.free(siginfo);
 }
 
 /// Whether `signum` is a hardware-fault signal whose Darwin default action
@@ -319,14 +403,6 @@ pub(crate) fn raise_signal(env: &mut Environment, signum: i32) -> RaiseOutcome {
             if action.flags & SA_RESETHAND != 0 {
                 set_action(env, signum, SignalAction::default());
             }
-            if action.flags & SA_SIGINFO != 0 {
-                log!(
-                    "Warning: signal {} ({}) was installed with SA_SIGINFO; \
-                     calling the handler with a NULL siginfo/ucontext.",
-                    signum,
-                    signal_name(signum)
-                );
-            }
             log_dbg!(
                 "Calling guest signal handler {:#x} for signal {}",
                 handler,
@@ -337,7 +413,26 @@ pub(crate) fn raise_signal(env: &mut Environment, signum: i32) -> RaiseOutcome {
             }
             env.libc_state.signal.handling.push(signum);
             let func = GuestFunction::from_addr_with_thumb_bit(handler);
-            let _: () = func.call_from_host(env, (signum,));
+            let siginfo_context = if action.flags & SA_SIGINFO != 0 {
+                Some(alloc_siginfo_context(env, signum))
+            } else {
+                None
+            };
+            match siginfo_context {
+                // `void (*)(int, siginfo_t *, void *)`. Passing nothing for
+                // the second and third arguments leaves r1/r2 holding
+                // whatever the previous guest code left there, and crash
+                // reporters dereference both immediately.
+                Some((siginfo, ucontext)) => {
+                    let _: () = func.call_from_host(env, (signum, siginfo, ucontext));
+                }
+                None => {
+                    let _: () = func.call_from_host(env, (signum,));
+                }
+            }
+            if let Some((siginfo, ucontext)) = siginfo_context {
+                free_siginfo_context(env, siginfo, ucontext);
+            }
             // The handler usually returns; if it terminated the guest
             // session instead, this bookkeeping no longer matters.
             if let Some(position) = env

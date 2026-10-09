@@ -177,6 +177,13 @@ pub struct Environment {
     /// pointer. See `debug_cpu_error`.
     cpu_error_bypass_last_lr: Option<u32>,
     cpu_error_bypass_lr_count: u32,
+    /// The thread and stack pointer of the most recent *deliberate* guest trap
+    /// (`udf`/`trap`/`bkpt`) that was bypassed. A deliberate trap means the
+    /// guest decided its own process is dead (failed assert, unhandled
+    /// managed exception, `__builtin_trap`); bypassing it keeps the emulator
+    /// alive but leaves that call chain running on state its author never
+    /// intended to be reachable. See `guest_trap_bypass_still_on_stack`.
+    last_deliberate_trap_bypass: Option<(ThreadId, u32)>,
     /// Per-site counters for instructions dynarmic could not decode inside a
     /// code section and that were skipped as no-ops (keyed on the fault PC).
     /// Only used to rate-limit logging. See `debug_cpu_error`.
@@ -976,6 +983,7 @@ impl Environment {
             cpu_error_bypass_count: 0,
             cpu_error_bypass_total: 0,
             cpu_error_bypass_last_lr: None,
+            last_deliberate_trap_bypass: None,
             cpu_error_bypass_lr_count: 0,
             cpu_skipped_instruction_sites: HashMap::new(),
             guest_termination_requested: false,
@@ -1152,6 +1160,7 @@ impl Environment {
             cpu_error_bypass_count: 0,
             cpu_error_bypass_total: 0,
             cpu_error_bypass_last_lr: None,
+            last_deliberate_trap_bypass: None,
             cpu_error_bypass_lr_count: 0,
             cpu_skipped_instruction_sites: HashMap::new(),
             guest_termination_requested: false,
@@ -1223,6 +1232,7 @@ impl Environment {
             cpu_error_bypass_count: 0,
             cpu_error_bypass_total: 0,
             cpu_error_bypass_last_lr: None,
+            last_deliberate_trap_bypass: None,
             cpu_error_bypass_lr_count: 0,
             cpu_skipped_instruction_sites: HashMap::new(),
             guest_termination_requested: false,
@@ -2089,6 +2099,39 @@ impl Environment {
     /// Whether a linked guest termination function has requested session end.
     pub(crate) fn is_guest_termination_requested(&self) -> bool {
         self.guest_termination_requested
+    }
+
+    /// Whether the current thread is still inside the call chain in which a
+    /// deliberate guest trap (`udf`/`trap`, i.e. a failed assert, a
+    /// `__builtin_trap`, or a Unity/Mono unhandled-exception abort) was
+    /// bypassed.
+    ///
+    /// The stack grows downwards, so the chain that trapped is still live
+    /// while the stack pointer has not risen back above the value it had at
+    /// the trap. Once it has, the guest genuinely returned past the dead
+    /// frames and a later `exit`/`abort` is unrelated to the trap, so the
+    /// normal compatibility recovery applies again.
+    ///
+    /// Observed case (Turbo Dismount, Unity 4.5.4): managed code throws
+    /// `System.NullReferenceException`, Unity logs it and branches to its
+    /// one-instruction `trap` helper, then calls `exit(1)` from the same
+    /// chain. Recovering that `exit` resumed the engine inside its own
+    /// death path, which immediately dereferenced NULL (SIGSEGV), ran the
+    /// crash reporter and aborted — turning a clean shutdown into a crash
+    /// cascade that hid the original managed exception.
+    pub(crate) fn guest_trap_bypass_still_on_stack(&mut self) -> bool {
+        let Some((thread, trap_sp)) = self.last_deliberate_trap_bypass else {
+            return false;
+        };
+        if thread != self.current_thread {
+            return false;
+        }
+        if self.cpu.regs()[cpu::Cpu::SP] > trap_sp {
+            // The guest unwound past the trapping frame under its own power.
+            self.last_deliberate_trap_bypass = None;
+            return false;
+        }
+        true
     }
 
     /// Remember that Unity's mandatory serialized player archive is unavailable.
@@ -3063,6 +3106,15 @@ impl Environment {
                 // so only the dynamic escalation applies on top of the legacy
                 // branch-to-LR.
                 const UNWIND_AFTER_REPEATS: u32 = 4;
+                if let GuestTrapKind::DeliberateTrap { .. } = trap_kind {
+                    // Remember where this happened. A deliberate trap is the
+                    // guest declaring its own process dead; if it later calls
+                    // `exit`/`abort` without having unwound past this frame,
+                    // splicing execution back into that call chain resumes a
+                    // corpse. See `guest_trap_bypass_still_on_stack`.
+                    let sp = self.cpu.regs()[cpu::Cpu::SP];
+                    self.last_deliberate_trap_bypass = Some((self.current_thread, sp));
+                }
                 let recovery = match trap_kind {
                     GuestTrapKind::DeliberateTrap { .. }
                     | GuestTrapKind::MisalignedInstruction { .. } => {
