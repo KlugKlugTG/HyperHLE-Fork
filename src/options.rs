@@ -96,10 +96,9 @@ pub struct Options {
     pub device_family: Option<DeviceFamily>,
     pub auto_device_family: bool,
     /// When set, the guest sees a screen of exactly this size (in points) and
-    /// scale 1.0, instead of one of the fixed device profiles. Set by the
-    /// explicit `--screen-size=WxH` override, or locally by the app picker for
-    /// its own canvas; automatic device-family selection keeps the chosen
-    /// device profile's logical dimensions.
+    /// scale 1.0, instead of one of the fixed device profiles. Set only by the
+    /// explicit `--screen-size=WxH` override; automatic device-family selection
+    /// keeps the chosen device profile's logical dimensions.
     pub host_screen_size: Option<(u32, u32)>,
     /// Disable the Cheat Engine-style memory trainer overlay. The trainer
     /// is off by default; opt in with `--trainer`.
