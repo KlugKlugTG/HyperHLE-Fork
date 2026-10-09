@@ -407,7 +407,7 @@ const CLASSES: ClassExports = objc_classes! {
 };
 
 fn show_app_picker_gui(
-    options: Options,
+    mut options: Options,
     apps: Result<Vec<AppInfo>, String>,
 ) -> Result<(PathBuf, Vec<String>), String> {
     let icon = {
@@ -433,6 +433,15 @@ fn show_app_picker_gui(
         );
         image
     };
+    // Give the picker a modestly larger 2:3 canvas by default, without
+    // changing the device profile used when the selected game is launched.
+    // Respect explicit device/screen choices and auto-device-family mode.
+    if options.device_family.is_none()
+        && options.host_screen_size.is_none()
+        && !options.auto_device_family
+    {
+        options.host_screen_size = Some(APP_PICKER_DEFAULT_SCREEN_SIZE);
+    }
     let environment = Environment::new_without_app(options, icon)?;
     Ok(environment.run_app_picker(|env| app_picker_inner(env, apps)))
 }
@@ -1181,6 +1190,7 @@ fn app_picker_inner(
 
 const HYPERHLE_FORK_NAME: &str = "HyperHLE-Fork";
 
+const APP_PICKER_DEFAULT_SCREEN_SIZE: (u32, u32) = (336, 504);
 const APP_PICKER_VERSION_LABEL_HEIGHT: CGFloat = 15.0;
 const APP_PICKER_VERSION_LABEL_BOTTOM_INSET: CGFloat = 5.0;
 const APP_PICKER_GRID_TOP: CGFloat = 44.0;
@@ -1217,8 +1227,13 @@ mod layout_tests {
     use super::*;
 
     #[test]
-    fn classic_phone_picker_has_five_icon_rows() {
-        // A visible status bar leaves `UIScreen.applicationFrame` at 320x460.
+    fn picker_fits_five_rows_on_default_and_classic_phone_canvases() {
+        // The default picker canvas is 336x504; a visible status bar leaves 484 points.
+        let default_app_height = APP_PICKER_DEFAULT_SCREEN_SIZE.1 as CGFloat - 20.0;
+        assert_eq!(
+            app_picker_icon_grid_num_rows(default_app_height, 12.0),
+            APP_PICKER_ICON_ROWS
+        );
         assert_eq!(app_picker_icon_grid_num_rows(460.0, 12.0), APP_PICKER_ICON_ROWS);
     }
 

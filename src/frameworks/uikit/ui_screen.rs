@@ -28,7 +28,9 @@ fn screen_pixel_size_for_current_orientation(env: &mut crate::Environment) -> (C
 }
 
 fn screen_size_for_current_orientation(env: &mut crate::Environment) -> (u32, u32) {
-    let portrait_size = env.window().device_family().portrait_size();
+    // `screen_size()` includes explicit --screen-size / picker canvas overrides;
+    // UIScreen should report that logical point size rather than the model's default.
+    let portrait_size = env.window().screen_size();
     let orientation = env.window().current_rotation();
     let landscape_bounds = crate::env_flag_cached!("TOUCHHLE_LANDSCAPE_UISCREEN_BOUNDS");
     screen_size_for_orientation(portrait_size, orientation, landscape_bounds)
