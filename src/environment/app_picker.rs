@@ -1199,10 +1199,10 @@ const APP_PICKER_ICON_ROWS: usize = 4;
 const QUICK_OPTIONS_BUTTON_ROW_HEIGHT: CGFloat = 30.0;
 
 const ICON_SIZE: CGSize = CGSize {
-    width: 72.0,
-    height: 72.0,
+    width: 80.0,
+    height: 80.0,
 };
-const ICON_IMAGE_INSET: CGFloat = 9.0;
+const ICON_IMAGE_INSET: CGFloat = 10.0;
 const ICON_LABEL_TOP_GAP: CGFloat = 2.0;
 const ICON_ROW_GAP: CGFloat = 2.0;
 
@@ -1248,8 +1248,8 @@ mod layout_tests {
             APP_PICKER_ICON_ROWS
         );
         assert_eq!(app_picker_icon_grid_num_rows(460.0, 12.0), APP_PICKER_ICON_ROWS);
-        assert_eq!(app_picker_icon_grid_top(default_app_height, 12.0, 4), 94.0);
-        assert_eq!(app_picker_icon_grid_top(460.0, 12.0, 4), 64.0);
+        assert_eq!(app_picker_icon_grid_top(default_app_height, 12.0, 4), 78.0);
+        assert_eq!(app_picker_icon_grid_top(460.0, 12.0, 4), 48.0);
     }
 
     #[test]
@@ -1664,7 +1664,7 @@ fn update_icon_grid(
     if have_prev_icon {
         let &(icon_button, label) = icon_iter.next().unwrap();
         let image = *icon_grid_stuff.prev_icon.get_or_insert_with(|| {
-            make_icon_from_glyph(env, '←', 50.0, -9.0, (0.25, 0.25, 0.25, 1.0))
+            make_icon_from_glyph(env, '←', 56.0, -10.0, (0.25, 0.25, 0.25, 1.0))
         });
         () = msg![env; icon_button setImage:image forState:UIControlStateNormal];
         () = msg![env; label setText:(ns_string::get_static_str(env, ""))];
@@ -1677,7 +1677,7 @@ fn update_icon_grid(
     if page_idx == 0 {
         let &(icon_button, label) = icon_iter.next().unwrap();
         let image = *icon_grid_stuff.plus_icon.get_or_insert_with(|| {
-            make_icon_from_glyph(env, '+', 50.0, -6.0, (0.25, 0.25, 0.25, 1.0))
+            make_icon_from_glyph(env, '+', 56.0, -7.0, (0.25, 0.25, 0.25, 1.0))
         });
         () = msg![env; icon_button setImage:image forState:UIControlStateNormal];
         () = msg![env; label setText:(ns_string::get_static_str(env, ""))];
@@ -1710,7 +1710,7 @@ fn update_icon_grid(
 
         let image = app.icon_ui_image.unwrap_or_else(|| {
             *icon_grid_stuff.placeholder_icon.get_or_insert_with(|| {
-                make_icon_from_glyph(env, '?', 40.0, 0.0, (0.5, 0.5, 0.5, 1.0))
+                make_icon_from_glyph(env, '?', 44.0, 0.0, (0.5, 0.5, 0.5, 1.0))
             })
         });
         () = msg![env; icon_button setImage:image forState:UIControlStateNormal];
@@ -1728,7 +1728,7 @@ fn update_icon_grid(
     if have_next_icon {
         let &(icon_button, label) = icon_iter.next().unwrap();
         let image = *icon_grid_stuff.next_icon.get_or_insert_with(|| {
-            make_icon_from_glyph(env, '→', 50.0, -9.0, (0.25, 0.25, 0.25, 1.0))
+            make_icon_from_glyph(env, '→', 56.0, -10.0, (0.25, 0.25, 0.25, 1.0))
         });
         () = msg![env; icon_button setImage:image forState:UIControlStateNormal];
         () = msg![env; label setText:(ns_string::get_static_str(env, ""))];
