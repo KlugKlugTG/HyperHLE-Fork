@@ -359,6 +359,86 @@ fn show_app_picker_gui(
     Ok(environment.run_app_picker(|env| app_picker_inner(env, apps)))
 }
 
+const APP_LAUNCH_ANIMATION_DURATION: Duration = Duration::from_millis(460);
+
+/// A symmetric ease-in/ease-out curve gives the icon a deliberate, old-iOS
+/// style zoom instead of the abrupt snap used by the previous picker.
+fn app_launch_animation_eased_progress(progress: f64) -> f64 {
+    let progress = progress.clamp(0.0, 1.0);
+    if progress < 0.5 {
+        4.0 * progress * progress * progress
+    } else {
+        1.0 - (-2.0 * progress + 2.0).powi(3) / 2.0
+    }
+}
+
+fn interpolate_rect(from: CGRect, to: CGRect, progress: CGFloat) -> CGRect {
+    let interpolate = |from: CGFloat, to: CGFloat| from + (to - from) * progress;
+    CGRect {
+        origin: CGPoint {
+            x: interpolate(from.origin.x, to.origin.x),
+            y: interpolate(from.origin.y, to.origin.y),
+        },
+        size: CGSize {
+            width: interpolate(from.size.width, to.size.width),
+            height: interpolate(from.size.height, to.size.height),
+        },
+    }
+}
+
+/// Zoom the tapped icon to the size of the display while fading away the
+/// picker beneath it. The picker is about to be discarded, so a temporary
+/// UIImageView is enough to preserve the exact icon shown in the grid.
+fn animate_app_launch_transition(
+    env: &mut Environment,
+    main_run_loop: id,
+    window: id,
+    main_view: id,
+    icon_button: id,
+) {
+    let icon_image_view: id = msg![env; icon_button imageView];
+    let icon_image: id = msg![env; icon_image_view image];
+    if icon_image == nil {
+        // The app picker normally supplies even missing app icons with a
+        // placeholder. Keep launch working if a custom button has no image.
+        return;
+    }
+
+    let icon_bounds: CGRect = msg![env; icon_image_view bounds];
+    let from_frame: CGRect = msg![env; icon_image_view convertRect:icon_bounds toView:window];
+    let to_frame: CGRect = msg![env; window bounds];
+
+    let launch_image_view: id = msg_class![env; UIImageView alloc];
+    let launch_image_view: id = msg![env; launch_image_view initWithImage:icon_image];
+    () = msg![env; launch_image_view setFrame:from_frame];
+    () = msg![env; launch_image_view setUserInteractionEnabled:false];
+    () = msg![env; window addSubview:launch_image_view];
+
+    let start_time = Instant::now();
+    loop {
+        let elapsed = start_time.elapsed();
+        let progress = app_launch_animation_eased_progress(
+            elapsed.as_secs_f64() / APP_LAUNCH_ANIMATION_DURATION.as_secs_f64(),
+        );
+        let progress = progress as CGFloat;
+        let frame = interpolate_rect(from_frame, to_frame, progress);
+        () = msg![env; launch_image_view setFrame:frame];
+        () = msg![env; main_view setAlpha:(1.0 - progress)];
+
+        // Force a frame so every interpolated position is presented instead
+        // of waiting for the picker's regular display-link cadence.
+        let _ = crate::frameworks::core_animation::recomposite_if_necessary(
+            env,
+            /* force: */ true,
+        );
+
+        if elapsed >= APP_LAUNCH_ANIMATION_DURATION {
+            break;
+        }
+        run_run_loop_single_iteration(env, main_run_loop);
+    }
+}
+
 fn app_picker_inner(
     env: &mut Environment,
     mut apps: Result<Vec<AppInfo>, String>,
@@ -644,18 +724,16 @@ fn app_picker_inner(
         if icon_tapped != nil {
             match icon_grid_stuff.as_ref().unwrap().icon_map.get(&icon_tapped) {
                 Some(&TappedIcon::App(app_idx)) => {
-                    // Provide visual feedback that the app has been picked
-                    // (it may take a while for the splash screen to appear etc)
-                    () = msg![env; icon_tapped setAlpha:(0.5 as CGFloat)];
-                    // Redraw screen, even if this makes the next frame early
-                    // (the app picker will never be redrawn after this).
-                    crate::frameworks::core_animation::recomposite_if_necessary(
-                        env, /* force: */ true,
+                    // Match the classic iPhone OS launch transition: zoom the
+                    // selected icon out to fill the display, then hand off to
+                    // the game once the animation has finished.
+                    animate_app_launch_transition(
+                        env,
+                        main_run_loop,
+                        window,
+                        main_view,
+                        icon_tapped,
                     );
-                    // Ensure touchHLE is responsive from the OS perspective,
-                    // otherwise screen redraw might not show up? (Unclear if
-                    // this explanation is correct.)
-                    run_run_loop_single_iteration(env, main_run_loop);
 
                     let app_path = &apps.as_ref().unwrap()[app_idx].path;
                     echo!("Picked: {}", app_path.display());
@@ -2040,5 +2118,26 @@ mod quick_options_force_composition_tests {
             quick_options_force_composition_argument(false),
             "--no-force-composition"
         );
+    }
+}
+
+#[cfg(test)]
+mod app_launch_transition_tests {
+    use super::*;
+
+    #[test]
+    fn launch_transition_easing_is_smooth_and_clamped() {
+        assert_eq!(app_launch_animation_eased_progress(-1.0), 0.0);
+        assert_eq!(app_launch_animation_eased_progress(0.0), 0.0);
+        assert_eq!(app_launch_animation_eased_progress(0.5), 0.5);
+        assert_eq!(app_launch_animation_eased_progress(1.0), 1.0);
+        assert_eq!(app_launch_animation_eased_progress(2.0), 1.0);
+
+        let mut previous = 0.0;
+        for step in 1..=100 {
+            let progress = app_launch_animation_eased_progress(step as f64 / 100.0);
+            assert!(progress >= previous);
+            previous = progress;
+        }
     }
 }
