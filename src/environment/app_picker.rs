@@ -18,9 +18,7 @@ use crate::frameworks::uikit::ui_font::{
     UITextAlignmentCenter, UITextAlignmentLeft, UITextAlignmentRight,
 };
 use crate::frameworks::uikit::ui_graphics::{UIGraphicsPopContext, UIGraphicsPushContext};
-use crate::frameworks::uikit::ui_view::ui_control::ui_button::{
-    UIButtonTypeCustom, UIButtonTypeRoundedRect,
-};
+use crate::frameworks::uikit::ui_view::ui_control::ui_button::UIButtonTypeCustom;
 use crate::frameworks::uikit::ui_view::ui_control::{
     UIControlEventTouchUpInside, UIControlEventValueChanged, UIControlStateNormal,
 };
@@ -160,8 +158,8 @@ struct AppPickerDelegateHostObject {
     // Set by the add-app tile; kept separately from icon_tapped because the
     // picker needs to wait for a newly copied IPA to settle before reloading.
     add_ipa: bool,
-    quick_options_show: bool,
-    quick_options_hide: bool,
+    settings_show: bool,
+    settings_hide: bool,
     scale_hack_default: bool,
     scale_hack1: bool,
     scale_hack2: bool,
@@ -217,11 +215,11 @@ const CLASSES: ClassExports = objc_classes! {
     env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).add_ipa = true;
 }
 
-- (())quickOptionsShow {
-    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).quick_options_show = true;
+- (())settingsShow {
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).settings_show = true;
 }
-- (())quickOptionsHide {
-    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).quick_options_hide = true;
+- (())settingsHide {
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).settings_hide = true;
 }
 - (())scaleHackDefault {
     env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).scale_hack_default = true;
@@ -501,8 +499,6 @@ fn app_picker_inner(
     () = msg![env; title setBackgroundColor:bg_color];
     () = msg![env; main_view addSubview:title];
 
-    let quick_options_button_top = app_picker_quick_options_button_top(app_frame.size.height);
-
     let mut icon_grid_stuff = match &mut apps {
         Ok(ref mut apps) => {
             let mut icon_grid_stuff = make_icon_grid(
@@ -513,7 +509,7 @@ fn app_picker_inner(
                 apps.len(),
                 have_wallpaper,
             );
-            update_icon_grid(env, &mut icon_grid_stuff, apps, 0);
+            update_icon_grid(env, &mut icon_grid_stuff, apps, 0, 0);
             Some(icon_grid_stuff)
         }
         Err(e) => {
@@ -521,7 +517,7 @@ fn app_picker_inner(
                 origin: CGPoint { x: 10.0, y: 10.0 },
                 size: CGSize {
                     width: app_frame.size.width - 20.0,
-                    height: quick_options_button_top - 20.0,
+                    height: app_picker_grid_bottom(app_frame.size.height) - 20.0,
                 },
             };
             let label: id = msg_class![env; UILabel alloc];
@@ -539,25 +535,12 @@ fn app_picker_inner(
         }
     };
 
-    // Keep the sole footer action directly above the build label, leaving the
-    // space above it available for a fourth row of app icons.
-    let buttons_row_center = app_picker_quick_options_button_center(app_frame.size.height);
-    make_button_row(
-        env,
-        delegate,
-        main_view,
-        app_frame.size,
-        buttons_row_center,
-        &[("Quick options", "quickOptionsShow")],
-        None,
-    );
-
     let mut quick_options_cheat_engine = quick_options_trainer_enabled(&env.options);
     let angle_backend_available = crate::window::angle_backend_available();
     let (mut quick_options_gles_native, quick_options_gles_native_switch_enabled) =
         quick_options_gles_native_state(&env.options, angle_backend_available);
     let quick_options_force_composition_enabled = env.options.force_composition;
-    let quick_options_stuff = setup_quick_options(
+    let settings = setup_settings(
         env,
         delegate,
         main_view,
@@ -566,6 +549,7 @@ fn app_picker_inner(
         quick_options_gles_native,
         quick_options_gles_native_switch_enabled,
         quick_options_force_composition_enabled,
+        !crate::window::Window::rotatable_fullscreen(),
     );
     let mut quick_options_scale_hack: Option<NonZeroU32> = None;
     let mut quick_options_fullscreen: Option<()> = None;
@@ -579,49 +563,12 @@ fn app_picker_inner(
     let mut quick_options_device_model_open = false;
     let mut quick_options_device_model_scroll: isize = 0;
 
-    fn update_quick_option_buttons(env: &mut Environment, buttons: &[id], selected_idx: usize) {
-        for (idx, &button) in buttons.iter().enumerate() {
-            let color: id = if idx == selected_idx {
-                msg_class![env; UIColor magentaColor]
-            } else {
-                msg_class![env; UIColor grayColor]
-            };
-            () = msg![env; button setBackgroundColor:color];
-        }
-    }
-    fn update_scale_hack_buttons(env: &mut Environment, buttons: &[id], value: Option<NonZeroU32>) {
-        update_quick_option_buttons(env, buttons, value.map_or(0, |v| v.get() as usize));
-    }
-    fn update_orientation_buttons(
-        env: &mut Environment,
-        buttons: &[id],
-        value: Option<DeviceOrientation>,
-    ) {
-        update_quick_option_buttons(
-            env,
-            buttons,
-            value.map_or(0, |v| match v {
-                DeviceOrientation::LandscapeLeft => 1,
-                DeviceOrientation::LandscapeRight => 2,
-                DeviceOrientation::PortraitUpsideDown => 3,
-                _ => panic!(),
-            }),
-        );
-    }
-    update_scale_hack_buttons(
-        env,
-        &quick_options_stuff.scale_hack_buttons,
-        quick_options_scale_hack,
-    );
-    update_orientation_buttons(
-        env,
-        &quick_options_stuff.orientation_buttons,
-        quick_options_orientation,
-    );
+    update_scale_hack_buttons(env, &settings.scale_hack_buttons, quick_options_scale_hack);
+    update_orientation_buttons(env, &settings.orientation_buttons, quick_options_orientation);
     update_device_model_menu(
         env,
-        &quick_options_stuff.device_model_items,
-        quick_options_stuff.device_model_thumb,
+        &settings.device_model_items,
+        settings.device_model_thumb,
         quick_options_device_tag,
         quick_options_device_model_scroll,
     );
@@ -644,37 +591,47 @@ fn app_picker_inner(
         if icon_tapped != nil {
             match icon_grid_stuff.as_ref().unwrap().icon_map.get(&icon_tapped) {
                 Some(&TappedIcon::App(app_idx)) => {
-                    // Provide visual feedback that the app has been picked
-                    // (it may take a while for the splash screen to appear etc)
-                    () = msg![env; icon_tapped setAlpha:(0.5 as CGFloat)];
-                    // Redraw screen, even if this makes the next frame early
-                    // (the app picker will never be redrawn after this).
-                    crate::frameworks::core_animation::recomposite_if_necessary(
-                        env, /* force: */ true,
-                    );
-                    // Ensure touchHLE is responsive from the OS perspective,
-                    // otherwise screen redraw might not show up? (Unclear if
-                    // this explanation is correct.)
-                    run_run_loop_single_iteration(env, main_run_loop);
-
-                    let app_path = &apps.as_ref().unwrap()[app_idx].path;
+                    let app_path = apps.as_ref().unwrap()[app_idx].path.clone();
                     echo!("Picked: {}", app_path.display());
-                    break app_path.clone();
+                    // iOS-style launch: the icon travels to the middle of the
+                    // screen while the screen fades to black.
+                    let icon_image: id = msg![env; icon_tapped currentImage];
+                    let icon_frame: CGRect = msg![env; icon_tapped frame];
+                    play_app_launch_animation(
+                        env,
+                        main_run_loop,
+                        delegate,
+                        main_view,
+                        app_frame.size,
+                        icon_frame,
+                        icon_image,
+                    );
+                    break app_path;
                 }
                 Some(&TappedIcon::ChangePage(page_idx)) => {
-                    current_page = page_idx;
-                    update_icon_grid(
+                    let direction: CGFloat = if page_idx > current_page { 1.0 } else { -1.0 };
+                    slide_to_page(
                         env,
+                        main_run_loop,
+                        delegate,
                         icon_grid_stuff.as_mut().unwrap(),
                         apps.as_mut().unwrap(),
                         page_idx,
+                        direction,
                     );
+                    current_page = page_idx;
                 }
                 Some(&TappedIcon::AddIpa) => {
                     // Handled by the main loop body below (next iteration).
                     env.objc
                         .borrow_mut::<AppPickerDelegateHostObject>(delegate)
                         .add_ipa = true;
+                }
+                Some(&TappedIcon::Settings) => {
+                    // Handled by the main loop body below (next iteration).
+                    env.objc
+                        .borrow_mut::<AppPickerDelegateHostObject>(delegate)
+                        .settings_show = true;
                 }
                 None => (), // Tapped on a black space
             }
@@ -695,93 +652,96 @@ fn app_picker_inner(
             if let Err(e) = crate::window::launch_ipa_picker(env) {
                 echo!("Couldn't open IPA picker: {}", e);
             }
-        } else if std::mem::take(&mut host_obj.quick_options_show) {
-            () = msg![env; (quick_options_stuff.main_view) setHidden:false];
-        } else if std::mem::take(&mut host_obj.quick_options_hide) {
-            () = msg![env; (quick_options_stuff.main_view) setHidden:true];
+        } else if std::mem::take(&mut host_obj.settings_show) {
+            slide_settings_screen(
+                env,
+                main_run_loop,
+                delegate,
+                settings.main_view,
+                app_frame.size.width,
+                true,
+            );
+        } else if std::mem::take(&mut host_obj.settings_hide) {
+            slide_settings_screen(
+                env,
+                main_run_loop,
+                delegate,
+                settings.main_view,
+                app_frame.size.width,
+                false,
+            );
         } else if std::mem::take(&mut host_obj.scale_hack_default) {
             quick_options_scale_hack = None;
-            update_scale_hack_buttons(
-                env,
-                &quick_options_stuff.scale_hack_buttons,
-                quick_options_scale_hack,
-            );
+            update_scale_hack_buttons(env, &settings.scale_hack_buttons, quick_options_scale_hack);
         } else if std::mem::take(&mut host_obj.scale_hack1) {
-            quick_options_scale_hack = Some(NonZeroU32::new(1).unwrap());
-            update_scale_hack_buttons(
-                env,
-                &quick_options_stuff.scale_hack_buttons,
-                quick_options_scale_hack,
-            );
+            quick_options_scale_hack = NonZeroU32::new(1);
+            update_scale_hack_buttons(env, &settings.scale_hack_buttons, quick_options_scale_hack);
         } else if std::mem::take(&mut host_obj.scale_hack2) {
-            quick_options_scale_hack = Some(NonZeroU32::new(2).unwrap());
-            update_scale_hack_buttons(
-                env,
-                &quick_options_stuff.scale_hack_buttons,
-                quick_options_scale_hack,
-            );
+            quick_options_scale_hack = NonZeroU32::new(2);
+            update_scale_hack_buttons(env, &settings.scale_hack_buttons, quick_options_scale_hack);
         } else if std::mem::take(&mut host_obj.scale_hack3) {
-            quick_options_scale_hack = Some(NonZeroU32::new(3).unwrap());
-            update_scale_hack_buttons(
-                env,
-                &quick_options_stuff.scale_hack_buttons,
-                quick_options_scale_hack,
-            );
+            quick_options_scale_hack = NonZeroU32::new(3);
+            update_scale_hack_buttons(env, &settings.scale_hack_buttons, quick_options_scale_hack);
         } else if std::mem::take(&mut host_obj.scale_hack4) {
-            quick_options_scale_hack = Some(NonZeroU32::new(4).unwrap());
-            update_scale_hack_buttons(
-                env,
-                &quick_options_stuff.scale_hack_buttons,
-                quick_options_scale_hack,
-            );
+            quick_options_scale_hack = NonZeroU32::new(4);
+            update_scale_hack_buttons(env, &settings.scale_hack_buttons, quick_options_scale_hack);
         } else if std::mem::take(&mut host_obj.orientation_default) {
             quick_options_orientation = None;
             update_orientation_buttons(
                 env,
-                &quick_options_stuff.orientation_buttons,
+                &settings.orientation_buttons,
                 quick_options_orientation,
             );
         } else if std::mem::take(&mut host_obj.orientation_landscape_left) {
             quick_options_orientation = Some(DeviceOrientation::LandscapeLeft);
             update_orientation_buttons(
                 env,
-                &quick_options_stuff.orientation_buttons,
+                &settings.orientation_buttons,
                 quick_options_orientation,
             );
         } else if std::mem::take(&mut host_obj.orientation_landscape_right) {
             quick_options_orientation = Some(DeviceOrientation::LandscapeRight);
             update_orientation_buttons(
                 env,
-                &quick_options_stuff.orientation_buttons,
+                &settings.orientation_buttons,
                 quick_options_orientation,
             );
         } else if std::mem::take(&mut host_obj.orientation_portrait_upside_down) {
             quick_options_orientation = Some(DeviceOrientation::PortraitUpsideDown);
             update_orientation_buttons(
                 env,
-                &quick_options_stuff.orientation_buttons,
+                &settings.orientation_buttons,
                 quick_options_orientation,
             );
         } else if let Some(tag) = std::mem::take(&mut host_obj.device_model_tag) {
             quick_options_device_tag = Some(tag);
             quick_options_device_model_open = false;
-            () = msg![env; (quick_options_stuff.device_model_menu) setHidden:true];
+            set_device_model_menu_open(
+                env,
+                settings.device_model_menu,
+                settings.device_model_dimmer,
+                false,
+            );
             update_device_model_menu(
                 env,
-                &quick_options_stuff.device_model_items,
-                quick_options_stuff.device_model_thumb,
+                &settings.device_model_items,
+                settings.device_model_thumb,
                 quick_options_device_tag,
                 quick_options_device_model_scroll,
             );
             let title = format!("{} ▼", device_model_label_for_tag(quick_options_device_tag));
             let title_ns = ns_string::from_rust_string(env, title);
-            () = msg![env; (quick_options_stuff.device_model_btn)
+            () = msg![env; (settings.device_model_btn)
                 setTitle:title_ns forState:UIControlStateNormal];
             release(env, title_ns);
         } else if std::mem::take(&mut host_obj.device_model_toggle) {
             quick_options_device_model_open = !quick_options_device_model_open;
-            () = msg![env; (quick_options_stuff.device_model_menu)
-                setHidden:(!quick_options_device_model_open)];
+            set_device_model_menu_open(
+                env,
+                settings.device_model_menu,
+                settings.device_model_dimmer,
+                quick_options_device_model_open,
+            );
             let arrow = if quick_options_device_model_open {
                 "▲"
             } else {
@@ -793,7 +753,7 @@ fn app_picker_inner(
                 arrow
             );
             let title_ns = ns_string::from_rust_string(env, title);
-            () = msg![env; (quick_options_stuff.device_model_btn)
+            () = msg![env; (settings.device_model_btn)
                 setTitle:title_ns forState:UIControlStateNormal];
             release(env, title_ns);
         } else if std::mem::take(&mut host_obj.device_model_scroll_up) {
@@ -802,21 +762,21 @@ fn app_picker_inner(
             }
             update_device_model_menu(
                 env,
-                &quick_options_stuff.device_model_items,
-                quick_options_stuff.device_model_thumb,
+                &settings.device_model_items,
+                settings.device_model_thumb,
                 quick_options_device_tag,
                 quick_options_device_model_scroll,
             );
         } else if std::mem::take(&mut host_obj.device_model_scroll_down) {
-            let max_scroll = (quick_options_stuff.device_model_items.len() as isize)
+            let max_scroll = (settings.device_model_items.len() as isize)
                 .saturating_sub(DEVICE_MENU_VISIBLE_ITEMS as isize);
             if quick_options_device_model_scroll < max_scroll {
                 quick_options_device_model_scroll += 1;
             }
             update_device_model_menu(
                 env,
-                &quick_options_stuff.device_model_items,
-                quick_options_stuff.device_model_thumb,
+                &settings.device_model_items,
+                settings.device_model_thumb,
                 quick_options_device_tag,
                 quick_options_device_model_scroll,
             );
@@ -859,12 +819,12 @@ fn app_picker_inner(
                 if let Ok(new_apps) = enumerate_apps(&apps_dir) {
                     if let Some(grid) = icon_grid_stuff.as_mut() {
                         let mut new_apps = new_apps;
-                        grid.pages =
-                            compute_pages(grid.icon_buttons_and_labels.len(), new_apps.len());
+                        grid.pages = compute_pages(grid.containers[0].cells.len(), new_apps.len());
                         if current_page >= grid.pages.len() {
                             current_page = grid.pages.len() - 1;
                         }
-                        update_icon_grid(env, grid, &mut new_apps, current_page);
+                        let visible = grid.visible;
+                        update_icon_grid(env, grid, &mut new_apps, current_page, visible);
                         apps = Ok(new_apps);
                     }
                 }
@@ -940,9 +900,7 @@ const HYPERHLE_FORK_NAME: &str = "HyperHLE-Fork";
 const APP_PICKER_VERSION_LABEL_HEIGHT: CGFloat = 15.0;
 const APP_PICKER_VERSION_LABEL_BOTTOM_INSET: CGFloat = 5.0;
 const APP_PICKER_FOOTER_GAP: CGFloat = 10.0;
-const APP_PICKER_BUTTON_ROW_HEIGHT: CGFloat = 30.0;
 const APP_PICKER_GRID_TOP: CGFloat = 44.0;
-const APP_PICKER_GRID_TO_BUTTON_GAP: CGFloat = 6.0;
 const APP_PICKER_ICON_ROWS: usize = 4;
 
 const ICON_SIZE: CGSize = CGSize {
@@ -957,19 +915,13 @@ fn app_picker_version_label_top(app_height: CGFloat) -> CGFloat {
     app_height - APP_PICKER_VERSION_LABEL_HEIGHT - APP_PICKER_VERSION_LABEL_BOTTOM_INSET
 }
 
-fn app_picker_quick_options_button_center(app_height: CGFloat) -> CGFloat {
-    app_picker_version_label_top(app_height)
-        - APP_PICKER_FOOTER_GAP
-        - APP_PICKER_BUTTON_ROW_HEIGHT / 2.0
-}
-
-fn app_picker_quick_options_button_top(app_height: CGFloat) -> CGFloat {
-    app_picker_quick_options_button_center(app_height) - APP_PICKER_BUTTON_ROW_HEIGHT / 2.0
+/// The bottom edge of the icon grid (the footer area is now empty space).
+fn app_picker_grid_bottom(app_height: CGFloat) -> CGFloat {
+    app_picker_version_label_top(app_height) - APP_PICKER_FOOTER_GAP
 }
 
 fn app_picker_icon_grid_num_rows(app_height: CGFloat, label_height: CGFloat) -> usize {
-    let grid_bottom = app_picker_quick_options_button_top(app_height)
-        - APP_PICKER_GRID_TO_BUTTON_GAP;
+    let grid_bottom = app_picker_grid_bottom(app_height);
     let cell_content_height = ICON_SIZE.height + ICON_LABEL_TOP_GAP + label_height;
     let cell_step_y = cell_content_height + ICON_ROW_GAP;
     let available_height = (grid_bottom - APP_PICKER_GRID_TOP - cell_content_height).max(0.0);
@@ -991,14 +943,28 @@ enum TappedIcon {
     App(usize),
     ChangePage(usize),
     AddIpa,
+    Settings,
+}
+
+/// One full set of icon-grid cells on its own container view. Two of these
+/// exist so that one page can slide out while the next slides in.
+struct PageContainer {
+    view: id,
+    /// (icon button, name label) pairs.
+    cells: Vec<(id, id)>,
 }
 
 struct IconGridStuff {
-    icon_buttons_and_labels: Vec<(id, id)>,
+    containers: Vec<PageContainer>,
+    /// Index into `containers` of the container currently on screen.
+    visible: usize,
+    /// Width of the picker screen, used by the page slide animation.
+    screen_width: CGFloat,
     placeholder_icon: Option<id>,
     prev_icon: Option<id>,
     next_icon: Option<id>,
     plus_icon: Option<id>,
+    settings_icon: Option<id>,
     pages: Vec<std::ops::Range<usize>>,
     icon_map: HashMap<id, TappedIcon>,
 }
@@ -1035,82 +1001,107 @@ fn make_icon_grid(
 
     let icon_tapped_sel = env.objc.lookup_selector("iconTapped:").unwrap();
 
-    let mut icon_buttons_and_labels = Vec::new();
-
-    for i in 0..(num_cols * num_rows) {
-        let col = i % num_cols;
-        let row = i / num_cols;
-
-        // Rounding is needed here to avoid a blurry or offset image.
-        let icon_frame = CGRect {
-            origin: CGPoint {
-                x: (icon_grid_origin.x + (col as CGFloat) * (ICON_SIZE.width + icon_gap_x)).round(),
-                y: (icon_grid_origin.y + (row as CGFloat) * (ICON_SIZE.height + icon_gap_y))
-                    .round(),
+    let mut containers = Vec::new();
+    for container_idx in 0..2 {
+        // The container is a full-screen view, so moving it slides all its cells.
+        let clear: id = msg_class![env; UIColor clearColor];
+        let container = new_view(
+            env,
+            CGRect {
+                origin: CGPoint { x: 0.0, y: 0.0 },
+                size: app_frame.size,
             },
-            size: ICON_SIZE,
-        };
-        let icon_button: id = msg_class![env; UIButton buttonWithType:UIButtonTypeCustom];
-        () = msg![env; icon_button setFrame:icon_frame];
-        let image_view: id = msg![env; icon_button imageView];
-        let bounds: CGRect = msg![env; icon_button bounds];
-        let inset = ICON_IMAGE_INSET;
-        () = msg![env; image_view setFrame:(CGRect {
-            origin: CGPoint { x: inset, y: inset },
-            size: CGSize {
-                width: (bounds.size.width - inset * 2.0).max(1.0),
-                height: (bounds.size.height - inset * 2.0).max(1.0),
-            },
-        })];
-        let layer: id = msg![env; image_view layer];
-        let gravity = ns_string::get_static_str(env, "resizeAspect");
-        () = msg![env; layer setContentsGravity:gravity];
-        () = msg![env; icon_button addTarget:delegate
-                                      action:icon_tapped_sel
-                            forControlEvents:UIControlEventTouchUpInside];
-        () = msg![env; main_view addSubview:icon_button];
+            clear,
+        );
+        if container_idx != 0 {
+            () = msg![env; container setHidden:true];
+        }
+        () = msg![env; main_view addSubview:container];
 
-        // Rounding is needed here to avoid blurry text.
-        let label_frame = CGRect {
-            origin: CGPoint {
-                x: (icon_frame.origin.x - (label_size.width - ICON_SIZE.width) / 2.0).round(),
-                y: (icon_frame.origin.y + ICON_SIZE.height + ICON_LABEL_TOP_GAP).round(),
-            },
-            size: label_size,
-        };
-        let label: id = msg_class![env; UILabel alloc];
-        let label: id = msg![env; label initWithFrame:label_frame];
-        () = msg![env; label setTextAlignment:UITextAlignmentCenter];
-        let font_size: CGFloat = label_size.height - 2.0;
-        let font: id = if have_wallpaper {
-            msg_class![env; UIFont systemFontOfSize:font_size]
-        } else {
-            msg_class![env; UIFont boldSystemFontOfSize:font_size]
-        };
-        () = msg![env; label setFont:font];
-        let text_color: id = if have_wallpaper {
-            msg_class![env; UIColor whiteColor]
-        } else {
-            msg_class![env; UIColor lightGrayColor]
-        };
-        () = msg![env; label setTextColor:text_color];
-        let bg_color: id = msg_class![env; UIColor clearColor];
-        () = msg![env; label setBackgroundColor:bg_color];
-        () = msg![env; main_view addSubview:label];
+        let mut cells = Vec::new();
+        for i in 0..(num_cols * num_rows) {
+            let col = i % num_cols;
+            let row = i / num_cols;
 
-        icon_buttons_and_labels.push((icon_button, label));
+            // Rounding is needed here to avoid a blurry or offset image.
+            let icon_frame = CGRect {
+                origin: CGPoint {
+                    x: (icon_grid_origin.x + (col as CGFloat) * (ICON_SIZE.width + icon_gap_x))
+                        .round(),
+                    y: (icon_grid_origin.y + (row as CGFloat) * (ICON_SIZE.height + icon_gap_y))
+                        .round(),
+                },
+                size: ICON_SIZE,
+            };
+            let icon_button: id = msg_class![env; UIButton buttonWithType:UIButtonTypeCustom];
+            () = msg![env; icon_button setFrame:icon_frame];
+            let image_view: id = msg![env; icon_button imageView];
+            let bounds: CGRect = msg![env; icon_button bounds];
+            let inset = ICON_IMAGE_INSET;
+            () = msg![env; image_view setFrame:(CGRect {
+                origin: CGPoint { x: inset, y: inset },
+                size: CGSize {
+                    width: (bounds.size.width - inset * 2.0).max(1.0),
+                    height: (bounds.size.height - inset * 2.0).max(1.0),
+                },
+            })];
+            let layer: id = msg![env; image_view layer];
+            let gravity = ns_string::get_static_str(env, "resizeAspect");
+            () = msg![env; layer setContentsGravity:gravity];
+            () = msg![env; icon_button addTarget:delegate
+                                          action:icon_tapped_sel
+                                forControlEvents:UIControlEventTouchUpInside];
+            () = msg![env; container addSubview:icon_button];
+
+            // Rounding is needed here to avoid blurry text.
+            let label_frame = CGRect {
+                origin: CGPoint {
+                    x: (icon_frame.origin.x - (label_size.width - ICON_SIZE.width) / 2.0).round(),
+                    y: (icon_frame.origin.y + ICON_SIZE.height + ICON_LABEL_TOP_GAP).round(),
+                },
+                size: label_size,
+            };
+            let label: id = msg_class![env; UILabel alloc];
+            let label: id = msg![env; label initWithFrame:label_frame];
+            () = msg![env; label setTextAlignment:UITextAlignmentCenter];
+            let font_size: CGFloat = label_size.height - 2.0;
+            let font: id = if have_wallpaper {
+                msg_class![env; UIFont systemFontOfSize:font_size]
+            } else {
+                msg_class![env; UIFont boldSystemFontOfSize:font_size]
+            };
+            () = msg![env; label setFont:font];
+            let text_color: id = if have_wallpaper {
+                msg_class![env; UIColor whiteColor]
+            } else {
+                msg_class![env; UIColor lightGrayColor]
+            };
+            () = msg![env; label setTextColor:text_color];
+            let bg_color: id = msg_class![env; UIColor clearColor];
+            () = msg![env; label setBackgroundColor:bg_color];
+            () = msg![env; container addSubview:label];
+
+            cells.push((icon_button, label));
+        }
+        containers.push(PageContainer {
+            view: container,
+            cells,
+        });
     }
 
     // TODO: Use UIScrollView pagination and UIPageControl once available.
-    let total_slots = icon_buttons_and_labels.len();
+    let total_slots = containers[0].cells.len();
     let pages = compute_pages(total_slots, total_app_count);
 
     IconGridStuff {
-        icon_buttons_and_labels,
+        containers,
+        visible: 0,
+        screen_width: app_frame.size.width,
         placeholder_icon: None,
         prev_icon: None,
         next_icon: None,
         plus_icon: None,
+        settings_icon: None,
         pages,
         icon_map: HashMap::new(),
     }
@@ -1118,8 +1109,9 @@ fn make_icon_grid(
 
 /// Work out which apps go on each page of the icon grid.
 ///
-/// Page 0 reserves its first slot for the "add IPA" (+) tile; the remaining
-/// slots are used for the prev/next arrows (when relevant) and the apps.
+/// Page 0 reserves its first two slots for the "add IPA" (+) tile and the
+/// Settings tile; the remaining slots are used for the prev/next arrows (when
+/// relevant) and the apps.
 fn compute_pages(total_slots: usize, total_app_count: usize) -> Vec<std::ops::Range<usize>> {
     let mut pages = Vec::new();
     if total_app_count == 0 {
@@ -1130,11 +1122,12 @@ fn compute_pages(total_slots: usize, total_app_count: usize) -> Vec<std::ops::Ra
     while start < total_app_count {
         let page_idx = pages.len();
         let has_prev = start != 0;
-        let has_plus = page_idx == 0;
-        let mut app_slots = total_slots - usize::from(has_prev) - usize::from(has_plus);
+        let fixed_slots = usize::from(has_prev) + if page_idx == 0 { 2 } else { 0 };
+        let mut app_slots = total_slots.saturating_sub(fixed_slots).max(1);
         let remaining = total_app_count - start;
         if remaining > app_slots {
-            app_slots -= 1;
+            // Leave a slot for the "next" arrow.
+            app_slots = (app_slots - 1).max(1);
         }
         let end = (start + app_slots).min(total_app_count);
         pages.push(start..end);
@@ -1220,19 +1213,26 @@ fn make_icon_from_glyph(
     ui_image
 }
 
+/// Fills one page container (`container_idx`) of the icon grid with the apps
+/// of `page_idx`. The other container is left alone, so it can keep showing
+/// the previous page while a slide animation runs.
 fn update_icon_grid(
     env: &mut Environment,
     icon_grid_stuff: &mut IconGridStuff,
     apps: &mut [AppInfo],
     page_idx: usize,
+    container_idx: usize,
 ) {
-    icon_grid_stuff.icon_map.clear();
+    let cells = icon_grid_stuff.containers[container_idx].cells.clone();
+    for &(icon_button, _) in &cells {
+        icon_grid_stuff.icon_map.remove(&icon_button);
+    }
 
     let app_idx_range = icon_grid_stuff.pages[page_idx].clone();
     let have_prev_icon = page_idx != 0;
     let have_next_icon = app_idx_range.end != apps.len();
 
-    let mut icon_iter = icon_grid_stuff.icon_buttons_and_labels.iter();
+    let mut icon_iter = cells.iter();
 
     if have_prev_icon {
         let &(icon_button, label) = icon_iter.next().unwrap();
@@ -1258,6 +1258,17 @@ fn update_icon_grid(
         icon_grid_stuff
             .icon_map
             .insert(icon_button, TappedIcon::AddIpa);
+
+        // The Settings app sits right after the "+" tile.
+        let &(icon_button, label) = icon_iter.next().unwrap();
+        let image = *icon_grid_stuff
+            .settings_icon
+            .get_or_insert_with(|| make_settings_app_icon(env));
+        () = msg![env; icon_button setImage:image forState:UIControlStateNormal];
+        () = msg![env; label setText:(ns_string::get_static_str(env, "Settings"))];
+        icon_grid_stuff
+            .icon_map
+            .insert(icon_button, TappedIcon::Settings);
     }
 
     for app_idx in app_idx_range.clone() {
@@ -1307,73 +1318,667 @@ fn update_icon_grid(
     }
 }
 
-fn make_button_row(
+/// Helper to build a `CGRect` from its components.
+fn rect(x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat) -> CGRect {
+    CGRect {
+        origin: CGPoint { x, y },
+        size: CGSize { width, height },
+    }
+}
+
+fn ui_color(env: &mut Environment, r: CGFloat, g: CGFloat, b: CGFloat, a: CGFloat) -> id {
+    let color: id = msg_class![env; UIColor colorWithRed:r green:g blue:b alpha:a];
+    color
+}
+
+/// Creates a plain `UIView` with the given frame and background colour.
+fn new_view(env: &mut Environment, frame: CGRect, bg: id) -> id {
+    let view: id = msg_class![env; UIView alloc];
+    let view: id = msg![env; view initWithFrame:frame];
+    () = msg![env; view setBackgroundColor:bg];
+    view
+}
+
+/// Creates a transparent `UILabel` with the given text and style.
+fn new_label(
+    env: &mut Environment,
+    frame: CGRect,
+    text: &str,
+    font_size: CGFloat,
+    bold: bool,
+    text_color: id,
+) -> id {
+    let label: id = msg_class![env; UILabel alloc];
+    let label: id = msg![env; label initWithFrame:frame];
+    let ns_text = ns_string::from_rust_string(env, text.to_string());
+    () = msg![env; label setText:ns_text];
+    let font: id = if bold {
+        msg_class![env; UIFont boldSystemFontOfSize:font_size]
+    } else {
+        msg_class![env; UIFont systemFontOfSize:font_size]
+    };
+    () = msg![env; label setFont:font];
+    () = msg![env; label setTextColor:text_color];
+    let clear: id = msg_class![env; UIColor clearColor];
+    () = msg![env; label setBackgroundColor:clear];
+    label
+}
+
+fn set_view_x(env: &mut Environment, view: id, x: CGFloat) {
+    let mut frame: CGRect = msg![env; view frame];
+    frame.origin.x = x;
+    () = msg![env; view setFrame:frame];
+}
+
+fn lerp_f(a: CGFloat, b: CGFloat, t: CGFloat) -> CGFloat {
+    a + (b - a) * t
+}
+
+fn ease_out_cubic(t: f64) -> f64 {
+    1.0 - (1.0 - t).powi(3)
+}
+
+fn ease_in_out_cubic(t: f64) -> f64 {
+    if t < 0.5 {
+        4.0 * t * t * t
+    } else {
+        1.0 - (-2.0 * t + 2.0).powi(3) / 2.0
+    }
+}
+
+/// Duration of the page slide when pressing the arrow tiles.
+const PAGE_SLIDE_DURATION: Duration = Duration::from_millis(320);
+/// Duration of the "app icon zooms to the middle, screen fades to black"
+/// animation played when an app is picked.
+const APP_LAUNCH_ANIMATION_DURATION: Duration = Duration::from_millis(450);
+/// Side length of the app icon at the centre of the launch animation.
+const APP_LAUNCH_ICON_SIZE: CGFloat = 120.0;
+/// Duration of the settings screen slide (iOS-style push from the right).
+const SETTINGS_SLIDE_DURATION: Duration = Duration::from_millis(350);
+
+/// Runs the main run loop for `duration`, calling `step` with the linear
+/// progress (0.0 to 1.0) before every iteration. Taps delivered while the
+/// animation runs are dropped, because they would land on moving views.
+fn animate_for(
+    env: &mut Environment,
+    run_loop: id,
+    delegate: id,
+    duration: Duration,
+    mut step: impl FnMut(&mut Environment, f64),
+) {
+    let start = Instant::now();
+    loop {
+        let t = (start.elapsed().as_secs_f64() / duration.as_secs_f64()).min(1.0);
+        step(env, t);
+        run_run_loop_single_iteration(env, run_loop);
+        env.objc
+            .borrow_mut::<AppPickerDelegateHostObject>(delegate)
+            .icon_tapped = nil;
+        if t >= 1.0 {
+            break;
+        }
+    }
+}
+
+/// Plays the iOS-style launch animation: the tapped icon travels to the middle
+/// of the screen while the screen fades to black. The app then starts on top.
+fn play_app_launch_animation(
+    env: &mut Environment,
+    run_loop: id,
+    delegate: id,
+    main_view: id,
+    screen_size: CGSize,
+    icon_frame: CGRect,
+    icon: id,
+) {
+    let black: id = msg_class![env; UIColor blackColor];
+    let overlay = new_view(
+        env,
+        rect(0.0, 0.0, screen_size.width, screen_size.height),
+        black,
+    );
+    () = msg![env; overlay setAlpha:(0.0 as CGFloat)];
+    () = msg![env; main_view addSubview:overlay];
+
+    let icon_view: id = msg_class![env; UIImageView alloc];
+    let icon_view: id = msg![env; icon_view initWithImage:icon];
+    () = msg![env; icon_view setFrame:icon_frame];
+    () = msg![env; main_view addSubview:icon_view];
+
+    let target_x = (screen_size.width - APP_LAUNCH_ICON_SIZE) / 2.0;
+    let target_y = (screen_size.height - APP_LAUNCH_ICON_SIZE) / 2.0;
+    animate_for(
+        env,
+        run_loop,
+        delegate,
+        APP_LAUNCH_ANIMATION_DURATION,
+        |env, t| {
+            let p = ease_in_out_cubic(t) as CGFloat;
+            let frame = rect(
+                lerp_f(icon_frame.origin.x, target_x, p),
+                lerp_f(icon_frame.origin.y, target_y, p),
+                lerp_f(icon_frame.size.width, APP_LAUNCH_ICON_SIZE, p),
+                lerp_f(icon_frame.size.height, APP_LAUNCH_ICON_SIZE, p),
+            );
+            () = msg![env; icon_view setFrame:frame];
+            () = msg![env; overlay setAlpha:p];
+        },
+    );
+}
+
+/// Slides the icon grid to `new_page`. `direction` is +1.0 when moving to a
+/// later page (the new page comes in from the right) and -1.0 for an earlier
+/// one. The two page containers swap roles at the end.
+fn slide_to_page(
+    env: &mut Environment,
+    run_loop: id,
+    delegate: id,
+    grid: &mut IconGridStuff,
+    apps: &mut [AppInfo],
+    new_page: usize,
+    direction: CGFloat,
+) {
+    let front = grid.visible;
+    let back = front ^ 1;
+    let width = grid.screen_width;
+    update_icon_grid(env, grid, apps, new_page, back);
+
+    let front_view = grid.containers[front].view;
+    let back_view = grid.containers[back].view;
+    set_view_x(env, back_view, direction * width);
+    () = msg![env; back_view setHidden:false];
+
+    animate_for(env, run_loop, delegate, PAGE_SLIDE_DURATION, |env, t| {
+        let p = ease_out_cubic(t) as CGFloat;
+        set_view_x(env, front_view, -direction * width * p);
+        set_view_x(env, back_view, direction * width * (1.0 - p));
+    });
+
+    set_view_x(env, front_view, 0.0);
+    () = msg![env; front_view setHidden:true];
+    grid.visible = back;
+}
+
+/// Slides the settings screen in from the right (`open`) or back out again.
+fn slide_settings_screen(
+    env: &mut Environment,
+    run_loop: id,
+    delegate: id,
+    settings_view: id,
+    width: CGFloat,
+    open: bool,
+) {
+    if open {
+        () = msg![env; settings_view setHidden:false];
+    }
+    animate_for(env, run_loop, delegate, SETTINGS_SLIDE_DURATION, |env, t| {
+        let p = ease_out_cubic(t);
+        let progress = if open { p } else { 1.0 - p };
+        set_view_x(env, settings_view, (width as f64 * (1.0 - progress)) as CGFloat);
+    });
+    if !open {
+        () = msg![env; settings_view setHidden:true];
+    }
+}
+
+/// Builds the iOS-style "Settings" app icon (grey gear, gloss and rounded
+/// corners, like the bundled app icons).
+fn make_settings_app_icon(env: &mut Environment) -> id {
+    let bytes: &[u8] = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/res/settings_icon.png"
+    ));
+    let mut image = Image::from_bytes(bytes).unwrap();
+    // Same corner radius and gloss as `Bundle::load_icon()`.
+    image.round_corners(12.0, /* four_corners: */ true, /* add_sheen: */ true);
+    let cg_image = cg_image::from_image(env, image);
+    let ui_image: id = msg_class![env; UIImage imageWithCGImage:cg_image];
+    release(env, cg_image);
+    ui_image
+}
+
+/// Blue for the selected segment, light grey for the others (iOS style).
+fn update_segment_buttons(env: &mut Environment, buttons: &[id], selected_idx: usize) {
+    for (idx, &button) in buttons.iter().enumerate() {
+        let selected = idx == selected_idx;
+        let bg = if selected {
+            ui_color(env, 0.0, 0.478, 1.0, 1.0)
+        } else {
+            ui_color(env, 0.87, 0.87, 0.89, 1.0)
+        };
+        let title_color: id = if selected {
+            msg_class![env; UIColor whiteColor]
+        } else {
+            msg_class![env; UIColor blackColor]
+        };
+        () = msg![env; button setBackgroundColor:bg];
+        () = msg![env; button setTitleColor:title_color forState:UIControlStateNormal];
+    }
+}
+
+fn update_scale_hack_buttons(env: &mut Environment, buttons: &[id], value: Option<NonZeroU32>) {
+    update_segment_buttons(env, buttons, value.map_or(0, |v| v.get() as usize));
+}
+
+fn update_orientation_buttons(
+    env: &mut Environment,
+    buttons: &[id],
+    value: Option<DeviceOrientation>,
+) {
+    update_segment_buttons(
+        env,
+        buttons,
+        value.map_or(0, |v| match v {
+            DeviceOrientation::LandscapeLeft => 1,
+            DeviceOrientation::LandscapeRight => 2,
+            DeviceOrientation::PortraitUpsideDown => 3,
+            _ => panic!(),
+        }),
+    );
+}
+
+/// Creates a horizontal row of segment-style buttons inside `parent`.
+fn make_segment_buttons(
     env: &mut Environment,
     delegate: id,
-    super_view: id,
-    super_view_size: CGSize,
-    buttons_row_center: CGFloat,
+    parent: id,
+    frame: CGRect,
     buttons: &[(&'static str, &'static str)],
-    font_size: Option<CGFloat>,
 ) -> Vec<id> {
-    let margin = 10.0;
-
-    let button_size = CGSize {
-        width: (super_view_size.width - margin) / (buttons.len() as CGFloat) - margin,
-        height: APP_PICKER_BUTTON_ROW_HEIGHT,
-    };
-    let mut button_frame = CGRect {
-        origin: CGPoint {
-            x: margin,
-            y: buttons_row_center - button_size.height / 2.0,
-        },
-        size: button_size,
-    };
-
-    let mut ui_buttons = Vec::new();
-    for (title_text, selector) in buttons {
-        let button: id = msg_class![env; UIButton buttonWithType:UIButtonTypeRoundedRect];
+    let gap: CGFloat = 4.0;
+    let count = buttons.len() as CGFloat;
+    let button_width = (frame.size.width - gap * (count - 1.0)) / count;
+    let mut result = Vec::new();
+    for (i, &(title_text, selector)) in buttons.iter().enumerate() {
+        let button_frame = rect(
+            frame.origin.x + (i as CGFloat) * (button_width + gap),
+            frame.origin.y,
+            button_width,
+            frame.size.height,
+        );
+        let button: id = msg_class![env; UIButton buttonWithType:UIButtonTypeCustom];
+        () = msg![env; button setFrame:button_frame];
         let text = ns_string::get_static_str(env, title_text);
         () = msg![env; button setTitle:text forState:UIControlStateNormal];
-        () = msg![env; button setFrame:button_frame];
         // FIXME: manually calling layoutSubviews shouldn't be needed?
         () = msg![env; button layoutSubviews];
-
-        if let Some(font_size) = font_size {
-            let label: id = msg![env; button titleLabel];
-            let font: id = msg_class![env; UIFont systemFontOfSize:font_size];
-            () = msg![env; label setFont:font];
-        }
-
+        let label: id = msg![env; button titleLabel];
+        let font: id = msg_class![env; UIFont systemFontOfSize:(13.0 as CGFloat)];
+        () = msg![env; label setFont:font];
+        let layer: id = msg![env; button layer];
+        () = msg![env; layer setCornerRadius:(5.0 as CGFloat)];
         let selector = env.objc.lookup_selector(selector).unwrap();
         () = msg![env; button addTarget:delegate
                                  action:selector
                        forControlEvents:UIControlEventTouchUpInside];
-        () = msg![env; super_view addSubview:button];
-
-        button_frame.origin.x += button_size.width + margin;
-        ui_buttons.push(button);
+        () = msg![env; parent addSubview:button];
+        result.push(button);
     }
-    ui_buttons
+    result
 }
 
-struct QuickOptionsStuff {
+/// One row of the settings screen.
+#[derive(Clone, Copy)]
+enum SettingsRow {
+    /// A label with a row of segment buttons below it.
+    Segmented(&'static str, &'static [(&'static str, &'static str)]),
+    /// The "Device model" row (its dropdown is a root-level overlay).
+    DeviceDropdown,
+    /// Label and switch: (label, selector, initial state, enabled).
+    Toggle(&'static str, &'static str, bool, bool),
+}
+
+const SETTINGS_NAV_BAR_HEIGHT: CGFloat = 44.0;
+const SETTINGS_TOP_PADDING: CGFloat = 12.0;
+const SETTINGS_GROUP_INSET: CGFloat = 16.0;
+const SETTINGS_ROW_SIDE_INSET: CGFloat = 16.0;
+const SETTINGS_ROW_HEIGHT: CGFloat = 44.0;
+const SETTINGS_SEGMENT_ROW_HEIGHT: CGFloat = 58.0;
+const SETTINGS_HEADER_HEIGHT: CGFloat = 28.0;
+const SETTINGS_SECTION_GAP: CGFloat = 10.0;
+/// Width of the device-model dropdown (list plus scrollbar).
+const SETTINGS_DEVICE_MENU_WIDTH: CGFloat = 280.0;
+
+fn settings_row_height(row: &SettingsRow) -> CGFloat {
+    match row {
+        SettingsRow::Segmented(..) => SETTINGS_SEGMENT_ROW_HEIGHT,
+        _ => SETTINGS_ROW_HEIGHT,
+    }
+}
+
+/// The views of the Settings screen that the event loop needs to update.
+struct SettingsStuff {
+    /// Full-screen settings view (hidden until the Settings tile is tapped).
     main_view: id,
     scale_hack_buttons: [id; 5],
     orientation_buttons: [id; 4],
-    /// The button that toggles the "Device model" dropdown open/closed. Its
-    /// title shows the currently-selected model plus an up/down arrow.
+    /// The button in the "Device model" row. Its title shows the selection.
     device_model_btn: id,
-    /// The dropdown container view (hidden until toggled). Holds the scrollable
-    /// list of choices, the scrollbar track/thumb, and the scroll arrows.
+    /// The dropdown list (hidden until the button is tapped).
     device_model_menu: id,
-    /// One button per choice in `device_model_entries()` order ("Default",
-    /// "Auto", then every [crate::window::DeviceFamily] in `ALL_SELECTABLE`).
-    /// Each carries a UIView `tag` identifying its choice (see
-    /// `DEVICE_TAG_DEFAULT` / `DEVICE_TAG_AUTO` / model index).
+    /// Dims the screen behind the open dropdown; tapping it closes the list.
+    device_model_dimmer: id,
+    /// One button per choice in `device_model_entries()` order.
     device_model_items: Vec<id>,
-    /// The scrollbar thumb shown alongside the list.
+    /// The scrollbar thumb shown alongside the dropdown list.
     device_model_thumb: id,
+}
+
+/// Views created by [make_device_model_dropdown].
+struct DeviceModelDropdown {
+    button: id,
+    menu: id,
+    dimmer: id,
+    items: Vec<id>,
+    thumb: id,
+}
+
+fn set_device_model_menu_open(env: &mut Environment, menu: id, dimmer: id, open: bool) {
+    () = msg![env; menu setHidden:(!open)];
+    () = msg![env; dimmer setHidden:(!open)];
+}
+
+/// Builds the Settings screen: a navigation bar with a "Done" button, and a
+/// scrollable list of grouped sections in the style of the iOS Settings app.
+fn setup_settings(
+    env: &mut Environment,
+    delegate: id,
+    super_view: id,
+    app_frame: CGRect,
+    cheat_engine_enabled: bool,
+    gles_native_enabled: bool,
+    gles_native_switch_enabled: bool,
+    force_composition_enabled: bool,
+    show_fullscreen_row: bool,
+) -> SettingsStuff {
+    let width = app_frame.size.width;
+    let height = app_frame.size.height;
+    let root_size = app_frame.size;
+
+    let grouped_bg = ui_color(env, 0.937, 0.937, 0.957, 1.0);
+    let settings_view = new_view(env, rect(0.0, 0.0, width, height), grouped_bg);
+    () = msg![env; settings_view setHidden:true];
+    () = msg![env; super_view addSubview:settings_view];
+
+    let clear: id = msg_class![env; UIColor clearColor];
+    let black: id = msg_class![env; UIColor blackColor];
+    let white: id = msg_class![env; UIColor whiteColor];
+    let gray_text = ui_color(env, 0.43, 0.43, 0.45, 1.0);
+    let blue = ui_color(env, 0.0, 0.478, 1.0, 1.0);
+
+    // Navigation bar with the title and a "Done" button.
+    let nav_bar_bg = ui_color(env, 0.97, 0.97, 0.98, 1.0);
+    let nav_bar = new_view(env, rect(0.0, 0.0, width, SETTINGS_NAV_BAR_HEIGHT), nav_bar_bg);
+    () = msg![env; settings_view addSubview:nav_bar];
+    let nav_separator_color = ui_color(env, 0.78, 0.78, 0.8, 1.0);
+    let nav_separator = new_view(
+        env,
+        rect(0.0, SETTINGS_NAV_BAR_HEIGHT - 1.0, width, 1.0),
+        nav_separator_color,
+    );
+    () = msg![env; settings_view addSubview:nav_separator];
+
+    let title_color = ui_color(env, 0.1, 0.1, 0.1, 1.0);
+    let title = new_label(
+        env,
+        rect(60.0, 0.0, width - 120.0, SETTINGS_NAV_BAR_HEIGHT),
+        "Settings",
+        17.0,
+        true,
+        title_color,
+    );
+    () = msg![env; title setTextAlignment:UITextAlignmentCenter];
+    () = msg![env; settings_view addSubview:title];
+
+    let done: id = msg_class![env; UIButton buttonWithType:UIButtonTypeCustom];
+    () = msg![env; done setFrame:rect(width - 72.0, 0.0, 64.0, SETTINGS_NAV_BAR_HEIGHT)];
+    let done_text = ns_string::get_static_str(env, "Done");
+    () = msg![env; done setTitle:done_text forState:UIControlStateNormal];
+    // FIXME: manually calling layoutSubviews shouldn't be needed?
+    () = msg![env; done layoutSubviews];
+    () = msg![env; done setTitleColor:blue forState:UIControlStateNormal];
+    let done_label: id = msg![env; done titleLabel];
+    let done_font: id = msg_class![env; UIFont boldSystemFontOfSize:(17.0 as CGFloat)];
+    () = msg![env; done_label setFont:done_font];
+    let hide_selector = env.objc.lookup_selector("settingsHide").unwrap();
+    () = msg![env; done addTarget:delegate
+                           action:hide_selector
+                 forControlEvents:UIControlEventTouchUpInside];
+    () = msg![env; settings_view addSubview:done];
+
+    // Scrollable content below the navigation bar.
+    let scroll: id = msg_class![env; UIScrollView alloc];
+    let scroll: id = msg![env; scroll initWithFrame:rect(
+        0.0,
+        SETTINGS_NAV_BAR_HEIGHT,
+        width,
+        height - SETTINGS_NAV_BAR_HEIGHT,
+    )];
+    () = msg![env; scroll setBackgroundColor:clear];
+    () = msg![env; settings_view addSubview:scroll];
+
+    let mut sections: Vec<(&'static str, Vec<SettingsRow>)> = Vec::new();
+    let mut display_rows = vec![
+        SettingsRow::Segmented(
+            "Scale hack",
+            &[
+                ("Default", "scaleHackDefault"),
+                ("Off", "scaleHack1"),
+                ("2×", "scaleHack2"),
+                ("3×", "scaleHack3"),
+                ("4×", "scaleHack4"),
+            ],
+        ),
+        SettingsRow::Segmented(
+            "Orientation",
+            &[
+                ("Default", "orientationDefault"),
+                ("←", "orientationLandscapeLeft"),
+                ("→", "orientationLandscapeRight"),
+                ("↓", "orientationPortraitUpsideDown"),
+            ],
+        ),
+    ];
+    if show_fullscreen_row {
+        display_rows.push(SettingsRow::Toggle(
+            "Fullscreen (override)",
+            "fullscreen:",
+            false,
+            true,
+        ));
+    }
+    sections.push(("DISPLAY", display_rows));
+    sections.push((
+        "GRAPHICS",
+        vec![
+            SettingsRow::Toggle(
+                "GLES Native",
+                "glesNative:",
+                gles_native_enabled,
+                gles_native_switch_enabled,
+            ),
+            SettingsRow::Toggle(
+                "May fix graphics issues.",
+                "forceComposition:",
+                force_composition_enabled,
+                true,
+            ),
+            SettingsRow::Toggle("Show FPS", "showFPS:", false, true),
+            SettingsRow::Toggle("Trace GL errors", "traceGLErrors:", false, true),
+        ],
+    ));
+    sections.push(("DEVICE", vec![SettingsRow::DeviceDropdown]));
+    sections.push((
+        "EMULATION",
+        vec![
+            SettingsRow::Toggle("Cheat Engine", "cheatEngine:", cheat_engine_enabled, true),
+            SettingsRow::Toggle("Network access", "network:", false, true),
+            SettingsRow::Toggle(
+                "Use analog sticks for tilt controls",
+                "analogStickTiltControls:",
+                true,
+                true,
+            ),
+        ],
+    ));
+
+    let inner_width = width - 2.0 * SETTINGS_GROUP_INSET;
+    let side = SETTINGS_ROW_SIDE_INSET;
+    let mut scale_hack_buttons: Vec<id> = Vec::new();
+    let mut orientation_buttons: Vec<id> = Vec::new();
+    let mut dropdown: Option<DeviceModelDropdown> = None;
+
+    let mut y: CGFloat = SETTINGS_TOP_PADDING;
+    for (header, rows) in sections {
+        let header_label = new_label(
+            env,
+            rect(SETTINGS_GROUP_INSET + 12.0, y, inner_width - 12.0, 18.0),
+            header,
+            13.0,
+            false,
+            gray_text,
+        );
+        () = msg![env; scroll addSubview:header_label];
+        y += SETTINGS_HEADER_HEIGHT;
+
+        let group_height: CGFloat = rows.iter().map(settings_row_height).sum();
+        let group = new_view(
+            env,
+            rect(SETTINGS_GROUP_INSET, y, inner_width, group_height),
+            white,
+        );
+        let group_layer: id = msg![env; group layer];
+        () = msg![env; group_layer setCornerRadius:(10.0 as CGFloat)];
+        () = msg![env; scroll addSubview:group];
+
+        let row_count = rows.len();
+        let mut row_y: CGFloat = 0.0;
+        for (index, row) in rows.iter().enumerate() {
+            match *row {
+                SettingsRow::Segmented(label, buttons) => {
+                    let label_view = new_label(
+                        env,
+                        rect(side, row_y + 6.0, inner_width - 2.0 * side, 18.0),
+                        label,
+                        15.0,
+                        false,
+                        black,
+                    );
+                    () = msg![env; group addSubview:label_view];
+                    let seg_buttons = make_segment_buttons(
+                        env,
+                        delegate,
+                        group,
+                        rect(side, row_y + 28.0, inner_width - 2.0 * side, 24.0),
+                        buttons,
+                    );
+                    if buttons[0].1 == "scaleHackDefault" {
+                        scale_hack_buttons = seg_buttons;
+                    } else {
+                        orientation_buttons = seg_buttons;
+                    }
+                }
+                SettingsRow::DeviceDropdown => {
+                    let label_view = new_label(
+                        env,
+                        rect(side, row_y + 11.0, 150.0, 22.0),
+                        "Device model",
+                        16.0,
+                        false,
+                        black,
+                    );
+                    () = msg![env; group addSubview:label_view];
+                    let menu_origin = CGPoint {
+                        x: (width - SETTINGS_DEVICE_MENU_WIDTH) / 2.0,
+                        y: SETTINGS_NAV_BAR_HEIGHT + 12.0,
+                    };
+                    dropdown = Some(make_device_model_dropdown(
+                        env,
+                        delegate,
+                        group,
+                        settings_view,
+                        rect(inner_width - side - 170.0, row_y + 7.0, 170.0, 30.0),
+                        menu_origin,
+                        root_size,
+                    ));
+                }
+                SettingsRow::Toggle(label_text, selector, default_state, enabled) => {
+                    let switch_width: CGFloat = 94.0;
+                    let label_view = new_label(
+                        env,
+                        rect(
+                            side,
+                            row_y + 11.0,
+                            inner_width - 2.0 * side - switch_width - 8.0,
+                            22.0,
+                        ),
+                        label_text,
+                        16.0,
+                        false,
+                        black,
+                    );
+                    () = msg![env; label_view setTextAlignment:UITextAlignmentLeft];
+                    () = msg![env; label_view setAdjustsFontSizeToFitWidth:true];
+                    () = msg![env; label_view setMinimumFontSize:(12.0 as CGFloat)];
+                    () = msg![env; group addSubview:label_view];
+
+                    let switch: id = msg_class![env; UISwitch alloc];
+                    let switch: id = msg![env; switch initWithFrame:rect(
+                        inner_width - side - switch_width,
+                        row_y + 8.5,
+                        switch_width,
+                        27.0,
+                    )];
+                    () = msg![env; switch setOn:default_state];
+                    () = msg![env; switch setEnabled:enabled];
+                    let selector = env.objc.lookup_selector(selector).unwrap();
+                    () = msg![env; switch addTarget:delegate
+                                             action:selector
+                                   forControlEvents:UIControlEventValueChanged];
+                    () = msg![env; group addSubview:switch];
+                }
+            }
+            row_y += settings_row_height(row);
+            // Hairline separator between rows, inset from the left like iOS.
+            if index + 1 < row_count {
+                let separator_color = ui_color(env, 0.85, 0.85, 0.87, 1.0);
+                let separator = new_view(
+                    env,
+                    rect(side, row_y - 1.0, inner_width - side, 1.0),
+                    separator_color,
+                );
+                () = msg![env; group addSubview:separator];
+            }
+        }
+        y += group_height + SETTINGS_SECTION_GAP;
+    }
+
+    // Footer with the build identifier.
+    let footer = new_label(
+        env,
+        rect(0.0, y, width, 18.0),
+        &format!("{HYPERHLE_FORK_NAME} ({})", crate::COMMIT_HASH),
+        12.0,
+        false,
+        gray_text,
+    );
+    () = msg![env; footer setTextAlignment:UITextAlignmentCenter];
+    () = msg![env; scroll addSubview:footer];
+    y += 30.0;
+
+    () = msg![env; scroll setContentSize:(CGSize { width, height: y + 24.0 })];
+
+    let dropdown = dropdown.expect("the settings screen always has a device model row");
+    SettingsStuff {
+        main_view: settings_view,
+        scale_hack_buttons: scale_hack_buttons.try_into().unwrap(),
+        orientation_buttons: orientation_buttons.try_into().unwrap(),
+        device_model_btn: dropdown.button,
+        device_model_menu: dropdown.menu,
+        device_model_dimmer: dropdown.dimmer,
+        device_model_items: dropdown.items,
+        device_model_thumb: dropdown.thumb,
+    }
 }
 
 /// Sentinel button tags for the device-model dropdown. Model buttons use their
@@ -1414,260 +2019,6 @@ fn device_model_label_for_tag(tag: Option<i32>) -> String {
             .get(idx as usize)
             .map(|f| f.display_name().to_string())
             .unwrap_or_else(|| "Default".to_string()),
-    }
-}
-
-fn setup_quick_options(
-    env: &mut Environment,
-    delegate: id,
-    super_view: id,
-    app_frame: CGRect,
-    cheat_engine_enabled: bool,
-    gles_native_enabled: bool,
-    gles_native_switch_enabled: bool,
-    force_composition_enabled: bool,
-) -> QuickOptionsStuff {
-    // UIView*
-    let main_frame = CGRect {
-        origin: CGPoint { x: 0.0, y: 0.0 },
-        size: app_frame.size,
-    };
-
-    // Container for all the other stuff
-
-    let main_view: id = msg_class![env; UIView alloc];
-    let main_view: id = msg![env; main_view initWithFrame:main_frame];
-    // TODO: Isn't white the default?
-    let bg_color: id = msg_class![env; UIColor whiteColor];
-    () = msg![env; main_view setBackgroundColor:bg_color];
-    // This main_view is hidden until the quick options button is tapped.
-    () = msg![env; main_view setHidden:true];
-    () = msg![env; super_view addSubview:main_view];
-
-    let divider = 44.0;
-
-    // Close button (×) in the upper right corner. It uses an explicit border
-    // and a slightly larger frame than the title so the glyph is clearly
-    // visible against the white menu background.
-    {
-        let button_size: CGFloat = 36.0;
-        let button_margin: CGFloat = 8.0;
-        let button_frame = CGRect {
-            origin: CGPoint {
-                x: main_frame.size.width - button_size - button_margin,
-                y: button_margin,
-            },
-            size: CGSize {
-                width: button_size,
-                height: button_size,
-            },
-        };
-
-        let button: id = msg_class![env; UIButton buttonWithType:UIButtonTypeRoundedRect];
-        let text = ns_string::get_static_str(env, "×");
-        () = msg![env; button setTitle:text forState:UIControlStateNormal];
-        () = msg![env; button setFrame:button_frame];
-        // FIXME: manually calling layoutSubviews shouldn't be needed?
-        () = msg![env; button layoutSubviews];
-
-        let label: id = msg![env; button titleLabel];
-        let font: id = msg_class![env; UIFont systemFontOfSize:(28.0 as CGFloat)];
-        () = msg![env; label setFont:font];
-
-        // `buttonWithType:UIButtonTypeRoundedRect` does not actually apply the
-        // rounded-rect appearance, so explicitly give the close button a
-        // visible background, title color and rounded border. Without this
-        // the white default title on a clear background would be invisible
-        // against the white menu.
-        let bg_color: id = msg_class![env; UIColor grayColor];
-        () = msg![env; button setBackgroundColor:bg_color];
-        let text_color: id = msg_class![env; UIColor whiteColor];
-        () = msg![env; button setTitleColor:text_color forState:UIControlStateNormal];
-        let layer: id = msg![env; button layer];
-        () = msg![env; layer setCornerRadius:(8.0 as CGFloat)];
-
-        let selector = env.objc.lookup_selector("quickOptionsHide").unwrap();
-        () = msg![env; button addTarget:delegate
-                                 action:selector
-                       forControlEvents:UIControlEventTouchUpInside];
-        () = msg![env; main_view addSubview:button];
-    }
-
-    enum RowKind {
-        Label(&'static str),
-        Buttons(&'static [(&'static str, &'static str)], Option<CGFloat>),
-        /// Dropdown listing every selectable device model.
-        DeviceDropdown,
-        Toggle(&'static str, &'static str, bool, bool),
-    }
-    let rows = [
-        RowKind::Label("Scale hack"),
-        RowKind::Buttons(
-            &[
-                ("Default", "scaleHackDefault"),
-                ("Off", "scaleHack1"),
-                ("2×", "scaleHack2"),
-                ("3×", "scaleHack3"),
-                ("4×", "scaleHack4"),
-            ],
-            Some(14.0),
-        ),
-        RowKind::Label("Orientation"),
-        RowKind::Buttons(
-            &[
-                ("Default", "orientationDefault"),
-                ("←", "orientationLandscapeLeft"),
-                ("→", "orientationLandscapeRight"),
-                ("↓", "orientationPortraitUpsideDown"),
-            ],
-            None,
-        ),
-        RowKind::Label("Device model"),
-        RowKind::DeviceDropdown,
-        RowKind::Toggle("Cheat Engine", "cheatEngine:", cheat_engine_enabled, true),
-        RowKind::Toggle("Network access", "network:", false, true),
-        RowKind::Toggle("Show FPS", "showFPS:", false, true),
-        RowKind::Toggle("Trace GL errors", "traceGLErrors:", false, true),
-        RowKind::Toggle(
-            "GLES Native",
-            "glesNative:",
-            gles_native_enabled,
-            gles_native_switch_enabled,
-        ),
-        RowKind::Toggle(
-            "May fix graphics issues.",
-            "forceComposition:",
-            force_composition_enabled,
-            true,
-        ),
-        RowKind::Toggle(
-            "Use analog sticks for tilt controls",
-            "analogStickTiltControls:",
-            true,
-            true,
-        ),
-        RowKind::Toggle("Fullscreen (override)", "fullscreen:", false, true),
-    ];
-    let rows = if crate::window::Window::rotatable_fullscreen() {
-        // Fullscreen option doesn't make sense on always-fullscreen platforms
-        &rows[..rows.len() - 1]
-    } else {
-        &rows[..]
-    };
-
-    let mut button_rows = Vec::new();
-    let mut device_model_btn: id = nil;
-    let mut device_model_menu: id = nil;
-    let mut device_model_items: Vec<id> = Vec::new();
-    let mut device_model_thumb: id = nil;
-    for (i, row) in rows.iter().enumerate() {
-        let row_center = divider
-            + ((1 + i) as CGFloat)
-                * ((main_frame.size.height - divider) / ((rows.len() + 1) as CGFloat));
-
-        match *row {
-            RowKind::Label(text) => {
-                let frame = CGRect {
-                    origin: CGPoint {
-                        x: 0.0,
-                        y: row_center - 30.0 / 2.0,
-                    },
-                    size: CGSize {
-                        width: main_frame.size.width,
-                        height: 30.0,
-                    },
-                };
-
-                let label: id = msg_class![env; UILabel alloc];
-                let label: id = msg![env; label initWithFrame:frame];
-                let text = ns_string::get_static_str(env, text);
-                () = msg![env; label setText:text];
-                () = msg![env; label setTextAlignment:UITextAlignmentCenter];
-                () = msg![env; main_view addSubview:label];
-            }
-            RowKind::Buttons(buttons, font_size) => {
-                button_rows.push(make_button_row(
-                    env,
-                    delegate,
-                    main_view,
-                    main_frame.size,
-                    row_center,
-                    buttons,
-                    font_size,
-                ));
-            }
-            RowKind::DeviceDropdown => {
-                let dropdown = make_device_model_dropdown(
-                    env,
-                    delegate,
-                    main_view,
-                    main_frame.size,
-                    row_center,
-                );
-                device_model_btn = dropdown.0;
-                device_model_menu = dropdown.1;
-                device_model_items = dropdown.2;
-                device_model_thumb = dropdown.3;
-            }
-            RowKind::Toggle(label_text, selector, default_state, enabled) => {
-                let switch_width: CGFloat = 94.0;
-                let switch_height: CGFloat = 27.0;
-                let side_margin: CGFloat = 12.0;
-                let label_gap: CGFloat = 8.0;
-                let label_width = (main_frame.size.width
-                    - switch_width
-                    - side_margin * 2.0
-                    - label_gap)
-                    .max(0.0);
-                let label_frame = CGRect {
-                    origin: CGPoint {
-                        x: side_margin,
-                        y: row_center - 15.0,
-                    },
-                    size: CGSize {
-                        width: label_width,
-                        height: 30.0,
-                    },
-                };
-                let label: id = msg_class![env; UILabel alloc];
-                let label: id = msg![env; label initWithFrame:label_frame];
-                let text = ns_string::get_static_str(env, label_text);
-                () = msg![env; label setText:text];
-                () = msg![env; label setTextAlignment:UITextAlignmentLeft];
-                let font: id = msg_class![env; UIFont systemFontOfSize:(16.0 as CGFloat)];
-                () = msg![env; label setFont:font];
-                () = msg![env; label setAdjustsFontSizeToFitWidth:true];
-                () = msg![env; label setMinimumFontSize:(12.0 as CGFloat)];
-                () = msg![env; main_view addSubview:label];
-
-                let switch_frame = CGRect {
-                    origin: CGPoint {
-                        x: main_frame.size.width - side_margin - switch_width,
-                        y: row_center - switch_height / 2.0,
-                    },
-                    size: Default::default(),
-                };
-                let switch: id = msg_class![env; UISwitch alloc];
-                let switch: id = msg![env; switch initWithFrame:switch_frame];
-                () = msg![env; switch setOn:default_state];
-                () = msg![env; switch setEnabled:enabled];
-                let selector = env.objc.lookup_selector(selector).unwrap();
-                () = msg![env; switch addTarget:delegate
-                                         action:selector
-                               forControlEvents:UIControlEventValueChanged];
-                () = msg![env; main_view addSubview:switch];
-            }
-        }
-    }
-
-    QuickOptionsStuff {
-        main_view,
-        scale_hack_buttons: button_rows[0][..].try_into().unwrap(),
-        orientation_buttons: button_rows[1][..].try_into().unwrap(),
-        device_model_btn,
-        device_model_menu,
-        device_model_items,
-        device_model_thumb,
     }
 }
 
@@ -1732,81 +2083,62 @@ fn update_device_model_menu(
     () = msg![env; thumb setFrame:thumb_frame];
 }
 
-/// Build the "Device model" dropdown: a toggle button whose title shows the
-/// currently-selected model and an up/down arrow, plus a (initially hidden)
-/// menu placed *above* the button so it never runs off the bottom of the
-/// screen. The menu contains a vertically-scrollable list of every choice from
-/// [device_model_entries], a scrollbar track + thumb, and transparent up/down
-/// scroll arrows. Each list item is wired to the delegate's `deviceModel:`
-/// selector and tagged with its choice; the arrows fire `deviceModelScrollUp` /
-/// `deviceModelScrollDown`. Returns `(toggle button, menu view, item buttons,
-/// scrollbar thumb)`.
+/// Build the "Device model" dropdown: a toggle button in the settings row,
+/// plus a (initially hidden) list that is shown as an overlay on the whole
+/// Settings screen, with a dimmer behind it. The list contains a
+/// vertically-scrollable list of every choice from [device_model_entries], a
+/// scrollbar track + thumb, and transparent up/down scroll arrows. Each list
+/// item is wired to the delegate's `deviceModel:` selector and tagged with its
+/// choice; the arrows fire `deviceModelScrollUp` / `deviceModelScrollDown`.
 fn make_device_model_dropdown(
     env: &mut Environment,
     delegate: id,
-    super_view: id,
-    super_view_size: CGSize,
-    row_center: CGFloat,
-) -> (id, id, Vec<id>, id) {
-    let btn_width: CGFloat = 280.0;
-    let btn_height: CGFloat = 30.0;
+    group_view: id,
+    root_view: id,
+    button_frame: CGRect,
+    menu_origin: CGPoint,
+    root_size: CGSize,
+) -> DeviceModelDropdown {
     let list_width: CGFloat = 256.0;
     let scrollbar_width: CGFloat = 24.0;
-
-    let btn_frame = CGRect {
-        origin: CGPoint {
-            x: super_view_size.width / 2.0 - btn_width / 2.0,
-            y: row_center - btn_height / 2.0,
-        },
-        size: CGSize {
-            width: btn_width,
-            height: btn_height,
-        },
-    };
-
     let dark_gray: id = msg_class![env; UIColor darkGrayColor];
 
-    // Bordered container for the toggle button (a darker frame behind a lighter
-    // inner button), so it reads as a control on the white menu background.
-    let border_view: id = msg_class![env; UIView alloc];
-    let border_view: id = msg![env; border_view initWithFrame:btn_frame];
-    () = msg![env; border_view setBackgroundColor:dark_gray];
-    () = msg![env; super_view addSubview:border_view];
+    // Dimmer covering the whole Settings screen while the list is open.
+    let dimmer: id = msg_class![env; UIButton buttonWithType:UIButtonTypeCustom];
+    () = msg![env; dimmer setFrame:rect(0.0, 0.0, root_size.width, root_size.height)];
+    let dim_color = ui_color(env, 0.0, 0.0, 0.0, 0.35);
+    () = msg![env; dimmer setBackgroundColor:dim_color];
+    () = msg![env; dimmer addTarget:delegate
+                             action:(env.objc.lookup_selector("deviceModelToggle").unwrap())
+                   forControlEvents:UIControlEventTouchUpInside];
+    () = msg![env; dimmer setHidden:true];
+    () = msg![env; root_view addSubview:dimmer];
 
-    let inner_frame = CGRect {
-        origin: CGPoint { x: 2.0, y: 2.0 },
-        size: CGSize {
-            width: btn_frame.size.width - 4.0,
-            height: btn_frame.size.height - 4.0,
-        },
-    };
+    // The toggle button, shown in the "Device model" row.
     let button: id = msg_class![env; UIButton buttonWithType:UIButtonTypeCustom];
-    let initial_title = format!("{} ^", device_model_label_for_tag(None));
+    let initial_title = format!("{} ▼", device_model_label_for_tag(None));
     let text = ns_string::from_rust_string(env, initial_title);
     () = msg![env; button setTitle:text forState:UIControlStateNormal];
     release(env, text);
-    let black: id = msg_class![env; UIColor blackColor];
-    () = msg![env; button setTitleColor:black forState:UIControlStateNormal];
-    let light_gray: id = msg_class![env; UIColor lightGrayColor];
-    () = msg![env; button setBackgroundColor:light_gray];
-    () = msg![env; button setFrame:inner_frame];
+    let blue = ui_color(env, 0.0, 0.478, 1.0, 1.0);
+    () = msg![env; button setTitleColor:blue forState:UIControlStateNormal];
+    () = msg![env; button setFrame:button_frame];
     () = msg![env; button layoutSubviews];
-    let toggle_selector = env.objc.lookup_selector("deviceModelToggle").unwrap();
+    let button_label: id = msg![env; button titleLabel];
+    let button_font: id = msg_class![env; UIFont systemFontOfSize:(16.0 as CGFloat)];
+    () = msg![env; button_label setFont:button_font];
     () = msg![env; button addTarget:delegate
-                             action:toggle_selector
+                             action:(env.objc.lookup_selector("deviceModelToggle").unwrap())
                    forControlEvents:UIControlEventTouchUpInside];
-    () = msg![env; border_view addSubview:button];
+    () = msg![env; group_view addSubview:button];
 
-    // The dropdown menu, placed directly above the toggle button. It is clipped
-    // to its own bounds and hidden until the button is tapped.
+    // The dropdown list, placed on the Settings screen (not inside the
+    // scroll view, so it is never clipped). Clipped to its own bounds.
     let visible_menu_height = (DEVICE_MENU_VISIBLE_ITEMS as CGFloat) * DEVICE_MENU_ITEM_HEIGHT;
     let menu_frame = CGRect {
-        origin: CGPoint {
-            x: btn_frame.origin.x,
-            y: btn_frame.origin.y - visible_menu_height,
-        },
+        origin: menu_origin,
         size: CGSize {
-            width: btn_width,
+            width: SETTINGS_DEVICE_MENU_WIDTH,
             height: visible_menu_height,
         },
     };
@@ -1815,7 +2147,7 @@ fn make_device_model_dropdown(
     () = msg![env; menu_view setBackgroundColor:dark_gray];
     () = msg![env; menu_view setClipsToBounds:true];
     () = msg![env; menu_view setHidden:true];
-    () = msg![env; super_view addSubview:menu_view];
+    () = msg![env; root_view addSubview:menu_view];
 
     // List items: one button per choice. Items that fall outside the initially
     // visible window are hidden; scrolling reveals them (see
@@ -1922,7 +2254,13 @@ fn make_device_model_dropdown(
                      forControlEvents:UIControlEventTouchUpInside];
     () = msg![env; menu_view addSubview:down_btn];
 
-    (button, menu_view, items, thumb_view)
+    DeviceModelDropdown {
+        button,
+        menu: menu_view,
+        dimmer,
+        items,
+        thumb: thumb_view,
+    }
 }
 
 fn quick_options_trainer_enabled(options: &Options) -> bool {
