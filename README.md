@@ -32,7 +32,8 @@ The titles below have been tested with HyperHLE-Fork and are known to run. Compa
 - Need For Speed: Most Wanted (Unplayable)
 - Minecraft 0.14.2-0.16.2 (Playable)
 - Oceanhorn (Unplayable)
-- Asphalt 8 (1.0.0 + maybe playable)
+- Asphalt 8 (1.0.0 + Playable)
+- GTA 3 (Buggy)
 - And more more games
 
 ## Build and documentation
