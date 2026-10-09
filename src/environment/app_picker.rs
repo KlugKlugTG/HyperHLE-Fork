@@ -1469,6 +1469,8 @@ fn play_app_launch_animation(
                 lerp_f(icon_frame.size.height, APP_LAUNCH_ICON_SIZE, p),
             );
             () = msg![env; icon_view setFrame:frame];
+            // The black background fades in behind the moving icon.
+            () = msg![env; overlay setAlpha:(p as CGFloat)];
         },
     );
     // 2. The icon rests in the middle for a moment.
@@ -1479,7 +1481,7 @@ fn play_app_launch_animation(
         APP_LAUNCH_CENTER_HOLD_DURATION,
         |_env, _t| {},
     );
-    // 3. The icon dissolves into the screen, which fades to black.
+    // 3. The icon dissolves into the black background.
     animate_for(
         env,
         run_loop,
@@ -1487,7 +1489,6 @@ fn play_app_launch_animation(
         APP_LAUNCH_DISSOLVE_DURATION,
         |env, t| {
             let p = ease_in_out_cubic(t.min(1.0));
-            () = msg![env; overlay setAlpha:(p as CGFloat)];
             () = msg![env; icon_view setAlpha:((1.0 - p) as CGFloat)];
         },
     );
@@ -1951,9 +1952,9 @@ fn setup_settings(
                         env,
                         rect(
                             side,
-                            row_y + 11.0,
+                            row_y + 4.0,
                             inner_width - 2.0 * side - switch_width - 8.0,
-                            22.0,
+                            36.0,
                         ),
                         label_text,
                         16.0,
@@ -1961,8 +1962,8 @@ fn setup_settings(
                         black,
                     );
                     () = msg![env; label_view setTextAlignment:UITextAlignmentLeft];
-                    () = msg![env; label_view setAdjustsFontSizeToFitWidth:true];
-                    () = msg![env; label_view setMinimumFontSize:(12.0 as CGFloat)];
+                    // Long labels wrap onto a second line, as in iOS Settings.
+                    () = msg![env; label_view setNumberOfLines:2];
                     () = msg![env; group addSubview:label_view];
 
                     let switch: id = msg_class![env; UISwitch alloc];
