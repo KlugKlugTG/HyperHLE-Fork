@@ -586,7 +586,7 @@ fn app_picker_inner(
     () = msg![env; window makeKeyAndVisible];
 
     let apps_dir = paths::user_data_base_path().join(paths::APPS_DIR);
-    let mut current_page = 0;
+    let mut current_page: usize = 0;
     // Discard arrow presses made before the picker was shown.
     PENDING_ARROW_KEY.store(0, Ordering::Relaxed);
     // If the user taps the "+" tile, this records the .ipa files that existed
