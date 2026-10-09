@@ -8,9 +8,11 @@
 use crate::dyld::{export_c_func, FunctionExports};
 use crate::libc::mach::init::MACH_TASK_SELF;
 use crate::libc::mach::port::mach_port_t;
-use crate::libc::mach::thread_info::{kern_return_t, KERN_INVALID_ADDRESS, KERN_SUCCESS};
+use crate::libc::mach::thread_info::{
+    kern_return_t, KERN_INVALID_ADDRESS, KERN_INVALID_ARGUMENT, KERN_INVALID_TASK, KERN_SUCCESS,
+};
 use crate::mem::{
-    ConstPtr, MutPtr, Ptr, SafeRead, SafeWrite, PAGE_SIZE, PAGE_SIZE_ALIGN_MASK,
+    ConstPtr, Mem, MutPtr, Ptr, SafeRead, SafeWrite, PAGE_SIZE, PAGE_SIZE_ALIGN_MASK,
 };
 use crate::Environment;
 use std::collections::HashMap;
@@ -221,6 +223,95 @@ fn vm_deallocate(
     KERN_SUCCESS
 }
 
+/// Whether a non-empty guest range lies outside the reserved null segment and
+/// entirely within the 32-bit guest address space.
+fn guest_range_is_valid(mem: &Mem, address: mach_vm_address_t, size: mach_vm_size_t) -> bool {
+    if size == 0 {
+        return true;
+    }
+
+    let start = u64::from(address);
+    let end = start + u64::from(size);
+    start != 0 && start >= u64::from(mem.null_segment_size()) && end <= (1_u64 << 32)
+}
+
+/// Implementation shared with unit tests, which can exercise guest-memory
+/// behavior without constructing a full emulator environment.
+fn vm_read_overwrite_in_memory(
+    mem: &mut Mem,
+    target_task: vm_map_t,
+    address: mach_vm_address_t,
+    size: mach_vm_size_t,
+    data: mach_vm_address_t,
+    outsize: MutPtr<mach_vm_size_t>,
+) -> kern_return_t {
+    if target_task != MACH_TASK_SELF {
+        log!(
+            "Warning: vm_read_overwrite: unsupported task port {:#x}; returning KERN_INVALID_TASK.",
+            target_task
+        );
+        return KERN_INVALID_TASK;
+    }
+    if outsize.is_null() {
+        log!("Warning: vm_read_overwrite: null outsize pointer; returning KERN_INVALID_ARGUMENT.");
+        return KERN_INVALID_ARGUMENT;
+    }
+    let outsize_size = std::mem::size_of::<mach_vm_size_t>() as u32;
+    if !guest_range_is_valid(mem, outsize.to_bits(), outsize_size) {
+        log!(
+            "Warning: vm_read_overwrite: invalid outsize pointer {:?}; returning KERN_INVALID_ADDRESS.",
+            outsize
+        );
+        return KERN_INVALID_ADDRESS;
+    }
+
+    // Mem::memmove intentionally refuses sizes that look like a negative
+    // 32-bit value; keep this Mach entry point from reporting success for a
+    // copy that the memory layer would silently skip.
+    if size >= 0x8000_0000 {
+        log!(
+            "Warning: vm_read_overwrite: unreasonable copy size {:#x}; returning KERN_INVALID_ARGUMENT.",
+            size
+        );
+        return KERN_INVALID_ARGUMENT;
+    }
+    if !guest_range_is_valid(mem, address, size) || !guest_range_is_valid(mem, data, size) {
+        log!(
+            "Warning: vm_read_overwrite: invalid source/destination range (src={:#x}, dst={:#x}, size={:#x}); returning KERN_INVALID_ADDRESS.",
+            address,
+            data,
+            size
+        );
+        return KERN_INVALID_ADDRESS;
+    }
+
+    // A process has one flat guest address space here, and vm_read_overwrite
+    // reads from and writes to that same space. Use memmove semantics so
+    // overlapping source/destination ranges behave correctly.
+    let source: ConstPtr<u8> = Ptr::from_bits(address);
+    let destination: MutPtr<u8> = Ptr::from_bits(data);
+    mem.memmove(destination.cast_void(), source.cast_void(), size);
+    mem.write(outsize, size);
+    KERN_SUCCESS
+}
+
+/// `kern_return_t vm_read_overwrite(vm_map_t target_task, vm_address_t address,
+/// vm_size_t size, vm_address_t data, vm_size_t *outsize)`
+///
+/// Copy bytes from the specified task into the caller-provided buffer without
+/// allocating a new VM region. touchHLE has one guest address space, so only
+/// `MACH_TASK_SELF` is supported.
+fn vm_read_overwrite(
+    env: &mut Environment,
+    target_task: vm_map_t,
+    address: mach_vm_address_t,
+    size: mach_vm_size_t,
+    data: mach_vm_address_t,
+    outsize: MutPtr<mach_vm_size_t>,
+) -> kern_return_t {
+    vm_read_overwrite_in_memory(&mut env.mem, target_task, address, size, data, outsize)
+}
+
 /// `kern_return_t vm_remap(vm_map_t target_task, vm_address_t *target_address,
 /// vm_size_t size, vm_address_t mask, int flags, vm_map_t src_task,
 /// vm_address_t src_address, boolean_t copy, vm_prot_t *cur_protection,
@@ -410,8 +501,116 @@ fn vm_region_recurse(
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(vm_allocate(_, _, _, _)),
     export_c_func!(vm_deallocate(_, _, _)),
+    export_c_func!(vm_read_overwrite(_, _, _, _, _)),
     export_c_func!(vm_remap(_, _, _, _, _, _, _, _, _, _, _)),
     export_c_func!(vm_purgable_control(_, _, _, _)),
     export_c_func!(vm_protect(_, _, _, _, _)),
     export_c_func!(vm_region_recurse(_, _, _, _, _, _)),
 ];
+
+#[cfg(test)]
+mod vm_read_overwrite_tests {
+    use super::*;
+
+    fn new_test_mem() -> Mem {
+        let mut mem = Mem::new();
+        mem.set_null_segment_size(PAGE_SIZE);
+        mem
+    }
+
+    #[test]
+    fn vm_read_overwrite_copies_bytes_and_reports_the_count() {
+        let mut mem = new_test_mem();
+        let source: MutPtr<u8> = mem.alloc(4).cast();
+        let destination: MutPtr<u8> = mem.alloc(4).cast();
+        let outsize: MutPtr<mach_vm_size_t> = mem.alloc(4).cast();
+        mem.bytes_at_mut(source, 4).copy_from_slice(&[0x11, 0x22, 0x33, 0x44]);
+
+        assert_eq!(
+            vm_read_overwrite_in_memory(
+                &mut mem,
+                MACH_TASK_SELF,
+                source.to_bits(),
+                4,
+                destination.to_bits(),
+                outsize,
+            ),
+            KERN_SUCCESS
+        );
+        assert_eq!(mem.bytes_at(destination.cast_const(), 4), &[0x11, 0x22, 0x33, 0x44]);
+        assert_eq!(mem.read(outsize), 4);
+    }
+
+    #[test]
+    fn vm_read_overwrite_supports_overlapping_ranges() {
+        let mut mem = new_test_mem();
+        let buffer: MutPtr<u8> = mem.alloc(8).cast();
+        let outsize: MutPtr<mach_vm_size_t> = mem.alloc(4).cast();
+        mem.bytes_at_mut(buffer, 6).copy_from_slice(&[1, 2, 3, 4, 5, 6]);
+
+        assert_eq!(
+            vm_read_overwrite_in_memory(
+                &mut mem,
+                MACH_TASK_SELF,
+                buffer.to_bits(),
+                4,
+                (buffer + 1).to_bits(),
+                outsize,
+            ),
+            KERN_SUCCESS
+        );
+        assert_eq!(mem.bytes_at(buffer.cast_const(), 6), &[1, 1, 2, 3, 4, 6]);
+        assert_eq!(mem.read(outsize), 4);
+    }
+
+    #[test]
+    fn vm_read_overwrite_rejects_bad_task_and_wrapping_ranges() {
+        let mut mem = new_test_mem();
+        let source: MutPtr<u8> = mem.alloc(4).cast();
+        let destination: MutPtr<u8> = mem.alloc(4).cast();
+        let outsize: MutPtr<mach_vm_size_t> = mem.alloc(4).cast();
+        mem.bytes_at_mut(source, 4).copy_from_slice(&[1, 2, 3, 4]);
+        mem.bytes_at_mut(destination, 4).fill(0xAA);
+        mem.write(outsize, 0x1234);
+
+        assert_eq!(
+            vm_read_overwrite_in_memory(
+                &mut mem,
+                MACH_TASK_SELF + 1,
+                source.to_bits(),
+                4,
+                destination.to_bits(),
+                outsize,
+            ),
+            KERN_INVALID_TASK
+        );
+        assert_eq!(mem.read(outsize), 0x1234);
+
+        assert_eq!(
+            vm_read_overwrite_in_memory(
+                &mut mem,
+                MACH_TASK_SELF,
+                0xFFFF_FFFC,
+                8,
+                destination.to_bits(),
+                outsize,
+            ),
+            KERN_INVALID_ADDRESS
+        );
+        assert_eq!(mem.bytes_at(destination.cast_const(), 4), &[0xAA; 4]);
+        assert_eq!(mem.read(outsize), 0x1234);
+    }
+
+    #[test]
+    fn vm_read_overwrite_allows_zero_length_with_null_data_pointers() {
+        let mut mem = new_test_mem();
+        let outsize: MutPtr<mach_vm_size_t> = mem.alloc(4).cast();
+        mem.write(outsize, 1);
+
+        assert_eq!(
+            vm_read_overwrite_in_memory(&mut mem, MACH_TASK_SELF, 0, 0, 0, outsize),
+            KERN_SUCCESS
+        );
+        assert_eq!(mem.read(outsize), 0);
+    }
+}
