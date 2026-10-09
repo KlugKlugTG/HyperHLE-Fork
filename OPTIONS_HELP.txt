@@ -446,7 +446,7 @@ Other options:
 
     --gles-native / --no-gles-native
         Android only. OFF by default (and exposed as the "GLES Native" switch
-        in the app picker's quick options): use the bundled ANGLE libraries
+        in the app picker's Settings screen): use the bundled ANGLE libraries
         for OpenGL ES. Pass --gles-native (or switch "GLES Native" on) to use
         the vendor's native OpenGL ES driver (Adreno/Mali) instead. The
         native driver behaves closest to real iPhone-era hardware and avoids
