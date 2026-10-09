@@ -395,6 +395,20 @@ Other options:
         game that could run at 60 FPS settle at 30. Can also be disabled with
         TOUCHHLE_PERF_HINTS=0; --perf-hints turns it back on.
 
+    --mach-semaphore-spurious-wake=MILLISECONDS
+        Make a blocking semaphore_wait() give up after MILLISECONDS and return
+        KERN_SUCCESS as if it had been signalled. 0 disables it (the default).
+
+        This is a last-resort workaround for an app whose worker thread parks
+        on a Mach semaphore that never gets signalled under touchHLE's
+        cooperative scheduler, and whose wait loop re-checks its own state on
+        wake (FMOD's worker threads in Minecraft: Story Mode).
+
+        Do not enable it globally. The waiter is told a resource is ready when
+        it is not, so an engine that builds its synchronisation on Mach
+        semaphores (Mono/Unity worker threads) will read half-initialized
+        state and fail much later, typically as a managed NullReferenceException.
+
     --prefer-gles2-context
         Force EAGL initWithAPI: to create an OpenGL ES 2.0 context even when
         the app requested an OpenGL ES 1.1 context.
