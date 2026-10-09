@@ -42,27 +42,6 @@ const MAX_TIMED_WAIT_SECS: u32 = 3600;
 /// uses (they typically wait in 5–50ms slices) while costing almost nothing.
 const TIMED_WAIT_POLL_INTERVAL: Duration = Duration::from_millis(1);
 
-/// Deadlock-breaker for the otherwise-infinite [semaphore_wait].
-///
-/// FMOD's worker threads (its AsyncManager command pump and the Studio
-/// BankLoader queue) park on a Mach semaphore that the producer is supposed to
-/// signal when it posts work. In Minecraft: Story Mode (com.telltalegames.MC100)
-/// that producer-side signal never reaches the workers under our cooperative
-/// scheduler, so `Studio::System::loadBankFile` blocks forever in
-/// `system_checkBlockingBank` during `SoundSystem::Initialize` and the game
-/// never renders a second frame.
-///
-/// Rather than block a worker forever, cap the wait: after this much guest time
-/// with no real signal, return KERN_SUCCESS *spuriously* so the worker loops
-/// back and re-checks its own queue/command-buffer state. Both FMOD workers are
-/// written to tolerate a spurious wake — `AsyncManager::asyncThreadLoop`
-/// re-runs `asyncProcessAndUpdate` (a no-op on an empty buffer) and
-/// `ThreadsafeQueue::pop` re-takes its lock and returns an empty result when the
-/// queue is empty — so a spurious wake is safe, and when work *is* pending it
-/// lets the worker finally process it. Normal waiters are signalled within
-/// milliseconds, far below this cap, so correctly-paced code is unaffected.
-const SEMAPHORE_WAIT_SPURIOUS_WAKE: Duration = Duration::from_millis(100);
-
 /// DIAG (TOUCHHLE_TRACE_MACHSEM=1): trace Mach semaphore traffic. FMOD drives
 /// its async/bank-loader threads entirely through these, so a lost signal shows
 /// up here as a wait with no matching signal.
@@ -211,6 +190,27 @@ fn semaphore_signal_thread(
     result
 }
 
+// Opt-in deadlock-breaker for the otherwise-infinite `semaphore_wait`,
+// enabled with `--mach-semaphore-spurious-wake=<ms>`.
+//
+// FMOD's worker threads (its AsyncManager command pump and the Studio
+// BankLoader queue) park on a Mach semaphore that the producer is supposed to
+// signal when it posts work. In Minecraft: Story Mode
+// (com.telltalegames.MC100) that producer-side signal never reaches the
+// workers under our cooperative
+// scheduler, so `Studio::System::loadBankFile` blocks forever in
+// `system_checkBlockingBank` during `SoundSystem::Initialize` and the game
+// never renders a second frame. Those two FMOD loops re-check their own
+// queue state on wake, so for that app a spurious wake is harmless.
+//
+// This must NOT be on by default. Returning KERN_SUCCESS without having
+// acquired the semaphore tells the waiter that a resource is ready when it
+// is not. Mono/Unity build their thread synchronisation on Mach semaphores,
+// so a lying wait lets a worker touch half-initialized state; the failure
+// then appears far away as a managed `NullReferenceException` followed by
+// Unity's `trap`/`exit(1)`, with nothing in the log pointing back here.
+// (Observed in Turbo Dismount after this breaker was first added
+// unconditionally.)
 fn semaphore_wait(env: &mut Environment, semaphore: semaphore_t) -> kern_return_t {
     machsem_trace(env, "wait-enter", semaphore);
     if !is_known_semaphore(env, semaphore) {
@@ -221,11 +221,14 @@ fn semaphore_wait(env: &mut Environment, semaphore: semaphore_t) -> kern_return_
         );
         return KERN_INVALID_ARGUMENT;
     }
-    // Bounded wait with a spurious-wake deadlock-breaker (see
-    // SEMAPHORE_WAIT_SPURIOUS_WAKE). Poll for a real signal; if none arrives
-    // within the cap, wake the caller anyway so an FMOD worker can re-check its
-    // own state instead of deadlocking the whole game.
-    let deadline = env.guest_clock.now() + SEMAPHORE_WAIT_SPURIOUS_WAKE;
+    // By default this is a true blocking wait: it returns only once a real
+    // signal arrives. The spurious-wake deadlock-breaker is opt-in per app
+    // (see the doc comment above `--mach-semaphore-spurious-wake=`).
+    let spurious_wake_after = env
+        .options
+        .mach_semaphore_spurious_wake_ms
+        .map(Duration::from_millis);
+    let deadline = spurious_wake_after.map(|after| env.guest_clock.now() + after);
     let result = loop {
         if env.sem_decrement(semaphore, false) {
             break KERN_SUCCESS;
@@ -233,10 +236,26 @@ fn semaphore_wait(env: &mut Environment, semaphore: semaphore_t) -> kern_return_
         if !is_known_semaphore(env, semaphore) {
             break KERN_INVALID_ARGUMENT;
         }
+        let Some(deadline) = deadline else {
+            // No breaker configured: block until signalled, like Mach does.
+            env.sleep_guest(TIMED_WAIT_POLL_INTERVAL);
+            continue;
+        };
         let now = env.guest_clock.now();
         if now >= deadline {
-            // Spurious wake: no real signal arrived in time. Report success so
-            // the (re-check-on-wake) FMOD worker loop makes progress.
+            // Spurious wake: no real signal arrived in time. Report success
+            // so a re-check-on-wake worker loop makes progress. Say so
+            // loudly: if the guest is not one of those loops, this is where
+            // its state silently goes wrong.
+            log!(
+                "Warning: semaphore_wait({:?}) on thread {} timed out after \
+                 {} ms and is reporting a spurious KERN_SUCCESS \
+                 (--mach-semaphore-spurious-wake). The waiter will proceed \
+                 without having acquired the semaphore.",
+                semaphore,
+                env.current_thread,
+                spurious_wake_after.unwrap_or_default().as_millis()
+            );
             break KERN_SUCCESS;
         }
         env.sleep_guest((deadline - now).min(TIMED_WAIT_POLL_INTERVAL));

@@ -165,6 +165,21 @@ pub struct Options {
     /// command line. Apps that legitimately rely on the ES 1.1 fixed-function
     /// pipeline should NOT enable this flag.
     pub prefer_gles2_context: bool,
+    /// Break an otherwise-infinite `semaphore_wait()` by returning
+    /// KERN_SUCCESS spuriously after this many milliseconds.
+    ///
+    /// Off by default, because a spurious wake is a lie: the waiter proceeds
+    /// as if it had acquired the semaphore while the resource it was waiting
+    /// for is not ready. Engines that drive their own synchronisation through
+    /// Mach semaphores (Mono/Unity worker threads, in particular) then read
+    /// half-initialized state, which surfaces much later as a null
+    /// dereference in guest code rather than as a hang.
+    ///
+    /// It exists for FMOD's worker threads in Minecraft: Story Mode
+    /// (com.telltalegames.MC100), which deadlock under our cooperative
+    /// scheduler and are written to tolerate a spurious wake. Enable it only
+    /// per-app, via the default options file.
+    pub mach_semaphore_spurious_wake_ms: Option<u64>,
     /// Override the EAGL present rotation with a fixed clockwise angle in
     /// degrees (0, 90, 180 or 270), replacing the orientation-derived rotation
     /// and the iPad autorotation compensation. Some apps (e.g. the universal
@@ -287,6 +302,7 @@ impl Default for Options {
                 .map(|value| value != "0")
                 .unwrap_or(true),
             prefer_gles2_context: false,
+            mach_semaphore_spurious_wake_ms: None,
             present_rotate: None,
             force_gles1_context: std::env::var("TOUCHHLE_FORCE_GLES1_CONTEXT")
                 .map(|value| {
@@ -565,6 +581,13 @@ impl Options {
             self.perf_hints = true;
         } else if arg == "--no-perf-hints" {
             self.perf_hints = false;
+        } else if let Some(value) = arg.strip_prefix("--mach-semaphore-spurious-wake=") {
+            let ms: u64 = value.parse().map_err(|_| {
+                "Invalid value for --mach-semaphore-spurious-wake= (expected \
+                 milliseconds, or 0 to disable)"
+                    .to_string()
+            })?;
+            self.mach_semaphore_spurious_wake_ms = (ms != 0).then_some(ms);
         } else if arg == "--prefer-gles2-context" {
             self.prefer_gles2_context = true;
         } else if arg == "--force-gles1-context" {

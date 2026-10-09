@@ -815,6 +815,23 @@ pub(crate) fn recover_guest_termination(env: &mut Environment, termination: &str
         return false;
     }
 
+    if env.guest_trap_bypass_still_on_stack() {
+        // The guest already executed a deliberate trap in this very call
+        // chain (failed assert / __builtin_trap / Unity-Mono unhandled
+        // exception). It has declared itself dead; resuming one of these
+        // frames runs code that its author made unreachable, which in
+        // practice faults almost immediately and buries the real first
+        // error under a SIGSEGV + crash-reporter cascade.
+        echo!(
+            "Guest {} happens inside a call chain that already hit a deliberate \
+             trap instruction; refusing frame recovery and ending the guest \
+             session cleanly. The real failure is the error logged just before \
+             that trap, not this termination.",
+            termination
+        );
+        return false;
+    }
+
     log!(
         "Guest {} on emulated thread {}; attempting validated frame recovery.",
         termination,
