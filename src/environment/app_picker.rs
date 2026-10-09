@@ -242,7 +242,6 @@ struct AppPickerDelegateHostObject {
     // Set by the add-app tile; kept separately from icon_tapped because the
     // picker needs to wait for a newly copied IPA to settle before reloading.
     add_ipa: bool,
-    quick_options_show: bool,
     quick_options_hide: bool,
     scale_hack_default: bool,
     scale_hack1: bool,
@@ -299,9 +298,6 @@ const CLASSES: ClassExports = objc_classes! {
     env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).add_ipa = true;
 }
 
-- (())quickOptionsShow {
-    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).quick_options_show = true;
-}
 - (())quickOptionsHide {
     env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).quick_options_hide = true;
 }
@@ -448,6 +444,8 @@ const APP_LAUNCH_SPLASH_FADE_START: f64 = 0.08;
 const APP_LAUNCH_SPLASH_FADE_DURATION: f64 = 0.46;
 const APP_LAUNCH_FALLBACK_FADE_START: f64 = 0.55;
 const APP_LAUNCH_FALLBACK_FADE_DURATION: f64 = 0.45;
+const APP_PICKER_PAGE_TRANSITION_DURATION: Duration = Duration::from_millis(280);
+const APP_PICKER_PAGE_SLIDE_DISTANCE: CGFloat = 24.0;
 
 /// A symmetric ease-in/ease-out curve gives the icon a deliberate, old-iOS
 /// style zoom instead of the abrupt snap used by the previous picker.
@@ -737,7 +735,7 @@ fn app_picker_inner(
     () = msg![env; title setBackgroundColor:bg_color];
     () = msg![env; main_view addSubview:title];
 
-    let quick_options_button_top = app_picker_quick_options_button_top(app_frame.size.height);
+    let icon_grid_bottom = app_picker_grid_bottom(app_frame.size.height);
 
     let mut icon_grid_stuff = match &mut apps {
         Ok(ref mut apps) => {
@@ -757,7 +755,7 @@ fn app_picker_inner(
                 origin: CGPoint { x: 10.0, y: 10.0 },
                 size: CGSize {
                     width: app_frame.size.width - 20.0,
-                    height: quick_options_button_top - 20.0,
+                    height: icon_grid_bottom - 20.0,
                 },
             };
             let label: id = msg_class![env; UILabel alloc];
@@ -774,19 +772,6 @@ fn app_picker_inner(
             None
         }
     };
-
-    // Keep the sole footer action directly above the build label, leaving the
-    // space above it available for a fourth row of app icons.
-    let buttons_row_center = app_picker_quick_options_button_center(app_frame.size.height);
-    make_button_row(
-        env,
-        delegate,
-        main_view,
-        app_frame.size,
-        buttons_row_center,
-        &[("Quick options", "quickOptionsShow")],
-        None,
-    );
 
     let mut quick_options_cheat_engine = quick_options_trainer_enabled(&env.options);
     let angle_backend_available = crate::window::angle_backend_available();
@@ -914,19 +899,25 @@ fn app_picker_inner(
                     break app_path.clone();
                 }
                 Some(&TappedIcon::ChangePage(page_idx)) => {
-                    current_page = page_idx;
-                    update_icon_grid(
+                    animate_icon_grid_page_change(
                         env,
+                        main_run_loop,
+                        window,
                         icon_grid_stuff.as_mut().unwrap(),
                         apps.as_mut().unwrap(),
+                        current_page,
                         page_idx,
                     );
+                    current_page = page_idx;
                 }
                 Some(&TappedIcon::AddIpa) => {
                     // Handled by the main loop body below (next iteration).
                     env.objc
                         .borrow_mut::<AppPickerDelegateHostObject>(delegate)
                         .add_ipa = true;
+                }
+                Some(&TappedIcon::Settings) => {
+                    () = msg![env; (quick_options_stuff.main_view) setHidden:false];
                 }
                 None => (), // Tapped on a black space
             }
@@ -947,8 +938,6 @@ fn app_picker_inner(
             if let Err(e) = crate::window::launch_ipa_picker(env) {
                 echo!("Couldn't open IPA picker: {}", e);
             }
-        } else if std::mem::take(&mut host_obj.quick_options_show) {
-            () = msg![env; (quick_options_stuff.main_view) setHidden:false];
         } else if std::mem::take(&mut host_obj.quick_options_hide) {
             () = msg![env; (quick_options_stuff.main_view) setHidden:true];
         } else if std::mem::take(&mut host_obj.scale_hack_default) {
@@ -1196,11 +1185,10 @@ const HYPERHLE_FORK_NAME: &str = "HyperHLE-Fork";
 
 const APP_PICKER_VERSION_LABEL_HEIGHT: CGFloat = 15.0;
 const APP_PICKER_VERSION_LABEL_BOTTOM_INSET: CGFloat = 5.0;
-const APP_PICKER_FOOTER_GAP: CGFloat = 10.0;
-const APP_PICKER_BUTTON_ROW_HEIGHT: CGFloat = 30.0;
 const APP_PICKER_GRID_TOP: CGFloat = 44.0;
-const APP_PICKER_GRID_TO_BUTTON_GAP: CGFloat = 6.0;
+const APP_PICKER_GRID_TO_VERSION_LABEL_GAP: CGFloat = 6.0;
 const APP_PICKER_ICON_ROWS: usize = 4;
+const QUICK_OPTIONS_BUTTON_ROW_HEIGHT: CGFloat = 30.0;
 
 const ICON_SIZE: CGSize = CGSize {
     width: 72.0,
@@ -1214,19 +1202,12 @@ fn app_picker_version_label_top(app_height: CGFloat) -> CGFloat {
     app_height - APP_PICKER_VERSION_LABEL_HEIGHT - APP_PICKER_VERSION_LABEL_BOTTOM_INSET
 }
 
-fn app_picker_quick_options_button_center(app_height: CGFloat) -> CGFloat {
-    app_picker_version_label_top(app_height)
-        - APP_PICKER_FOOTER_GAP
-        - APP_PICKER_BUTTON_ROW_HEIGHT / 2.0
-}
-
-fn app_picker_quick_options_button_top(app_height: CGFloat) -> CGFloat {
-    app_picker_quick_options_button_center(app_height) - APP_PICKER_BUTTON_ROW_HEIGHT / 2.0
+fn app_picker_grid_bottom(app_height: CGFloat) -> CGFloat {
+    app_picker_version_label_top(app_height) - APP_PICKER_GRID_TO_VERSION_LABEL_GAP
 }
 
 fn app_picker_icon_grid_num_rows(app_height: CGFloat, label_height: CGFloat) -> usize {
-    let grid_bottom = app_picker_quick_options_button_top(app_height)
-        - APP_PICKER_GRID_TO_BUTTON_GAP;
+    let grid_bottom = app_picker_grid_bottom(app_height);
     let cell_content_height = ICON_SIZE.height + ICON_LABEL_TOP_GAP + label_height;
     let cell_step_y = cell_content_height + ICON_ROW_GAP;
     let available_height = (grid_bottom - APP_PICKER_GRID_TOP - cell_content_height).max(0.0);
@@ -1242,12 +1223,19 @@ mod layout_tests {
         // A visible status bar leaves `UIScreen.applicationFrame` at 320x460.
         assert_eq!(app_picker_icon_grid_num_rows(460.0, 12.0), APP_PICKER_ICON_ROWS);
     }
+
+    #[test]
+    fn first_page_reserves_adjacent_add_and_settings_tiles() {
+        assert_eq!(compute_pages(12, 10), vec![0..10]);
+        assert_eq!(compute_pages(12, 11), vec![0..9, 9..11]);
+    }
 }
 
 enum TappedIcon {
     App(usize),
     ChangePage(usize),
     AddIpa,
+    Settings,
 }
 
 struct IconGridStuff {
@@ -1256,6 +1244,7 @@ struct IconGridStuff {
     prev_icon: Option<id>,
     next_icon: Option<id>,
     plus_icon: Option<id>,
+    settings_icon: Option<id>,
     pages: Vec<std::ops::Range<usize>>,
     icon_map: HashMap<id, TappedIcon>,
 }
@@ -1368,6 +1357,7 @@ fn make_icon_grid(
         prev_icon: None,
         next_icon: None,
         plus_icon: None,
+        settings_icon: None,
         pages,
         icon_map: HashMap::new(),
     }
@@ -1375,8 +1365,8 @@ fn make_icon_grid(
 
 /// Work out which apps go on each page of the icon grid.
 ///
-/// Page 0 reserves its first slot for the "add IPA" (+) tile; the remaining
-/// slots are used for the prev/next arrows (when relevant) and the apps.
+/// Page 0 reserves its first two slots for the add-app (+) and settings tiles;
+/// the remaining slots are used for paging arrows and apps.
 fn compute_pages(total_slots: usize, total_app_count: usize) -> Vec<std::ops::Range<usize>> {
     let mut pages = Vec::new();
     if total_app_count == 0 {
@@ -1387,8 +1377,9 @@ fn compute_pages(total_slots: usize, total_app_count: usize) -> Vec<std::ops::Ra
     while start < total_app_count {
         let page_idx = pages.len();
         let has_prev = start != 0;
-        let has_plus = page_idx == 0;
-        let mut app_slots = total_slots - usize::from(has_prev) - usize::from(has_plus);
+        let has_first_page_controls = page_idx == 0;
+        let reserved_slots = usize::from(has_prev) + 2 * usize::from(has_first_page_controls);
+        let mut app_slots = total_slots - reserved_slots;
         let remaining = total_app_count - start;
         if remaining > app_slots {
             app_slots -= 1;
@@ -1477,6 +1468,181 @@ fn make_icon_from_glyph(
     ui_image
 }
 
+/// Draw a small skeuomorphic settings gear rather than relying on a Unicode
+/// symbol that may be missing from the bundled system font.
+fn make_settings_icon(env: &mut Environment) -> id {
+    let ui_scale = env.options.ui_scale.get();
+    let scale = ui_scale as f32;
+    let width = (ICON_SIZE.width as u32).saturating_mul(ui_scale);
+    let height = (ICON_SIZE.height as u32).saturating_mul(ui_scale);
+    let mut pixels = vec![0; (width * height * 4) as usize];
+    let center = (ICON_SIZE.width as f32 / 2.0, ICON_SIZE.height as f32 / 2.0);
+    let tooth_axes: Vec<(f32, f32)> = (0..8)
+        .map(|tooth| {
+            let angle = tooth as f32 * std::f32::consts::PI / 4.0;
+            (angle.cos(), angle.sin())
+        })
+        .collect();
+    const AA_SAMPLES: u32 = 2;
+    const AA_SAMPLE_COUNT: f32 = 4.0;
+
+    for y in 0..height {
+        for x in 0..width {
+            let mut gear_coverage = 0;
+            let mut hub_coverage = 0;
+            let mut center_coverage = 0;
+            for sample_y in 0..AA_SAMPLES {
+                for sample_x in 0..AA_SAMPLES {
+                    let point_x = (x as f32 + (sample_x as f32 + 0.5) / AA_SAMPLES as f32) / scale;
+                    let point_y = (y as f32 + (sample_y as f32 + 0.5) / AA_SAMPLES as f32) / scale;
+                    let dx = point_x - center.0;
+                    let dy = point_y - center.1;
+                    let radius_squared = dx * dx + dy * dy;
+                    let has_tooth = tooth_axes.iter().any(|&(cos, sin)| {
+                        let radial = dx * cos + dy * sin;
+                        let across = -dx * sin + dy * cos;
+                        (15.0..=25.0).contains(&radial) && across.abs() <= 4.5
+                    });
+                    if radius_squared <= 19.0 * 19.0 || has_tooth {
+                        gear_coverage += 1;
+                    }
+                    if radius_squared <= 9.0 * 9.0 {
+                        hub_coverage += 1;
+                    }
+                    if radius_squared <= 3.0 * 3.0 {
+                        center_coverage += 1;
+                    }
+                }
+            }
+
+            let gear_alpha = gear_coverage as f32 / AA_SAMPLE_COUNT;
+            let hub_alpha = hub_coverage as f32 / AA_SAMPLE_COUNT;
+            let center_alpha = center_coverage as f32 / AA_SAMPLE_COUNT;
+            let background_shade = (105.0 + 18.0 * (1.0 - y as f32 / height as f32)) as u8;
+            let background = [
+                background_shade,
+                background_shade.saturating_add(7),
+                background_shade.saturating_add(17),
+            ];
+            let gear = [232.0, 236.0, 240.0];
+            let hub = [78.0, 88.0, 100.0];
+            let center_dot = [220.0, 225.0, 230.0];
+            let pixel = ((y * width + x) * 4) as usize;
+            for channel in 0..3 {
+                let on_gear = background[channel] as f32 * (1.0 - gear_alpha)
+                    + gear[channel] * gear_alpha;
+                let in_hub = on_gear * (1.0 - hub_alpha) + hub[channel] * hub_alpha;
+                let color = in_hub * (1.0 - center_alpha) + center_dot[channel] * center_alpha;
+                pixels[pixel + channel] = color.round() as u8;
+            }
+            pixels[pixel + 3] = 255;
+        }
+    }
+
+    let mut icon = Image::from_pixels(width, height, pixels);
+    icon.round_corners(
+        12.0 * scale,
+        /* four_corners: */ true,
+        /* add_sheen: */ true,
+    );
+    let cg_image = cg_image::from_image(env, icon);
+    let image: id = msg_class![env; UIImage imageWithCGImage:cg_image];
+    release(env, cg_image);
+    image
+}
+
+fn horizontally_offset_rect(frame: CGRect, offset: CGFloat) -> CGRect {
+    CGRect {
+        origin: CGPoint {
+            x: frame.origin.x + offset,
+            y: frame.origin.y,
+        },
+        size: frame.size,
+    }
+}
+
+/// Slide the old page out and the new one in, with a brief crossfade in the
+/// same eased style as the game-launch transition.
+fn animate_icon_grid_page_change(
+    env: &mut Environment,
+    main_run_loop: id,
+    window: id,
+    icon_grid_stuff: &mut IconGridStuff,
+    apps: &mut [AppInfo],
+    from_page: usize,
+    to_page: usize,
+) {
+    if from_page == to_page {
+        return;
+    }
+
+    let mut views_and_frames =
+        Vec::with_capacity(icon_grid_stuff.icon_buttons_and_labels.len() * 2);
+    let mut buttons = Vec::with_capacity(icon_grid_stuff.icon_buttons_and_labels.len());
+    for &(button, label) in &icon_grid_stuff.icon_buttons_and_labels {
+        let button_frame: CGRect = msg![env; button frame];
+        let label_frame: CGRect = msg![env; label frame];
+        views_and_frames.push((button, button_frame));
+        views_and_frames.push((label, label_frame));
+        buttons.push(button);
+        () = msg![env; button setUserInteractionEnabled:false];
+    }
+
+    let window_frame: CGRect = msg![env; window bounds];
+    let slide_distance = APP_PICKER_PAGE_SLIDE_DISTANCE.min(window_frame.size.width * 0.08);
+    let outgoing_direction = if to_page > from_page { -1.0 } else { 1.0 };
+    let start_time = Instant::now();
+    let mut page_updated = false;
+
+    loop {
+        let elapsed = start_time.elapsed();
+        let normalized_progress =
+            (elapsed.as_secs_f64() / APP_PICKER_PAGE_TRANSITION_DURATION.as_secs_f64())
+                .clamp(0.0, 1.0);
+
+        if normalized_progress < 0.5 {
+            let progress = app_launch_animation_eased_progress(normalized_progress * 2.0);
+            let offset = outgoing_direction * slide_distance * progress as CGFloat;
+            for &(view, frame) in &views_and_frames {
+                () = msg![env; view setFrame:(horizontally_offset_rect(frame, offset))];
+                () = msg![env; view setAlpha:((1.0 - progress) as CGFloat)];
+            }
+        } else {
+            if !page_updated {
+                update_icon_grid(env, icon_grid_stuff, apps, to_page);
+                page_updated = true;
+            }
+
+            let progress = app_launch_animation_eased_progress((normalized_progress - 0.5) * 2.0);
+            let offset = -outgoing_direction * slide_distance * (1.0 - progress as CGFloat);
+            for &(view, frame) in &views_and_frames {
+                () = msg![env; view setFrame:(horizontally_offset_rect(frame, offset))];
+                () = msg![env; view setAlpha:(progress as CGFloat)];
+            }
+        }
+
+        let _ = crate::frameworks::core_animation::recomposite_if_necessary(
+            env,
+            /* force: */ true,
+        );
+        if elapsed >= APP_PICKER_PAGE_TRANSITION_DURATION {
+            break;
+        }
+        run_run_loop_single_iteration(env, main_run_loop);
+    }
+
+    if !page_updated {
+        update_icon_grid(env, icon_grid_stuff, apps, to_page);
+    }
+    for &(view, frame) in &views_and_frames {
+        () = msg![env; view setFrame:frame];
+        () = msg![env; view setAlpha:(1.0 as CGFloat)];
+    }
+    for button in buttons {
+        () = msg![env; button setUserInteractionEnabled:true];
+    }
+}
+
 fn update_icon_grid(
     env: &mut Environment,
     icon_grid_stuff: &mut IconGridStuff,
@@ -1503,8 +1669,7 @@ fn update_icon_grid(
             .insert(icon_button, TappedIcon::ChangePage(page_idx - 1));
     }
 
-    // The iOS-style "+" tile on the first page lets the user add a new app
-    // by picking an .ipa file, which then gets copied into the apps folder.
+    // The iOS-style "+" and gear tiles live together on the first page.
     if page_idx == 0 {
         let &(icon_button, label) = icon_iter.next().unwrap();
         let image = *icon_grid_stuff.plus_icon.get_or_insert_with(|| {
@@ -1515,6 +1680,17 @@ fn update_icon_grid(
         icon_grid_stuff
             .icon_map
             .insert(icon_button, TappedIcon::AddIpa);
+
+        let &(icon_button, label) = icon_iter.next().unwrap();
+        let image = *icon_grid_stuff
+            .settings_icon
+            .get_or_insert_with(|| make_settings_icon(env));
+        () = msg![env; icon_button setImage:image forState:UIControlStateNormal];
+        let settings_title = ns_string::get_static_str(env, "Settings");
+        () = msg![env; label setText:settings_title];
+        icon_grid_stuff
+            .icon_map
+            .insert(icon_button, TappedIcon::Settings);
     }
 
     for app_idx in app_idx_range.clone() {
@@ -1577,7 +1753,7 @@ fn make_button_row(
 
     let button_size = CGSize {
         width: (super_view_size.width - margin) / (buttons.len() as CGFloat) - margin,
-        height: APP_PICKER_BUTTON_ROW_HEIGHT,
+        height: QUICK_OPTIONS_BUTTON_ROW_HEIGHT,
     };
     let mut button_frame = CGRect {
         origin: CGPoint {
@@ -1697,7 +1873,7 @@ fn setup_quick_options(
     // TODO: Isn't white the default?
     let bg_color: id = msg_class![env; UIColor whiteColor];
     () = msg![env; main_view setBackgroundColor:bg_color];
-    // This main_view is hidden until the quick options button is tapped.
+    // This main_view is hidden until the settings tile is tapped.
     () = msg![env; main_view setHidden:true];
     () = msg![env; super_view addSubview:main_view];
 
