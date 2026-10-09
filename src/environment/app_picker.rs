@@ -1390,7 +1390,9 @@ fn ease_in_out_cubic(t: f64) -> f64 {
 const PAGE_SLIDE_DURATION: Duration = Duration::from_millis(320);
 /// Duration of the "app icon zooms to the middle, screen fades to black"
 /// animation played when an app is picked.
-const APP_LAUNCH_ANIMATION_DURATION: Duration = Duration::from_millis(450);
+const APP_LAUNCH_ANIMATION_DURATION: Duration = Duration::from_millis(600);
+/// How long the black screen stays up after the icon has dissolved into it.
+const APP_LAUNCH_BLACK_HOLD_DURATION: Duration = Duration::from_millis(250);
 /// Side length of the app icon at the centre of the launch animation.
 const APP_LAUNCH_ICON_SIZE: CGFloat = 120.0;
 /// Duration of the settings screen slide (iOS-style push from the right).
@@ -1447,13 +1449,16 @@ fn play_app_launch_animation(
 
     let target_x = (screen_size.width - APP_LAUNCH_ICON_SIZE) / 2.0;
     let target_y = (screen_size.height - APP_LAUNCH_ICON_SIZE) / 2.0;
+    // Phase 1: the icon moves to the middle and grows while the screen
+    // darkens. Phase 2: the icon dissolves into the black screen. Only then
+    // does the caller start the app.
     animate_for(
         env,
         run_loop,
         delegate,
         APP_LAUNCH_ANIMATION_DURATION,
         |env, t| {
-            let p = ease_in_out_cubic(t) as CGFloat;
+            let p = ease_in_out_cubic(t.min(1.0)) as CGFloat;
             let frame = rect(
                 lerp_f(icon_frame.origin.x, target_x, p),
                 lerp_f(icon_frame.origin.y, target_y, p),
@@ -1462,7 +1467,17 @@ fn play_app_launch_animation(
             );
             () = msg![env; icon_view setFrame:frame];
             () = msg![env; overlay setAlpha:p];
+            let icon_alpha = (1.0 - (t - 0.5) * 2.0).clamp(0.0, 1.0) as CGFloat;
+            () = msg![env; icon_view setAlpha:icon_alpha];
         },
+    );
+    // Hold on the black screen for a moment before the app takes over.
+    animate_for(
+        env,
+        run_loop,
+        delegate,
+        APP_LAUNCH_BLACK_HOLD_DURATION,
+        |_env, _t| {},
     );
 }
 
