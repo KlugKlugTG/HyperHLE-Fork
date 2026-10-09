@@ -36,6 +36,35 @@ impl CMTime {
         }
     }
 
+    pub fn from_seconds_f64(value: f64) -> Self {
+        Self::from_seconds_with_timescale(value, 1_000_000)
+    }
+
+    pub fn from_seconds_with_timescale(value: f64, preferred_timescale: i32) -> Self {
+        if !value.is_finite() || preferred_timescale <= 0 {
+            return Self::default();
+        }
+        let mut timescale = preferred_timescale;
+        loop {
+            let scaled = (value * f64::from(timescale)).round();
+            if scaled.is_finite()
+                && scaled >= i64::MIN as f64
+                && scaled < 9_223_372_036_854_775_808.0
+            {
+                return Self {
+                    value: scaled as i64,
+                    timescale,
+                    flags: 1,
+                    epoch: 0,
+                };
+            }
+            if timescale == 1 {
+                return Self::default();
+            }
+            timescale = (timescale / 2).max(1);
+        }
+    }
+
     pub fn as_seconds(self) -> f64 {
         let value = self.value;
         let timescale = self.timescale;
@@ -85,17 +114,24 @@ mod cmtime_tests {
     #[test]
     fn cm_time_seconds_and_flags() {
         assert_eq!(CMTime::from_seconds(7).as_seconds(), 7.0);
-        assert!(CMTime::default().as_seconds().is_nan());
-        assert!(
-            CMTime {
-                value: 0,
-                timescale: 0,
-                flags: 0x11,
-                epoch: 0,
-            }
-            .as_seconds()
-            .is_nan()
+        assert_eq!(CMTime::from_seconds_f64(32.75).as_seconds(), 32.75);
+        assert_eq!(
+            CMTime::from_seconds_with_timescale(2.5, 600).as_seconds(),
+            2.5
         );
+        assert!(CMTime::from_seconds_with_timescale(2.0, 0)
+            .as_seconds()
+            .is_nan());
+        assert!(CMTime::from_seconds_f64(f64::NAN).as_seconds().is_nan());
+        assert!(CMTime::default().as_seconds().is_nan());
+        assert!(CMTime {
+            value: 0,
+            timescale: 0,
+            flags: 0x11,
+            epoch: 0,
+        }
+        .as_seconds()
+        .is_nan());
         assert_eq!(
             CMTime {
                 value: 0,
@@ -126,7 +162,6 @@ mod cmtime_tests {
         assert_eq!(CMTime::from_regs(&registers).as_seconds(), 7.0);
     }
 }
-
 
 #[repr(C, packed)]
 #[derive(Copy, Clone, Default)]

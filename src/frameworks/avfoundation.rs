@@ -14,7 +14,7 @@ pub mod av_speech;
 
 use crate::dyld::{ConstantExports, HostConstant};
 use crate::objc::id;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Default)]
 pub struct State {
@@ -30,6 +30,16 @@ pub struct State {
     /// base `CALayerHostObject` is allocated by `+[CALayer allocWithZone:]`,
     /// so this subclass-specific association can't live on the host object.
     pub av_player_layer_players: HashMap<id, id>,
+    pub(crate) av_player_playbacks: HashMap<id, av_player::Playback>,
+    pub(crate) av_player_layers_ready: HashSet<id>,
+}
+
+pub fn handle_players(env: &mut crate::Environment) {
+    av_player::handle_players(env);
+}
+
+pub fn has_active_video(env: &mut crate::Environment) -> bool {
+    av_player::has_active_video(env)
 }
 
 /// Constants commonly referenced from iOS 5/6 binaries that don't yet have a

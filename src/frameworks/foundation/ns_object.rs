@@ -23,6 +23,12 @@ use crate::objc::{
 use crate::Environment;
 use std::sync::Mutex;
 
+#[path = "ns_object_kvc.rs"]
+mod kvc_helpers;
+use self::kvc_helpers::{
+    kvc_setter_argument_encoding, send_numeric_kvc_setter, send_nsvalue_kvc_setter,
+};
+
 // Хранилище для отмененных таймеров (target, имя селектора в виде строки)
 //
 // These side-channel stores are guarded by mutexes rather than being
@@ -561,7 +567,14 @@ pub const CLASSES: ClassExports = objc_classes! {
 
     let value_class = msg![env; value class];
     let ns_value_class = env.objc.get_known_class("NSValue", &mut env.mem);
-    if env.objc.class_is_subclass_of(value_class, ns_value_class) {
+    let ns_number_class = env.objc.get_known_class("NSNumber", &mut env.mem);
+    let is_number = env
+        .objc
+        .class_is_subclass_of(value_class, ns_number_class);
+    let is_value = env
+        .objc
+        .class_is_subclass_of(value_class, ns_value_class);
+    if is_value {
         log_dbg!(
             "setValue:forKey: value {:?} is NSValue subclass for key {:?} — proceeding",
             value, key_string
@@ -570,6 +583,31 @@ pub const CLASSES: ClassExports = objc_classes! {
 
     if let Some(sel) = env.objc.lookup_selector(&format!("set{camel_case_key_string}:")) {
         if env.objc.class_has_method(class, sel) {
+            if is_number || is_value {
+                if let Some(argument_encoding) = kvc_setter_argument_encoding(env, class, sel) {
+                    if is_number {
+                        if let Some(&argument_type) = argument_encoding.first() {
+                            if send_numeric_kvc_setter(
+                                env,
+                                this,
+                                sel,
+                                value,
+                                argument_type,
+                            ) {
+                                return;
+                            }
+                        }
+                    } else if send_nsvalue_kvc_setter(
+                        env,
+                        this,
+                        sel,
+                        value,
+                        &argument_encoding,
+                    ) {
+                        return;
+                    }
+                }
+            }
             let _: () = msg_send(env, (this, sel, value));
             return;
         }
@@ -577,6 +615,31 @@ pub const CLASSES: ClassExports = objc_classes! {
 
     if let Some(sel) = env.objc.lookup_selector(&format!("_set{camel_case_key_string}:")) {
         if env.objc.class_has_method(class, sel) {
+            if is_number || is_value {
+                if let Some(argument_encoding) = kvc_setter_argument_encoding(env, class, sel) {
+                    if is_number {
+                        if let Some(&argument_type) = argument_encoding.first() {
+                            if send_numeric_kvc_setter(
+                                env,
+                                this,
+                                sel,
+                                value,
+                                argument_type,
+                            ) {
+                                return;
+                            }
+                        }
+                    } else if send_nsvalue_kvc_setter(
+                        env,
+                        this,
+                        sel,
+                        value,
+                        &argument_encoding,
+                    ) {
+                        return;
+                    }
+                }
+            }
             let _: () = msg_send(env, (this, sel, value));
             return;
         }
@@ -1380,3 +1443,39 @@ pub const CLASSES: ClassExports = objc_classes! {
 @end
 
 };
+
+#[cfg(test)]
+mod kvc_type_encoding_tests {
+    use super::kvc_helpers::{objc_argument_encoding, objc_argument_type};
+
+    #[test]
+    fn reads_scalar_setter_argument_type() {
+        assert_eq!(objc_argument_type(b"v12@0:4f8", 2), Some(b'f'));
+        assert_eq!(objc_argument_type(b"v24@0:4f8f12", 3), Some(b'f'));
+    }
+
+    #[test]
+    fn skips_compound_return_and_quoted_arguments() {
+        assert_eq!(
+            objc_argument_type(b"{CGRect={CGPoint=ff}{CGSize=ff}}16@0:4@\"NSNumber\"8", 2),
+            Some(b'@')
+        );
+    }
+
+    #[test]
+    fn reads_struct_setter_argument_encoding() {
+        assert_eq!(
+            objc_argument_encoding(b"v16@0:4{CGPoint=ff}8", 2),
+            Some(&b"{CGPoint=ff}"[..])
+        );
+        assert_eq!(
+            objc_argument_encoding(b"v20@0:4{CGRect={CGPoint=ff}{CGSize=ff}}8", 2),
+            Some(&b"{CGRect={CGPoint=ff}{CGSize=ff}}"[..])
+        );
+    }
+
+    #[test]
+    fn rejects_incomplete_method_encodings() {
+        assert_eq!(objc_argument_type(b"v12@0", 2), None);
+    }
+}

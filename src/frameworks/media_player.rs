@@ -13,7 +13,7 @@ mod media_playlist;
 mod media_query;
 pub mod mf_mail_compose_view_controller;
 mod movie_player;
-mod movie_video;
+pub(crate) mod movie_video;
 mod mp_volume_view;
 mod music_player;
 
@@ -50,8 +50,13 @@ pub struct State {
 /// necessary.
 pub fn handle_players(env: &mut crate::Environment) {
     movie_player::handle_players(env);
+    crate::frameworks::avfoundation::handle_players(env);
 }
 
 pub fn has_active_video(env: &mut crate::Environment) -> bool {
-    movie_player::has_active_video(env)
+    movie_player::has_active_video(env) || crate::frameworks::avfoundation::has_active_video(env)
+}
+
+pub(crate) fn mp4_duration(bytes: &[u8]) -> Option<f64> {
+    movie_player::read_mp4_duration(&mut std::io::Cursor::new(bytes))
 }

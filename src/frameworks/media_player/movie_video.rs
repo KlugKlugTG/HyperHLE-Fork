@@ -33,6 +33,18 @@ pub struct MovieVideoInfo {
     pub height: u32,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum MovieMediaType {
+    Audio,
+    Video,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct MovieMediaTrackInfo {
+    pub track_id: u32,
+    pub media_type: MovieMediaType,
+}
+
 pub struct MovieFrame {
     pub rgba: Vec<u8>,
     pub width: u32,
@@ -127,6 +139,44 @@ fn video_track_info(movie_bytes: &[u8]) -> Result<VideoTrackInfo, String> {
         parameter_sets,
         video: MovieVideoInfo { width, height },
     })
+}
+
+
+
+
+
+pub(crate) fn media_tracks(movie_bytes: &[u8]) -> Vec<MovieMediaTrackInfo> {
+    let stream = MediaSourceStream::new(
+        Box::new(Cursor::new(movie_bytes.to_vec())),
+        Default::default(),
+    );
+    let Ok(format) = symphonia::default::get_probe().probe(
+        &Hint::new(),
+        stream,
+        FormatOptions::default(),
+        MetadataOptions::default(),
+    ) else {
+        return Vec::new();
+    };
+
+    format
+        .tracks()
+        .iter()
+        .filter_map(|track| {
+            let parameters = track.codec_params.as_ref()?;
+            let media_type = if parameters.is_audio() {
+                MovieMediaType::Audio
+            } else if parameters.is_video() {
+                MovieMediaType::Video
+            } else {
+                return None;
+            };
+            Some(MovieMediaTrackInfo {
+                track_id: track.id,
+                media_type,
+            })
+        })
+        .collect()
 }
 
 fn avcc_to_annex_b(config: &[u8]) -> Result<(usize, Vec<u8>), String> {
@@ -528,7 +578,9 @@ impl Drop for MovieVideo {
 
 #[cfg(test)]
 mod tests {
-    use super::{avcc_to_annex_b, packet_to_annex_b, MovieVideo, MovieVideoInfo};
+    use super::{
+        avcc_to_annex_b, media_tracks, packet_to_annex_b, MovieMediaType, MovieVideo, MovieVideoInfo,
+    };
     use std::thread;
     use std::time::{Duration, Instant};
 
@@ -561,6 +613,15 @@ mod tests {
     #[test]
     fn invalid_avcc_sample_length_is_rejected() {
         assert!(packet_to_annex_b(&[0, 0, 0, 2, 0x65], 4).is_err());
+    }
+
+    #[test]
+    fn media_track_probe_reports_video_tracks() {
+        let bytes = include_bytes!("../../../tests/fixtures/h264-smoke.mp4");
+        let tracks = media_tracks(bytes);
+        assert_eq!(tracks.len(), 1);
+        assert_eq!(tracks[0].media_type, MovieMediaType::Video);
+        assert_ne!(tracks[0].track_id, 0);
     }
 
     #[test]
