@@ -1765,10 +1765,21 @@ fn setup_settings(
 ) -> SettingsStuff {
     let width = app_frame.size.width;
     let height = app_frame.size.height;
-    let root_size = app_frame.size;
+    // The Settings screen covers the whole window, including the status bar
+    // strip above the application frame. Nothing is clipped by the emulator,
+    // so scrolled content must not be able to show up in that strip.
+    let status_offset = app_frame.origin.y;
+    let root_size = CGSize {
+        width,
+        height: height + status_offset,
+    };
 
     let grouped_bg = ui_color(env, 0.937, 0.937, 0.957, 1.0);
-    let settings_view = new_view(env, rect(0.0, 0.0, width, height), grouped_bg);
+    let settings_view = new_view(
+        env,
+        rect(0.0, -status_offset, width, height + status_offset),
+        grouped_bg,
+    );
     () = msg![env; settings_view setHidden:true];
     () = msg![env; super_view addSubview:settings_view];
 
@@ -1780,12 +1791,16 @@ fn setup_settings(
 
     // Navigation bar with the title and a "Done" button.
     let nav_bar_bg = ui_color(env, 0.97, 0.97, 0.98, 1.0);
-    let nav_bar = new_view(env, rect(0.0, 0.0, width, SETTINGS_NAV_BAR_HEIGHT), nav_bar_bg);
+    let nav_bar = new_view(
+        env,
+        rect(0.0, 0.0, width, SETTINGS_NAV_BAR_HEIGHT + status_offset),
+        nav_bar_bg,
+    );
     () = msg![env; settings_view addSubview:nav_bar];
     let nav_separator_color = ui_color(env, 0.78, 0.78, 0.8, 1.0);
     let nav_separator = new_view(
         env,
-        rect(0.0, SETTINGS_NAV_BAR_HEIGHT - 1.0, width, 1.0),
+        rect(0.0, SETTINGS_NAV_BAR_HEIGHT + status_offset - 1.0, width, 1.0),
         nav_separator_color,
     );
     () = msg![env; settings_view addSubview:nav_separator];
@@ -1793,7 +1808,7 @@ fn setup_settings(
     let title_color = ui_color(env, 0.1, 0.1, 0.1, 1.0);
     let title = new_label(
         env,
-        rect(60.0, 0.0, width - 120.0, SETTINGS_NAV_BAR_HEIGHT),
+        rect(60.0, status_offset, width - 120.0, SETTINGS_NAV_BAR_HEIGHT),
         "Settings",
         17.0,
         true,
@@ -1803,7 +1818,7 @@ fn setup_settings(
     () = msg![env; settings_view addSubview:title];
 
     let done: id = msg_class![env; UIButton buttonWithType:UIButtonTypeCustom];
-    () = msg![env; done setFrame:(rect(width - 72.0, 0.0, 64.0, SETTINGS_NAV_BAR_HEIGHT))];
+    () = msg![env; done setFrame:(rect(width - 72.0, status_offset, 64.0, SETTINGS_NAV_BAR_HEIGHT))];
     let done_text = ns_string::get_static_str(env, "Done");
     () = msg![env; done setTitle:done_text forState:UIControlStateNormal];
     // FIXME: manually calling layoutSubviews shouldn't be needed?
@@ -1822,7 +1837,7 @@ fn setup_settings(
     let scroll: id = msg_class![env; UIScrollView alloc];
     let scroll: id = msg![env; scroll initWithFrame:(rect(
         0.0,
-        SETTINGS_NAV_BAR_HEIGHT,
+        SETTINGS_NAV_BAR_HEIGHT + status_offset,
         width,
         height - SETTINGS_NAV_BAR_HEIGHT,
     ))];
@@ -1970,7 +1985,7 @@ fn setup_settings(
                     () = msg![env; group addSubview:label_view];
                     let menu_origin = CGPoint {
                         x: (width - SETTINGS_DEVICE_MENU_WIDTH) / 2.0,
-                        y: SETTINGS_NAV_BAR_HEIGHT + 12.0,
+                        y: SETTINGS_NAV_BAR_HEIGHT + status_offset + 12.0,
                     };
                     dropdown = Some(make_device_model_dropdown(
                         env,
