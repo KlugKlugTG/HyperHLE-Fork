@@ -42,28 +42,6 @@ const MAX_TIMED_WAIT_SECS: u32 = 3600;
 /// uses (they typically wait in 5–50ms slices) while costing almost nothing.
 const TIMED_WAIT_POLL_INTERVAL: Duration = Duration::from_millis(1);
 
-/// Opt-in deadlock-breaker for the otherwise-infinite [semaphore_wait],
-/// enabled with `--mach-semaphore-spurious-wake=<ms>`.
-///
-/// FMOD's worker threads (its AsyncManager command pump and the Studio
-/// BankLoader queue) park on a Mach semaphore that the producer is supposed to
-/// signal when it posts work. In Minecraft: Story Mode
-/// (com.telltalegames.MC100) that producer-side signal never reaches the
-/// workers under our cooperative
-/// scheduler, so `Studio::System::loadBankFile` blocks forever in
-/// `system_checkBlockingBank` during `SoundSystem::Initialize` and the game
-/// never renders a second frame. Those two FMOD loops re-check their own
-/// queue state on wake, so for that app a spurious wake is harmless.
-///
-/// This must NOT be on by default. Returning KERN_SUCCESS without having
-/// acquired the semaphore tells the waiter that a resource is ready when it
-/// is not. Mono/Unity build their thread synchronisation on Mach semaphores,
-/// so a lying wait lets a worker touch half-initialized state; the failure
-/// then appears far away as a managed `NullReferenceException` followed by
-/// Unity's `trap`/`exit(1)`, with nothing in the log pointing back here.
-/// (Observed in Turbo Dismount after this breaker was first added
-/// unconditionally.)
-
 /// DIAG (TOUCHHLE_TRACE_MACHSEM=1): trace Mach semaphore traffic. FMOD drives
 /// its async/bank-loader threads entirely through these, so a lost signal shows
 /// up here as a wait with no matching signal.
@@ -212,6 +190,27 @@ fn semaphore_signal_thread(
     result
 }
 
+// Opt-in deadlock-breaker for the otherwise-infinite `semaphore_wait`,
+// enabled with `--mach-semaphore-spurious-wake=<ms>`.
+//
+// FMOD's worker threads (its AsyncManager command pump and the Studio
+// BankLoader queue) park on a Mach semaphore that the producer is supposed to
+// signal when it posts work. In Minecraft: Story Mode
+// (com.telltalegames.MC100) that producer-side signal never reaches the
+// workers under our cooperative
+// scheduler, so `Studio::System::loadBankFile` blocks forever in
+// `system_checkBlockingBank` during `SoundSystem::Initialize` and the game
+// never renders a second frame. Those two FMOD loops re-check their own
+// queue state on wake, so for that app a spurious wake is harmless.
+//
+// This must NOT be on by default. Returning KERN_SUCCESS without having
+// acquired the semaphore tells the waiter that a resource is ready when it
+// is not. Mono/Unity build their thread synchronisation on Mach semaphores,
+// so a lying wait lets a worker touch half-initialized state; the failure
+// then appears far away as a managed `NullReferenceException` followed by
+// Unity's `trap`/`exit(1)`, with nothing in the log pointing back here.
+// (Observed in Turbo Dismount after this breaker was first added
+// unconditionally.)
 fn semaphore_wait(env: &mut Environment, semaphore: semaphore_t) -> kern_return_t {
     machsem_trace(env, "wait-enter", semaphore);
     if !is_known_semaphore(env, semaphore) {
