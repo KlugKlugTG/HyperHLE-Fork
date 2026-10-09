@@ -540,11 +540,8 @@ impl Environment {
             match window::host_screen_size() {
                 Some((w, h)) => {
                     let picked = DeviceFamily::pick_for_screen(w, h);
-                    if options.host_screen_size.is_none() {
-                        options.host_screen_size = Some((w, h));
-                    }
                     log!(
-                        "Auto device family: host screen is {}x{} px, exposing the same resolution to the app and picking closest match {:?}.",
+                        "Auto device family: host screen is {}x{} px, picking closest device profile {:?}.",
                         w,
                         h,
                         picked

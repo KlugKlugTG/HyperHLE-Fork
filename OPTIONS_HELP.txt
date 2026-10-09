@@ -74,22 +74,23 @@ Device options:
 
         A model's hardware identifier (e.g. "iphone4,1") is also accepted.
 
-        Use "auto" to let touchHLE inspect your host display's resolution,
-        expose that resolution directly to the app, and still pick the device
-        family whose bundled resources are the closest match. The chosen family
-        is still validated against what the app bundle supports, so an
-        unsupported guess is ignored just like a manual override.
+        Use "auto" to let touchHLE inspect your host display's aspect ratio
+        and pick the closest device family. The app still receives that
+        device profile's logical resolution; use --screen-size=WxH to expose a
+        custom resolution. The chosen family is validated against what the app
+        bundle supports, so an unsupported guess is ignored just like a manual
+        override.
 
     --screen-size=WxH
         Force the emulated screen to be exactly W by H points (e.g.
         --screen-size=320x693), exposed to the app at scale 1.0, instead of one
-        of the fixed device profiles. This is the manual counterpart to
-        "--device-family=auto": auto detects your host display automatically,
-        while this lets you pin any resolution you like. Width and height may be
-        separated by "x", "X" or ",". The order is normalised to portrait
-        (smaller value becomes the width), and the initial orientation option
-        still applies. A manual --screen-size= always wins over the resolution
-        auto-detection.
+        of the fixed device profiles. This can be combined with
+        "--device-family=auto": auto picks a device family, while this pins the
+        exact logical resolution. Width and height may be separated by "x",
+        "X" or ",". The order is normalised to portrait (smaller value becomes
+        the width), and the initial orientation option still applies. A manual
+        --screen-size= always takes precedence over automatic device-family
+        selection for the screen dimensions.
     --ios-version=MAJOR.MINOR[.PATCH]
         Select the iOS version reported to the game. The default is "Latest",
         currently the highest compatibility version exposed by HyperHLE.
