@@ -1755,7 +1755,15 @@ fn setup_settings(
         height - SETTINGS_NAV_BAR_HEIGHT,
     ))];
     () = msg![env; scroll setBackgroundColor:clear];
+    // Clip the scrolled content to the scroll view, so it never slides up
+    // over the navigation bar.
+    () = msg![env; scroll setClipsToBounds:true];
     () = msg![env; settings_view addSubview:scroll];
+    // The navigation bar must stay on top of the scrolled content.
+    () = msg![env; settings_view bringSubviewToFront:nav_bar];
+    () = msg![env; settings_view bringSubviewToFront:nav_separator];
+    () = msg![env; settings_view bringSubviewToFront:title];
+    () = msg![env; settings_view bringSubviewToFront:done];
 
     let mut sections: Vec<(&'static str, Vec<SettingsRow>)> = Vec::new();
     let mut display_rows = vec![
