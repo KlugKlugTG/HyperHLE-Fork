@@ -30,7 +30,7 @@ use crate::mach_o::{MachO, SectionType};
 use crate::mem::{ConstPtr, ConstVoidPtr, GuestUSize, Mem, MutPtr, MutVoidPtr, Ptr};
 use crate::objc::{nil, ClassExports, ObjC};
 use crate::Environment;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub use dylib_list::DYLIB_LIST;
 
@@ -451,6 +451,10 @@ pub struct Dyld {
     swift_data_slots: HashMap<String, u32>,
     cxxabi_typeinfo_vtable_kinds: HashMap<u32, CxxAbiTypeInfoKind>,
     guest_sjlj_runtime_available: bool,
+    /// Symbols that got the generic return-0 stub because nothing
+    /// implements them. Used to name them in crash diagnostics when the
+    /// guest traps or exits shortly after calling one.
+    unimplemented_symbols: HashSet<&'static str>,
 }
 
 impl Dyld {
@@ -485,6 +489,7 @@ impl Dyld {
             swift_fn_names: HashMap::new(),
             swift_data_slots: HashMap::new(),
             cxxabi_typeinfo_vtable_kinds: HashMap::new(),
+            unimplemented_symbols: HashSet::new(),
             guest_sjlj_runtime_available: false,
         }
     }
@@ -1648,6 +1653,11 @@ impl Dyld {
                     return None;
                 };
                 log_dbg!("Call to host function, already linked: {}", symbol);
+                if self.unimplemented_symbols.contains(symbol) {
+                    crate::environment::note_compat_gap(format!(
+                        "unimplemented function {symbol}() returned 0"
+                    ));
+                }
                 // Record the symbol for nil-page-write diagnostics (see
                 // mem::null_check_fail), which otherwise only know that the
                 // write came from the generic bytes_at_mut accessor.
@@ -1956,6 +1966,7 @@ impl Dyld {
             assert!(svc < Self::SVC_LAZY_LINK_RET_FLAG);
             svc |= Self::SVC_LAZY_LINK_RET_FLAG;
         }
+        self.unimplemented_symbols.insert(leaked_symbol);
         self.linked_host_functions.push((leaked_symbol, f));
         // Rewrite the stub function to trap into our SVC handler.
         let stub_function_ptr: MutPtr<u32> = Ptr::from_bits(svc_pc);

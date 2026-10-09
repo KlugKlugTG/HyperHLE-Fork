@@ -24,6 +24,10 @@ macro_rules! log_unimplemented_gles_once {
                 profile,
                 format_args!($($message)+)
             );
+            crate::environment::note_compat_gap(format!(
+                "unimplemented GLES API: {}",
+                format_args!($($message)+)
+            ));
         });
     }};
 }

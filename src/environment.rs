@@ -129,6 +129,54 @@ pub static LAST_HOST_CALL_SYMBOL_PTR: std::sync::atomic::AtomicUsize =
 pub static LAST_HOST_CALL_SYMBOL_LEN: std::sync::atomic::AtomicUsize =
     std::sync::atomic::AtomicUsize::new(0);
 
+/// How many "compatibility gap" events are kept for crash diagnostics.
+const RECENT_COMPAT_GAP_CAPACITY: usize = 8;
+
+/// Ring of the most recent things touchHLE could not provide to the guest:
+/// unimplemented functions that got a return-0 stub, messages to faked
+/// classes that behaved like nil, unimplemented GLES entry points, and
+/// messages to freed objects.
+///
+/// A guest that executes a deliberate trap or calls `exit()`/`abort()` is
+/// almost always reacting to one of these, so the trap diagnostics print
+/// this list: it answers "what was actually missing?" without the user
+/// having to re-run with extra logging enabled.
+static RECENT_COMPAT_GAPS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+/// Record something touchHLE could not provide to the guest. Consecutive
+/// duplicates are collapsed so a call in a loop cannot flush the ring.
+pub(crate) fn note_compat_gap(detail: String) {
+    let Ok(mut gaps) = RECENT_COMPAT_GAPS.lock() else {
+        return;
+    };
+    if gaps.last().is_some_and(|last| *last == detail) {
+        return;
+    }
+    if gaps.len() >= RECENT_COMPAT_GAP_CAPACITY {
+        gaps.remove(0);
+    }
+    gaps.push(detail);
+}
+
+/// Human-readable summary of [RECENT_COMPAT_GAPS] for crash diagnostics.
+pub(crate) fn describe_recent_compat_gaps() -> String {
+    let Ok(gaps) = RECENT_COMPAT_GAPS.lock() else {
+        return "Missing-feature history unavailable.".to_string();
+    };
+    if gaps.is_empty() {
+        return "No missing/stubbed feature was recorded before this point, \
+                so the guest most likely failed on its own data (a missing \
+                or unreadable resource file, a failed check) rather than on \
+                a touchHLE gap."
+            .to_string();
+    }
+    format!(
+        "Probably caused by one of these, newest last (what touchHLE could \
+         not provide shortly before the trap): {}.",
+        gaps.join(" | ")
+    )
+}
+
 /// The struct containing the entire emulator state. Methods are provided for
 /// execution and management of threads.
 pub struct Environment {
@@ -3204,6 +3252,16 @@ impl Environment {
                             self.dump_guest_code_around(pc, is_thumb),
                             self.describe_call_site_before(lr)
                         );
+                        // A deliberate trap is the guest giving up, so say
+                        // what it most likely gave up *on*. Without this the
+                        // user has to re-run with extra logging and correlate
+                        // the log by hand.
+                        if matches!(trap_kind, GuestTrapKind::DeliberateTrap { .. }) {
+                            log_no_panic!(
+                                "Guest trap likely cause: {}",
+                                describe_recent_compat_gaps()
+                            );
+                        }
                         if trap_kind != GuestTrapKind::OutsideCode {
                             self.stack_trace_current();
                         }

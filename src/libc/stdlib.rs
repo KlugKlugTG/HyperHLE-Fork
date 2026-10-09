@@ -829,6 +829,10 @@ pub(crate) fn recover_guest_termination(env: &mut Environment, termination: &str
              that trap, not this termination.",
             termination
         );
+        echo!(
+            "Likely cause of the guest termination: {}",
+            crate::environment::describe_recent_compat_gaps()
+        );
         return false;
     }
 
@@ -876,6 +880,10 @@ pub(crate) fn end_guest_termination(env: &mut Environment, termination: &str) {
         "App called {}; ending the guest session through the return-to-host \
          path.",
         termination
+    );
+    echo!(
+        "Why the app gave up: {}",
+        crate::environment::describe_recent_compat_gaps()
     );
     env.request_guest_termination();
 }
