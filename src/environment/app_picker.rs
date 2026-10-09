@@ -1731,7 +1731,7 @@ fn setup_settings(
     () = msg![env; settings_view addSubview:title];
 
     let done: id = msg_class![env; UIButton buttonWithType:UIButtonTypeCustom];
-    () = msg![env; done setFrame:rect(width - 72.0, 0.0, 64.0, SETTINGS_NAV_BAR_HEIGHT)];
+    () = msg![env; done setFrame:(rect(width - 72.0, 0.0, 64.0, SETTINGS_NAV_BAR_HEIGHT))];
     let done_text = ns_string::get_static_str(env, "Done");
     () = msg![env; done setTitle:done_text forState:UIControlStateNormal];
     // FIXME: manually calling layoutSubviews shouldn't be needed?
@@ -1748,12 +1748,12 @@ fn setup_settings(
 
     // Scrollable content below the navigation bar.
     let scroll: id = msg_class![env; UIScrollView alloc];
-    let scroll: id = msg![env; scroll initWithFrame:rect(
+    let scroll: id = msg![env; scroll initWithFrame:(rect(
         0.0,
         SETTINGS_NAV_BAR_HEIGHT,
         width,
         height - SETTINGS_NAV_BAR_HEIGHT,
-    )];
+    ))];
     () = msg![env; scroll setBackgroundColor:clear];
     () = msg![env; settings_view addSubview:scroll];
 
@@ -1923,12 +1923,12 @@ fn setup_settings(
                     () = msg![env; group addSubview:label_view];
 
                     let switch: id = msg_class![env; UISwitch alloc];
-                    let switch: id = msg![env; switch initWithFrame:rect(
+                    let switch: id = msg![env; switch initWithFrame:(rect(
                         inner_width - side - switch_width,
                         row_y + 8.5,
                         switch_width,
                         27.0,
-                    )];
+                    ))];
                     () = msg![env; switch setOn:default_state];
                     () = msg![env; switch setEnabled:enabled];
                     let selector = env.objc.lookup_selector(selector).unwrap();
@@ -2105,7 +2105,7 @@ fn make_device_model_dropdown(
 
     // Dimmer covering the whole Settings screen while the list is open.
     let dimmer: id = msg_class![env; UIButton buttonWithType:UIButtonTypeCustom];
-    () = msg![env; dimmer setFrame:rect(0.0, 0.0, root_size.width, root_size.height)];
+    () = msg![env; dimmer setFrame:(rect(0.0, 0.0, root_size.width, root_size.height))];
     let dim_color = ui_color(env, 0.0, 0.0, 0.0, 0.35);
     () = msg![env; dimmer setBackgroundColor:dim_color];
     () = msg![env; dimmer addTarget:delegate
