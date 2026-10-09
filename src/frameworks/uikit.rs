@@ -1083,6 +1083,9 @@ pub fn handle_events(env: &mut Environment) -> Option<Instant> {
                 log_dbg!("Handling app-will-terminate event.");
                 ui_application::exit(env);
             }
+            Event::ArrowKey(dir) => {
+                crate::environment::app_picker::post_arrow_key(dir);
+            }
             Event::EnterDebugger => {
                 if env.is_debugging_enabled() {
                     log!("Handling EnterDebugger event: entering debugger.");

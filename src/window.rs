@@ -577,6 +577,9 @@ pub enum Event {
     /// take over.
     EnterDebugger,
     TextInput(TextInputEvent),
+    /// Left (-1) or right (+1) arrow key was pressed. Used by the app picker
+    /// to switch pages.
+    ArrowKey(i8),
 }
 
 pub enum BatteryState {
@@ -1871,6 +1874,16 @@ impl Window {
                     log_dbg!("SDL TextInput Backspace");
                     Event::TextInput(TextInputEvent::Backspace)
                 }
+                E::KeyDown {
+                    keycode: Some(sdl2::keyboard::Keycode::Left),
+                    repeat: false,
+                    ..
+                } => Event::ArrowKey(-1),
+                E::KeyDown {
+                    keycode: Some(sdl2::keyboard::Keycode::Right),
+                    repeat: false,
+                    ..
+                } => Event::ArrowKey(1),
                 E::KeyDown {
                     keycode: Some(sdl2::keyboard::Keycode::Return),
                     ..

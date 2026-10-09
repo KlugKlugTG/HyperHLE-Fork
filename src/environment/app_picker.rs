@@ -34,7 +34,17 @@ use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicI8, Ordering};
 use std::time::{Duration, Instant};
+
+/// Pending left (-1) or right (+1) arrow key press, 0 if none. Written by the
+/// window event handler and consumed by the picker loop.
+static PENDING_ARROW_KEY: AtomicI8 = AtomicI8::new(0);
+
+/// Records an arrow key press for the app picker to act on.
+pub fn post_arrow_key(dir: i8) {
+    PENDING_ARROW_KEY.store(dir, Ordering::Relaxed);
+}
 
 struct AppInfo {
     path: PathBuf,
@@ -577,6 +587,8 @@ fn app_picker_inner(
 
     let apps_dir = paths::user_data_base_path().join(paths::APPS_DIR);
     let mut current_page = 0;
+    // Discard arrow presses made before the picker was shown.
+    PENDING_ARROW_KEY.store(0, Ordering::Relaxed);
     // If the user taps the "+" tile, this records the .ipa files that existed
     // at that moment; once a new one shows up, the app list is re-enumerated.
     let mut awaited_ipa: Option<IpaWatch> = None;
@@ -586,6 +598,30 @@ fn app_picker_inner(
     // process exits.
     let app_path = loop {
         run_run_loop_single_iteration(env, main_run_loop);
+        // Left/right arrow keys switch pages, like tapping the page arrows.
+        let arrow = PENDING_ARROW_KEY.swap(0, Ordering::Relaxed);
+        if arrow != 0 {
+            let settings_view = settings.main_view;
+            let settings_open: bool = !msg![env; settings_view isHidden];
+            let grid = icon_grid_stuff.as_mut().unwrap();
+            let new_page = if arrow > 0 {
+                current_page + 1
+            } else {
+                current_page.wrapping_sub(1)
+            };
+            if !settings_open && new_page < grid.pages.len() {
+                slide_to_page(
+                    env,
+                    main_run_loop,
+                    delegate,
+                    grid,
+                    apps.as_mut().unwrap(),
+                    new_page,
+                    arrow as CGFloat,
+                );
+                current_page = new_page;
+            }
+        }
         let host_obj = env.objc.borrow_mut::<AppPickerDelegateHostObject>(delegate);
         let icon_tapped = std::mem::take(&mut host_obj.icon_tapped);
         if icon_tapped != nil {

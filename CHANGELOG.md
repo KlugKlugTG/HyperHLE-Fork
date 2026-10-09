@@ -169,7 +169,7 @@ Quality and performance:
 
 Usability:
 
-- The app picker has been reworked to feel like iOS. Opening an app animates its icon to the middle of the screen while the screen fades to black. Pressing the arrow tiles slides the icon grid to the next or previous page. The "Quick options" button is gone; a new "Settings" app icon in the grid opens a full-screen Settings screen with grouped sections, switches, and a "Done" button. It holds the same options as before.
+- The app picker has been reworked to feel like iOS. Opening an app animates its icon to the middle of the screen while the screen fades to black. Pressing the arrow tiles or the ← and → keys slides the icon grid to the next or previous page. The "Quick options" button is gone; a new "Settings" app icon in the grid opens a full-screen Settings screen with grouped sections, switches, and a "Done" button. It holds the same options as before.
 
 - Quick Options now has a “May fix graphics issues.” switch for `--force-composition`, including an explicit off state that overrides app-specific defaults. Switches are aligned beside their labels, and the scale-hack button text no longer gets clipped. (@j92580498-max)
 
