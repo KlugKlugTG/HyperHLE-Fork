@@ -354,7 +354,7 @@ const PLACEHOLDER_DURATION: f64 = 1.0;
 /// Read the duration (in seconds) of an MPEG-4/QuickTime file from the `mvhd`
 /// box inside its top-level `moov` box. Returns `None` if the file can't be
 /// parsed. See ISO/IEC 14496-12, "Movie Header Box".
-fn read_mp4_duration<F: Read + Seek>(file: &mut F) -> Option<f64> {
+pub(super) fn read_mp4_duration<F: Read + Seek>(file: &mut F) -> Option<f64> {
     /// Reads a box header, returning (box start, box type, box size).
     fn box_header<F: Read + Seek>(file: &mut F) -> Option<(u64, [u8; 4], u64)> {
         let start = file.stream_position().ok()?;

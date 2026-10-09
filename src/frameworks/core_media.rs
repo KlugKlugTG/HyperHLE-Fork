@@ -26,6 +26,7 @@
 //! dylib they were declared under, so the binding still resolves correctly
 //! whether the app links CoreMedia or CoreVideo.
 
+use crate::abi::GuestArg;
 use crate::dyld::{export_c_func, ConstantExports, FunctionExports, HostConstant};
 use crate::frameworks::media_toolbox::CMTime;
 use crate::mem::{ConstVoidPtr, MutPtr};
@@ -201,12 +202,31 @@ fn CMTimeMake(env: &mut Environment, out: MutPtr<u8>, value: i64, timescale: i32
     out
 }
 
+fn CMTimeMakeWithSeconds(
+    env: &mut Environment,
+    out: MutPtr<u8>,
+    seconds: f64,
+    preferred_timescale: i32,
+) -> MutPtr<u8> {
+    let time = CMTime::from_seconds_with_timescale(seconds, preferred_timescale);
+    let mut words = [0; 6];
+    time.to_regs(&mut words);
+    for (word_index, word) in words.into_iter().enumerate() {
+        for (byte_index, byte) in word.to_le_bytes().into_iter().enumerate() {
+            env.mem
+                .write(out + (word_index * 4 + byte_index) as u32, byte);
+        }
+    }
+    out
+}
+
 fn CMTimeGetSeconds(_env: &mut Environment, time: CMTime) -> f64 {
     time.as_seconds()
 }
 
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CMTimeMake(_, _, _)),
+    export_c_func!(CMTimeMakeWithSeconds(_, _, _)),
     export_c_func!(CMTimeGetSeconds(_)),
     export_c_func!(CMFormatDescriptionGetMediaType(_)),
 ];

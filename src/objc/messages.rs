@@ -22,6 +22,106 @@ use crate::abi::{CallFromHost, GuestRet};
 use crate::mem::{ConstPtr, MutVoidPtr, Ptr, SafeRead};
 use crate::Environment;
 use std::any::TypeId;
+fn trace_cocos_menu(env: &mut Environment, menu: id, touch: id) {
+    let saved_regs = *env.cpu.regs();
+    let Some(location_selector) = env.objc.lookup_selector("locationInView:") else {
+        return;
+    };
+    let location: CGPoint = msg_send(env, (touch, location_selector, nil));
+    let director_class = env
+        .objc
+        .get_known_class("CCDirectorIOSUniversal", &mut env.mem);
+    let Some(shared_director_selector) = env.objc.lookup_selector("sharedDirector") else {
+        env.cpu.regs_mut().copy_from_slice(&saved_regs);
+        return;
+    };
+    let director: id = msg_send(env, (director_class, shared_director_selector));
+    let Some(convert_touch_selector) = env.objc.lookup_selector("convertTouchToGL:") else {
+        env.cpu.regs_mut().copy_from_slice(&saved_regs);
+        return;
+    };
+    let gl_location: CGPoint = msg_send(env, (director, convert_touch_selector, touch));
+    let Some(convert_node_selector) = env.objc.lookup_selector("convertToNodeSpace:") else {
+        env.cpu.regs_mut().copy_from_slice(&saved_regs);
+        return;
+    };
+    let menu_location: CGPoint = msg_send(env, (menu, convert_node_selector, gl_location));
+    let Some(parent_bounds_selector) = env.objc.lookup_selector("parentBounds") else {
+        env.cpu.regs_mut().copy_from_slice(&saved_regs);
+        return;
+    };
+    let parent_bounds: CGRect = msg_send(env, (menu, parent_bounds_selector));
+    let Some(children_selector) = env.objc.lookup_selector("children") else {
+        env.cpu.regs_mut().copy_from_slice(&saved_regs);
+        return;
+    };
+    let children: id = msg_send(env, (menu, children_selector));
+    let Some(count_selector) = env.objc.lookup_selector("count") else {
+        env.cpu.regs_mut().copy_from_slice(&saved_regs);
+        return;
+    };
+    let count: u32 = msg_send(env, (children, count_selector));
+    log!(
+        "MENU-TRACE menu={:?} bounds={:?} touch={:?} gl={:?} local={:?} children={}",
+        menu,
+        parent_bounds,
+        location,
+        gl_location,
+        menu_location,
+        count
+    );
+    let Some(object_at_index_selector) = env.objc.lookup_selector("objectAtIndex:") else {
+        env.cpu.regs_mut().copy_from_slice(&saved_regs);
+        return;
+    };
+    let Some(rect_selector) = env.objc.lookup_selector("rect") else {
+        env.cpu.regs_mut().copy_from_slice(&saved_regs);
+        return;
+    };
+    let Some(position_selector) = env.objc.lookup_selector("position") else {
+        env.cpu.regs_mut().copy_from_slice(&saved_regs);
+        return;
+    };
+    let Some(size_selector) = env.objc.lookup_selector("contentSize") else {
+        env.cpu.regs_mut().copy_from_slice(&saved_regs);
+        return;
+    };
+    let Some(visible_selector) = env.objc.lookup_selector("visible") else {
+        env.cpu.regs_mut().copy_from_slice(&saved_regs);
+        return;
+    };
+    let Some(enabled_selector) = env.objc.lookup_selector("isEnabled") else {
+        env.cpu.regs_mut().copy_from_slice(&saved_regs);
+        return;
+    };
+    for index in 0..count.min(64) {
+        let child: id = msg_send(env, (children, object_at_index_selector, index));
+        if child == nil {
+            continue;
+        }
+        let child_class = ObjC::read_isa(child, &env.mem);
+        let child_class_name = env.objc.get_class_name(child_class).to_owned();
+        let position: CGPoint = msg_send(env, (child, position_selector));
+        let size: CGSize = msg_send(env, (child, size_selector));
+        let rect: CGRect = msg_send(env, (child, rect_selector));
+        let visible: bool = msg_send(env, (child, visible_selector));
+        let enabled: bool = msg_send(env, (child, enabled_selector));
+        log!(
+            "MENU-ITEM index={} object={:?} class={} position={:?} size={:?} rect={:?} visible={} enabled={}",
+            index,
+            child,
+            child_class_name,
+            position,
+            size,
+            rect,
+            visible,
+            enabled
+        );
+    }
+    env.cpu.regs_mut().copy_from_slice(&saved_regs);
+}
+use crate::frameworks::core_graphics::{CGPoint, CGRect, CGSize};
+
 
 /// Implements Apple's lazy `+initialize` contract:
 /// > The runtime sends `initialize` to each class in a program just before the
@@ -179,6 +279,20 @@ fn objc_msgSend_inner(
                 env.objc.get_class_name(class),
                 selector.as_str(&env.mem)
             );
+        }
+    }
+    if crate::env_flag_cached!("TOUCHHLE_TRACE_MENU")
+        && receiver != nil
+        && selector.as_str(&env.mem) == "itemForTouch:"
+    {
+        let class = ObjC::read_isa(receiver, &env.mem);
+        if env.objc.get_class_name(class) == "GameMenu" {
+            use std::sync::atomic::{AtomicUsize, Ordering};
+            static MENU_TRACE_COUNT: AtomicUsize = AtomicUsize::new(0);
+            if MENU_TRACE_COUNT.fetch_add(1, Ordering::Relaxed) < 8 {
+                let touch = id::from_bits(env.cpu.regs()[2]);
+                trace_cocos_menu(env, receiver, touch);
+            }
         }
     }
     // Host-side recursion guard. If an Objective-C method (typically
@@ -653,7 +767,47 @@ Type mismatch when sending message {} to {:?}!
                     }
                     // We can't create a new stack frame, because that would
                     // interfere with pass-through of stack arguments.
-                    IMP::Guest(guest_imp) => guest_imp.call_without_pushing_stack_frame(env),
+                    IMP::Guest(guest_imp) => {
+                        if crate::env_flag_cached!("TOUCHHLE_TRACE_COCOS_SCALE") {
+                            let selector_name = selector.as_str(&env.mem);
+                            let class_name = env.objc.get_class_name(class).to_owned();
+                            if class_name.starts_with("CC")
+                                && matches!(
+                                    selector_name.as_ref(),
+                                    "setScale:"
+                                        | "setScaleX:"
+                                        | "setScaleY:"
+                                        | "setScaleX:Y:"
+                                        | "setPosition:"
+                                        | "setAnchorPoint:"
+                                        | "setContentSize:"
+                                        | "setRelativeScaleX:Y:type:propertyName:"
+                                        | "setRelativePosition:type:parentSize:propertyName:"
+                                )
+                            {
+                                use std::sync::atomic::{AtomicU32, Ordering};
+                                static SEEN: AtomicU32 = AtomicU32::new(0);
+                                let n = SEEN.fetch_add(1, Ordering::Relaxed);
+                                if n < 120 {
+                                    let regs = env.cpu.regs();
+                                    log!(
+                                        "COCOS-SCALE #{} {} {:?} {} r2={:#x}({}) r3={:#x}({}) r4={:#x}({})",
+                                        n,
+                                        class_name,
+                                        receiver,
+                                        selector_name,
+                                        regs[2],
+                                        f32::from_bits(regs[2]),
+                                        regs[3],
+                                        f32::from_bits(regs[3]),
+                                        regs[4],
+                                        f32::from_bits(regs[4])
+                                    );
+                                }
+                            }
+                        }
+                        guest_imp.call_without_pushing_stack_frame(env)
+                    }
                 }
 
                 // ULTRAHLE_MINIONJUMP_TAP_POSTCALL_BEGIN

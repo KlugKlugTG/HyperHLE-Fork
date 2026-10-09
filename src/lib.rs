@@ -340,6 +340,19 @@ pub fn main<T: Iterator<Item = String>>(mut args: T) -> Result<(), String> {
     }
     // ULTRAHLE_POTATO_LANDSCAPE_END
 
+    // Mutant Fridge: the game is a landscape-only Cocos2d build. Report
+    // landscape UIScreen bounds and force the 480x320 landscape viewport so the
+    // menu and gameplay layers are laid out the way they are on a real device.
+    if app_id == "com.turner.mfm" {
+        log!("Applying Mutant Fridge landscape screen and Cocos compatibility profile.");
+        unsafe {
+            std::env::set_var("TOUCHHLE_LANDSCAPE_UISCREEN_BOUNDS", "1");
+            std::env::set_var("TOUCHHLE_FORCE_LANDSCAPE_VIEWPORT", "1");
+            std::env::set_var("TOUCHHLE_COCOS_TOUCH_REMAP", "1");
+            std::env::set_var("TOUCHHLE_COCOS_TOUCH_MODE", "identity");
+        }
+    }
+
     let minimum_os_version = bundle.minimum_os_version();
     let required_device_capabilities = bundle.required_device_capabilities();
     let device_family = bundle.device_family_array();

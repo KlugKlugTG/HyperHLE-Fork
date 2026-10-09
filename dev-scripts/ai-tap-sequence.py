@@ -35,19 +35,35 @@ if sys.platform == "win32":
     import win32gui
     from PIL import ImageGrab
 
-FPS_RE = re.compile(r"EAGLContext .* FPS: ([0-9.]+)")
+FPS_RE = re.compile(r"(?:EAGLContext .*|Core Animation compositor) FPS: ([0-9.]+)")
 
 
-def find_window(pid_hint_title="touchHLE"):
+def find_window(process_id=None, pid_hint_title="touchHLE"):
     if sys.platform == "win32":
         found = []
+        fallback = []
 
         def cb(hwnd, _):
-            if win32gui.IsWindowVisible(hwnd) and pid_hint_title in win32gui.GetWindowText(hwnd):
+            if not win32gui.IsWindowVisible(hwnd):
+                return
+            window_pid = win32gui.GetWindowThreadProcessId(hwnd)[1]
+            if process_id is None or window_pid == process_id:
                 found.append(hwnd)
+            elif pid_hint_title in win32gui.GetWindowText(hwnd):
+                fallback.append(hwnd)
 
         win32gui.EnumWindows(cb, None)
-        return found[0] if found else None
+        candidates = found or fallback
+        return candidates[0] if candidates else None
+    if process_id is not None:
+        result = subprocess.run(
+            ["xdotool", "search", "--onlyvisible", "--pid", str(process_id)],
+            capture_output=True,
+            text=True,
+        )
+        ids = result.stdout.splitlines()
+        if ids:
+            return int(ids[0])
     result = subprocess.run(
         ["xdotool", "search", "--onlyvisible", "--name", pid_hint_title],
         capture_output=True,
@@ -201,7 +217,7 @@ def main():
 
     hwnd = None
     for _ in range(60):
-        hwnd = find_window()
+        hwnd = find_window(proc.pid)
         if hwnd or proc.poll() is not None:
             break
         time.sleep(0.5)
@@ -250,7 +266,7 @@ def main():
             screenshot(hwnd, out / "final.png")
             alive = proc.poll() is None
             tail = [f for t, f in fps_samples[-5:]]
-            print(f"EAGL FPS reports: {len(fps_samples)}, last: {tail}")
+            print(f"Render FPS reports: {len(fps_samples)}, last: {tail}")
             if not alive:
                 print(f"FAIL: emulator exited with code {proc.returncode}")
                 ok = False
