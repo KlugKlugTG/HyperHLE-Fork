@@ -562,7 +562,7 @@ fn app_picker_inner(
     };
 
     let title_frame = CGRect {
-        origin: CGPoint { x: 12.0, y: 8.0 },
+        origin: CGPoint { x: 12.0, y: 4.0 },
         size: CGSize {
             width: app_frame.size.width - 24.0,
             height: 34.0,
@@ -1017,19 +1017,20 @@ const HYPERHLE_FORK_NAME: &str = "HyperHLE-Fork";
 
 const APP_PICKER_VERSION_LABEL_HEIGHT: CGFloat = 15.0;
 const APP_PICKER_VERSION_LABEL_BOTTOM_INSET: CGFloat = 5.0;
-const APP_PICKER_FOOTER_GAP: CGFloat = 10.0;
+const APP_PICKER_FOOTER_GAP: CGFloat = 4.0;
 const APP_PICKER_BUTTON_ROW_HEIGHT: CGFloat = 30.0;
-const APP_PICKER_GRID_TOP: CGFloat = 44.0;
+const APP_PICKER_GRID_TOP: CGFloat = 40.0;
 const APP_PICKER_GRID_TO_BUTTON_GAP: CGFloat = 6.0;
 const APP_PICKER_ICON_ROWS: usize = 4;
 
 const ICON_SIZE: CGSize = CGSize {
-    width: 72.0,
-    height: 72.0,
+    width: 76.0,
+    height: 76.0,
 };
-const ICON_IMAGE_INSET: CGFloat = 9.0;
-const ICON_LABEL_TOP_GAP: CGFloat = 2.0;
-const ICON_ROW_GAP: CGFloat = 2.0;
+const ICON_IMAGE_INSET: CGFloat = 6.0;
+const ICON_LABEL_TOP_GAP: CGFloat = 1.0;
+const ICON_ROW_GAP: CGFloat = 1.0;
+const ICON_COLUMN_GAP: CGFloat = 16.0;
 
 fn app_picker_version_label_top(app_height: CGFloat) -> CGFloat {
     app_height - APP_PICKER_VERSION_LABEL_HEIGHT - APP_PICKER_VERSION_LABEL_BOTTOM_INSET
@@ -1098,10 +1099,10 @@ fn make_icon_grid(
     };
     let num_cols_f = num_cols as CGFloat;
     let label_size = CGSize {
-        width: 74.0,
+        width: 80.0,
         height: 12.0,
     };
-    let icon_gap_x: CGFloat = 19.0;
+    let icon_gap_x = ICON_COLUMN_GAP;
     let icon_gap_y = ICON_LABEL_TOP_GAP + label_size.height + ICON_ROW_GAP;
     let grid_top = APP_PICKER_GRID_TOP;
     let num_rows = app_picker_icon_grid_num_rows(app_frame.size.height, label_size.height);
