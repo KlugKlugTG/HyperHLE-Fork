@@ -531,11 +531,8 @@ impl Environment {
         let device_family_override = options.device_family;
         // `--device-family=auto`: when the user hasn't pinned a specific family,
         // probe the host display and pick the closest-matching emulated device.
-        // Keep the guest's logical screen at that device profile's size: many
-        // older games assume those fixed coordinates, and host-sized UIKit
-        // bounds can bunch their controls into a corner. Use --screen-size for
-        // apps that explicitly need a custom logical resolution. This is still
-        // validated against the app bundle like a manual device-family override.
+        // This is treated exactly like an explicit override below, so it still
+        // respects what the app bundle actually supports.
         let device_family_override = if device_family_override.is_none()
             && options.auto_device_family
             && !options.headless
@@ -543,8 +540,11 @@ impl Environment {
             match window::host_screen_size() {
                 Some((w, h)) => {
                     let picked = DeviceFamily::pick_for_screen(w, h);
+                    if options.host_screen_size.is_none() {
+                        options.host_screen_size = Some((w, h));
+                    }
                     log!(
-                        "Auto device family: host screen is {}x{} px, picking closest device profile {:?}.",
+                        "Auto device family: host screen is {}x{} px, exposing the same resolution to the app and picking closest match {:?}.",
                         w,
                         h,
                         picked
