@@ -168,7 +168,7 @@ impl Bundle {
             .join(self.plist["CFBundleExecutable"].as_string().unwrap())
     }
 
-    pub fn launch_image_path(&self, fs: &Fs, device_family: DeviceFamily) -> GuestPathBuf {
+    fn launch_image_candidates(&self, device_family: DeviceFamily) -> Vec<String> {
         // Check if there's a custom base name in plist
         let base_name = self
             .plist
@@ -177,7 +177,7 @@ impl Bundle {
             .unwrap_or("Default");
 
         // Try device-specific variants first, then fallback to base name
-        let candidates = if device_family.is_ipad() {
+        if device_family.is_ipad() {
             if device_family.is_retina() {
                 vec![
                     format!("{}@2x~ipad.png", base_name), // iPad Retina
@@ -208,11 +208,30 @@ impl Bundle {
                 format!("{}@2x.png", base_name), // iPhone Retina (fallback)
                 format!("{}.png", base_name),    // iPhone non-Retina
             ]
-        };
+        }
+    }
 
-        // Find the first existing file
-        for candidate in &candidates {
-            let path = self.path.join(candidate);
+    /// Load the best available app launch image for the requested device.
+    /// The picker keeps the encoded bytes and only decodes them when that app
+    /// is selected, avoiding the memory cost of retaining every decoded splash.
+    pub fn load_launch_image_data(
+        &self,
+        fs: &Fs,
+        device_family: DeviceFamily,
+    ) -> Option<Vec<u8>> {
+        for candidate in self.launch_image_candidates(device_family) {
+            let path = self.path.join(&candidate);
+            if let Ok(bytes) = fs.read(&path) {
+                return Some(bytes);
+            }
+        }
+        None
+    }
+
+    pub fn launch_image_path(&self, fs: &Fs, device_family: DeviceFamily) -> GuestPathBuf {
+        // Find the first readable file.
+        for candidate in self.launch_image_candidates(device_family) {
+            let path = self.path.join(&candidate);
             if fs.read(&path).is_ok() {
                 log!("Using launch image: {}", candidate);
                 return path;

@@ -30,7 +30,7 @@ use crate::mem::Ptr;
 use crate::objc::{id, msg, msg_class, nil, objc_classes, release, ClassExports, HostObject};
 use crate::options::Options;
 use crate::paths;
-use crate::window::DeviceOrientation;
+use crate::window::{DeviceFamily, DeviceOrientation};
 use crate::Environment;
 use std::collections::HashMap;
 use std::ffi::OsStr;
@@ -42,6 +42,10 @@ struct AppInfo {
     path: PathBuf,
     display_name: String,
     icon: Option<Image>,
+    /// Encoded PNG launch screen, decoded only when this app is selected.
+    launch_image_data: Option<Vec<u8>>,
+    /// Orientation selected by Environment::new for this app.
+    launch_orientation: DeviceOrientation,
     /// `NSString*`
     display_name_ns_string: Option<id>,
     /// `UIImage*`
@@ -51,10 +55,17 @@ struct AppInfo {
 pub fn app_picker(options: Options) -> Result<(PathBuf, Vec<String>), String> {
     let apps_dir = paths::user_data_base_path().join(paths::APPS_DIR);
 
+    let launch_device_family_override = app_picker_device_family_override(&options);
+
     let apps: Result<Vec<AppInfo>, String> = if !apps_dir.is_dir() {
         Err(format!("The {} directory couldn't be found. Check you're running touchHLE from the right directory.", apps_dir.display()))
     } else {
-        enumerate_apps(&apps_dir).map_err(|err| {
+        enumerate_apps(
+            &apps_dir,
+            launch_device_family_override,
+            options.initial_orientation,
+        )
+        .map_err(|err| {
             format!(
                 "Couldn't get list of apps in the {} directory: {}.",
                 apps_dir.display(),
@@ -66,7 +77,11 @@ pub fn app_picker(options: Options) -> Result<(PathBuf, Vec<String>), String> {
     show_app_picker_gui(options, apps)
 }
 
-fn enumerate_apps(apps_dir: &Path) -> Result<Vec<AppInfo>, std::io::Error> {
+fn enumerate_apps(
+    apps_dir: &Path,
+    device_family_override: Option<DeviceFamily>,
+    initial_orientation: DeviceOrientation,
+) -> Result<Vec<AppInfo>, std::io::Error> {
     let mut apps = Vec::new();
     let mut directories = vec![apps_dir.to_path_buf()];
     while let Some(directory) = directories.pop() {
@@ -91,6 +106,13 @@ fn enumerate_apps(apps_dir: &Path) -> Result<Vec<AppInfo>, std::io::Error> {
                     }
                 };
 
+                let app_device_family =
+                    app_launch_device_family(&bundle, device_family_override);
+                let launch_image_data = bundle
+                    .load_launch_image_data(&fs, app_device_family)
+                    .filter(|bytes| bytes.len() <= MAX_APP_LAUNCH_IMAGE_BYTES);
+                let launch_orientation =
+                    app_launch_orientation(&bundle, initial_orientation);
                 let display_name = bundle.display_name().to_owned();
                 let icon = match bundle.load_icon(&fs) {
                     Ok(icon) => Some(icon),
@@ -104,6 +126,8 @@ fn enumerate_apps(apps_dir: &Path) -> Result<Vec<AppInfo>, std::io::Error> {
                     path: app_path,
                     display_name,
                     icon,
+                    launch_image_data,
+                    launch_orientation,
                     display_name_ns_string: None,
                     icon_ui_image: None,
                 });
@@ -115,6 +139,64 @@ fn enumerate_apps(apps_dir: &Path) -> Result<Vec<AppInfo>, std::io::Error> {
 
     apps.sort_by_key(|app| app.display_name.to_uppercase());
     Ok(apps)
+}
+
+fn app_picker_device_family_override(options: &Options) -> Option<DeviceFamily> {
+    options.device_family.or_else(|| {
+        if options.auto_device_family && !options.headless {
+            crate::window::host_screen_size()
+                .map(|(width, height)| DeviceFamily::pick_for_screen(width, height))
+        } else {
+            None
+        }
+    })
+}
+
+fn app_launch_device_family(
+    bundle: &Bundle,
+    device_family_override: Option<DeviceFamily>,
+) -> DeviceFamily {
+    let supported_families = bundle.device_family_array();
+    let supports_ipad = supported_families.iter().any(|family| family.is_ipad());
+    let supports_phone = supported_families.iter().any(|family| !family.is_ipad());
+
+    let default_family = if supports_phone {
+        DeviceFamily::iPhone3GS
+    } else if supports_ipad {
+        DeviceFamily::iPad2
+    } else {
+        DeviceFamily::iPhone3GS
+    };
+
+    match device_family_override {
+        Some(family) if family.is_ipad() && supports_ipad => family,
+        Some(family) if !family.is_ipad() && supports_phone => family,
+        _ => default_family,
+    }
+}
+
+fn app_launch_orientation(bundle: &Bundle, initial: DeviceOrientation) -> DeviceOrientation {
+    if initial != DeviceOrientation::Portrait {
+        return initial;
+    }
+
+    let supported = bundle.supported_interface_orientations();
+    if supported.contains(&"UIInterfaceOrientationPortrait") {
+        return initial;
+    }
+
+    match supported
+        .iter()
+        .copied()
+        .find(|&orientation| orientation != "UIInterfaceOrientationPortrait")
+    {
+        Some("UIInterfaceOrientationLandscapeLeft") => DeviceOrientation::LandscapeRight,
+        Some("UIInterfaceOrientationLandscapeRight") => DeviceOrientation::LandscapeLeft,
+        Some("UIInterfaceOrientationLandscape") => DeviceOrientation::LandscapeLeft,
+        // Environment::new maps upside-down to its portrait presentation and
+        // falls back to portrait for unknown values.
+        _ => DeviceOrientation::Portrait,
+    }
 }
 
 /// Watch state for detecting a newly copied-in .ipa file.
@@ -360,6 +442,12 @@ fn show_app_picker_gui(
 }
 
 const APP_LAUNCH_ANIMATION_DURATION: Duration = Duration::from_millis(460);
+const MAX_APP_LAUNCH_IMAGE_BYTES: usize = 4 * 1024 * 1024;
+const APP_LAUNCH_ICON_ZOOM_SCALE: CGFloat = 2.25;
+const APP_LAUNCH_SPLASH_FADE_START: f64 = 0.08;
+const APP_LAUNCH_SPLASH_FADE_DURATION: f64 = 0.46;
+const APP_LAUNCH_FALLBACK_FADE_START: f64 = 0.55;
+const APP_LAUNCH_FALLBACK_FADE_DURATION: f64 = 0.45;
 
 /// A symmetric ease-in/ease-out curve gives the icon a deliberate, old-iOS
 /// style zoom instead of the abrupt snap used by the previous picker.
@@ -386,44 +474,112 @@ fn interpolate_rect(from: CGRect, to: CGRect, progress: CGFloat) -> CGRect {
     }
 }
 
-/// Zoom the tapped icon to the size of the display while fading away the
-/// picker beneath it. The picker is about to be discarded, so a temporary
-/// UIImageView is enough to preserve the exact icon shown in the grid.
+fn centered_icon_zoom_frame(icon_frame: CGRect, window_frame: CGRect) -> CGRect {
+    let zoom_size = icon_frame.size.width.max(icon_frame.size.height) * APP_LAUNCH_ICON_ZOOM_SCALE;
+    let center = CGPoint {
+        x: window_frame.origin.x + window_frame.size.width / 2.0,
+        y: window_frame.origin.y + window_frame.size.height / 2.0,
+    };
+    CGRect {
+        origin: CGPoint {
+            x: center.x - zoom_size / 2.0,
+            y: center.y - zoom_size / 2.0,
+        },
+        size: CGSize {
+            width: zoom_size,
+            height: zoom_size,
+        },
+    }
+}
+
+fn launch_image_matches_screen(image: &Image, screen: CGRect) -> bool {
+    let (image_width, image_height) = image.dimensions();
+    if image_width == 0
+        || image_height == 0
+        || screen.size.width <= 0.0
+        || screen.size.height <= 0.0
+    {
+        return false;
+    }
+
+    let image_ratio = image_width as f64 / image_height as f64;
+    let screen_ratio = screen.size.width as f64 / screen.size.height as f64;
+    (image_ratio / screen_ratio).ln().abs() <= 0.03
+}
+
+/// Zoom the selected icon toward the center, then blend into the game's
+/// full-resolution launch screen when the bundle has a matching image. Never
+/// blow a small icon up to fill the display; without a suitable splash, the
+/// icon only grows modestly and fades out instead.
 fn animate_app_launch_transition(
     env: &mut Environment,
     main_run_loop: id,
     window: id,
     main_view: id,
     icon_button: id,
+    launch_image: Option<Image>,
 ) {
     let icon_image_view: id = msg![env; icon_button imageView];
     let icon_image: id = msg![env; icon_image_view image];
     if icon_image == nil {
-        // The app picker normally supplies even missing app icons with a
-        // placeholder. Keep launch working if a custom button has no image.
         return;
     }
 
     let icon_bounds: CGRect = msg![env; icon_image_view bounds];
     let from_frame: CGRect = msg![env; icon_image_view convertRect:icon_bounds toView:window];
-    let to_frame: CGRect = msg![env; window bounds];
+    let screen_frame: CGRect = msg![env; window bounds];
 
-    let launch_image_view: id = msg_class![env; UIImageView alloc];
-    let launch_image_view: id = msg![env; launch_image_view initWithImage:icon_image];
-    () = msg![env; launch_image_view setFrame:from_frame];
-    () = msg![env; launch_image_view setUserInteractionEnabled:false];
-    () = msg![env; window addSubview:launch_image_view];
+    let launch_image = launch_image.filter(|image| {
+        launch_image_matches_screen(image, screen_frame)
+    });
+    let splash_view = if let Some(image) = launch_image {
+        let cg_image = cg_image::from_image(env, image);
+        let image: id = msg_class![env; UIImage imageWithCGImage:cg_image];
+        release(env, cg_image);
 
+        let view: id = msg_class![env; UIImageView alloc];
+        let view: id = msg![env; view initWithImage:image];
+        () = msg![env; view setFrame:screen_frame];
+        () = msg![env; view setAlpha:(0.0 as CGFloat)];
+        () = msg![env; view setUserInteractionEnabled:false];
+        () = msg![env; window addSubview:view];
+        view
+    } else {
+        nil
+    };
+
+    let icon_zoom_view: id = msg_class![env; UIImageView alloc];
+    let icon_zoom_view: id = msg![env; icon_zoom_view initWithImage:icon_image];
+    () = msg![env; icon_zoom_view setFrame:from_frame];
+    () = msg![env; icon_zoom_view setUserInteractionEnabled:false];
+    () = msg![env; window addSubview:icon_zoom_view];
+
+    let icon_target_frame = centered_icon_zoom_frame(from_frame, screen_frame);
     let start_time = Instant::now();
     loop {
         let elapsed = start_time.elapsed();
-        let progress = app_launch_animation_eased_progress(
-            elapsed.as_secs_f64() / APP_LAUNCH_ANIMATION_DURATION.as_secs_f64(),
-        );
-        let progress = progress as CGFloat;
-        let frame = interpolate_rect(from_frame, to_frame, progress);
-        () = msg![env; launch_image_view setFrame:frame];
-        () = msg![env; main_view setAlpha:(1.0 - progress)];
+        let normalized_progress = (elapsed.as_secs_f64()
+            / APP_LAUNCH_ANIMATION_DURATION.as_secs_f64())
+        .clamp(0.0, 1.0);
+        let progress = app_launch_animation_eased_progress(normalized_progress);
+        let frame = interpolate_rect(from_frame, icon_target_frame, progress as CGFloat);
+        () = msg![env; icon_zoom_view setFrame:frame];
+        () = msg![env; main_view setAlpha:((1.0 - progress) as CGFloat)];
+
+        if splash_view != nil {
+            let splash_progress = app_launch_animation_eased_progress(
+                (normalized_progress - APP_LAUNCH_SPLASH_FADE_START)
+                    / APP_LAUNCH_SPLASH_FADE_DURATION,
+            );
+            () = msg![env; splash_view setAlpha:(splash_progress as CGFloat)];
+            () = msg![env; icon_zoom_view setAlpha:((1.0 - splash_progress) as CGFloat)];
+        } else {
+            let fade_progress = app_launch_animation_eased_progress(
+                (normalized_progress - APP_LAUNCH_FALLBACK_FADE_START)
+                    / APP_LAUNCH_FALLBACK_FADE_DURATION,
+            );
+            () = msg![env; icon_zoom_view setAlpha:((1.0 - fade_progress) as CGFloat)];
+        }
 
         // Force a frame so every interpolated position is presented instead
         // of waiting for the picker's regular display-link cadence.
@@ -562,7 +718,7 @@ fn app_picker_inner(
     };
 
     let title_frame = CGRect {
-        origin: CGPoint { x: 12.0, y: 4.0 },
+        origin: CGPoint { x: 12.0, y: 8.0 },
         size: CGSize {
             width: app_frame.size.width - 24.0,
             height: 34.0,
@@ -724,18 +880,36 @@ fn app_picker_inner(
         if icon_tapped != nil {
             match icon_grid_stuff.as_ref().unwrap().icon_map.get(&icon_tapped) {
                 Some(&TappedIcon::App(app_idx)) => {
-                    // Match the classic iPhone OS launch transition: zoom the
-                    // selected icon out to fill the display, then hand off to
-                    // the game once the animation has finished.
+                    let app = &apps.as_ref().unwrap()[app_idx];
+                    let picker_orientation = env.window().current_rotation();
+                    let requested_orientation =
+                        quick_options_orientation.unwrap_or(env.options.initial_orientation);
+                    let device_model_is_default = quick_options_device_tag.is_none()
+                        || quick_options_device_tag == Some(DEVICE_TAG_DEFAULT);
+                    let launch_image = if device_model_is_default
+                        && app.launch_orientation == picker_orientation
+                        && requested_orientation == picker_orientation
+                    {
+                        app.launch_image_data
+                            .as_deref()
+                            .and_then(|bytes| Image::from_bytes(bytes).ok())
+                    } else {
+                        None
+                    };
+
+                    // Keep the icon zoom subtle, then blend to the game's
+                    // full-resolution launch image when it can be oriented
+                    // safely for this picker screen.
                     animate_app_launch_transition(
                         env,
                         main_run_loop,
                         window,
                         main_view,
                         icon_tapped,
+                        launch_image,
                     );
 
-                    let app_path = &apps.as_ref().unwrap()[app_idx].path;
+                    let app_path = &app.path;
                     echo!("Picked: {}", app_path.display());
                     break app_path.clone();
                 }
@@ -934,7 +1108,12 @@ fn app_picker_inner(
                     .is_some_and(|t| t.elapsed() >= IPA_COPY_SETTLE_TIME)
             {
                 watch.dirty = false;
-                if let Ok(new_apps) = enumerate_apps(&apps_dir) {
+                let device_family_override = app_picker_device_family_override(&env.options);
+                if let Ok(new_apps) = enumerate_apps(
+                    &apps_dir,
+                    device_family_override,
+                    env.options.initial_orientation,
+                ) {
                     if let Some(grid) = icon_grid_stuff.as_mut() {
                         let mut new_apps = new_apps;
                         grid.pages =
@@ -1017,20 +1196,19 @@ const HYPERHLE_FORK_NAME: &str = "HyperHLE-Fork";
 
 const APP_PICKER_VERSION_LABEL_HEIGHT: CGFloat = 15.0;
 const APP_PICKER_VERSION_LABEL_BOTTOM_INSET: CGFloat = 5.0;
-const APP_PICKER_FOOTER_GAP: CGFloat = 4.0;
+const APP_PICKER_FOOTER_GAP: CGFloat = 10.0;
 const APP_PICKER_BUTTON_ROW_HEIGHT: CGFloat = 30.0;
-const APP_PICKER_GRID_TOP: CGFloat = 40.0;
+const APP_PICKER_GRID_TOP: CGFloat = 44.0;
 const APP_PICKER_GRID_TO_BUTTON_GAP: CGFloat = 6.0;
 const APP_PICKER_ICON_ROWS: usize = 4;
 
 const ICON_SIZE: CGSize = CGSize {
-    width: 76.0,
-    height: 76.0,
+    width: 72.0,
+    height: 72.0,
 };
-const ICON_IMAGE_INSET: CGFloat = 6.0;
-const ICON_LABEL_TOP_GAP: CGFloat = 1.0;
-const ICON_ROW_GAP: CGFloat = 1.0;
-const ICON_COLUMN_GAP: CGFloat = 16.0;
+const ICON_IMAGE_INSET: CGFloat = 9.0;
+const ICON_LABEL_TOP_GAP: CGFloat = 2.0;
+const ICON_ROW_GAP: CGFloat = 2.0;
 
 fn app_picker_version_label_top(app_height: CGFloat) -> CGFloat {
     app_height - APP_PICKER_VERSION_LABEL_HEIGHT - APP_PICKER_VERSION_LABEL_BOTTOM_INSET
@@ -1099,10 +1277,10 @@ fn make_icon_grid(
     };
     let num_cols_f = num_cols as CGFloat;
     let label_size = CGSize {
-        width: 80.0,
+        width: 74.0,
         height: 12.0,
     };
-    let icon_gap_x = ICON_COLUMN_GAP;
+    let icon_gap_x: CGFloat = 19.0;
     let icon_gap_y = ICON_LABEL_TOP_GAP + label_size.height + ICON_ROW_GAP;
     let grid_top = APP_PICKER_GRID_TOP;
     let num_rows = app_picker_icon_grid_num_rows(app_frame.size.height, label_size.height);
@@ -2140,5 +2318,30 @@ mod app_launch_transition_tests {
             assert!(progress >= previous);
             previous = progress;
         }
+    }
+
+    #[test]
+    fn fallback_zoom_stays_square_and_does_not_expand_to_screen_size() {
+        let icon = CGRect {
+            origin: CGPoint { x: 20.0, y: 30.0 },
+            size: CGSize {
+                width: 64.0,
+                height: 64.0,
+            },
+        };
+        let screen = CGRect {
+            origin: CGPoint { x: 0.0, y: 0.0 },
+            size: CGSize {
+                width: 320.0,
+                height: 480.0,
+            },
+        };
+
+        let zoom = centered_icon_zoom_frame(icon, screen);
+        assert_eq!(zoom.size.width, zoom.size.height);
+        assert!(zoom.size.width < screen.size.width);
+        assert!(zoom.size.height < screen.size.height);
+        assert_eq!(zoom.origin.x + zoom.size.width / 2.0, 160.0);
+        assert_eq!(zoom.origin.y + zoom.size.height / 2.0, 240.0);
     }
 }
