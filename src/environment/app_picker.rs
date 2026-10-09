@@ -445,7 +445,6 @@ const APP_LAUNCH_SPLASH_FADE_DURATION: f64 = 0.46;
 const APP_LAUNCH_FALLBACK_FADE_START: f64 = 0.55;
 const APP_LAUNCH_FALLBACK_FADE_DURATION: f64 = 0.45;
 const APP_PICKER_PAGE_TRANSITION_DURATION: Duration = Duration::from_millis(280);
-const APP_PICKER_PAGE_SLIDE_DISTANCE: CGFloat = 24.0;
 
 /// A symmetric ease-in/ease-out curve gives the icon a deliberate, old-iOS
 /// style zoom instead of the abrupt snap used by the previous picker.
@@ -902,7 +901,6 @@ fn app_picker_inner(
                     animate_icon_grid_page_change(
                         env,
                         main_run_loop,
-                        window,
                         icon_grid_stuff.as_mut().unwrap(),
                         apps.as_mut().unwrap(),
                         current_page,
@@ -1187,16 +1185,16 @@ const APP_PICKER_VERSION_LABEL_HEIGHT: CGFloat = 15.0;
 const APP_PICKER_VERSION_LABEL_BOTTOM_INSET: CGFloat = 5.0;
 const APP_PICKER_GRID_TOP: CGFloat = 44.0;
 const APP_PICKER_GRID_TO_VERSION_LABEL_GAP: CGFloat = 6.0;
-const APP_PICKER_ICON_ROWS: usize = 4;
+const APP_PICKER_ICON_ROWS: usize = 5;
 const QUICK_OPTIONS_BUTTON_ROW_HEIGHT: CGFloat = 30.0;
 
 const ICON_SIZE: CGSize = CGSize {
-    width: 72.0,
-    height: 72.0,
+    width: 64.0,
+    height: 64.0,
 };
-const ICON_IMAGE_INSET: CGFloat = 9.0;
-const ICON_LABEL_TOP_GAP: CGFloat = 2.0;
-const ICON_ROW_GAP: CGFloat = 2.0;
+const ICON_IMAGE_INSET: CGFloat = 6.0;
+const ICON_LABEL_TOP_GAP: CGFloat = 1.0;
+const ICON_ROW_GAP: CGFloat = 1.0;
 
 fn app_picker_version_label_top(app_height: CGFloat) -> CGFloat {
     app_height - APP_PICKER_VERSION_LABEL_HEIGHT - APP_PICKER_VERSION_LABEL_BOTTOM_INSET
@@ -1219,15 +1217,15 @@ mod layout_tests {
     use super::*;
 
     #[test]
-    fn classic_phone_picker_has_four_icon_rows() {
+    fn classic_phone_picker_has_five_icon_rows() {
         // A visible status bar leaves `UIScreen.applicationFrame` at 320x460.
         assert_eq!(app_picker_icon_grid_num_rows(460.0, 12.0), APP_PICKER_ICON_ROWS);
     }
 
     #[test]
     fn first_page_reserves_adjacent_add_and_settings_tiles() {
-        assert_eq!(compute_pages(12, 10), vec![0..10]);
-        assert_eq!(compute_pages(12, 11), vec![0..9, 9..11]);
+        assert_eq!(compute_pages(15, 13), vec![0..13]);
+        assert_eq!(compute_pages(15, 14), vec![0..12, 12..14]);
     }
 }
 
@@ -1551,22 +1549,12 @@ fn make_settings_icon(env: &mut Environment) -> id {
     image
 }
 
-fn horizontally_offset_rect(frame: CGRect, offset: CGFloat) -> CGRect {
-    CGRect {
-        origin: CGPoint {
-            x: frame.origin.x + offset,
-            y: frame.origin.y,
-        },
-        size: frame.size,
-    }
-}
-
-/// Slide the old page out and the new one in, with a brief crossfade in the
-/// same eased style as the game-launch transition.
+/// Fade the old page out and the new one in using the same eased curve as the
+/// game-launch transition. Keep every tile's frame untouched so UIButton image
+/// views retain their original inset and cannot grow after a page change.
 fn animate_icon_grid_page_change(
     env: &mut Environment,
     main_run_loop: id,
-    window: id,
     icon_grid_stuff: &mut IconGridStuff,
     apps: &mut [AppInfo],
     from_page: usize,
@@ -1576,49 +1564,35 @@ fn animate_icon_grid_page_change(
         return;
     }
 
-    let mut views_and_frames =
-        Vec::with_capacity(icon_grid_stuff.icon_buttons_and_labels.len() * 2);
+    let mut views = Vec::with_capacity(icon_grid_stuff.icon_buttons_and_labels.len() * 2);
     let mut buttons = Vec::with_capacity(icon_grid_stuff.icon_buttons_and_labels.len());
     for &(button, label) in &icon_grid_stuff.icon_buttons_and_labels {
-        let button_frame: CGRect = msg![env; button frame];
-        let label_frame: CGRect = msg![env; label frame];
-        views_and_frames.push((button, button_frame));
-        views_and_frames.push((label, label_frame));
+        views.push(button);
+        views.push(label);
         buttons.push(button);
         () = msg![env; button setUserInteractionEnabled:false];
     }
 
-    let window_frame: CGRect = msg![env; window bounds];
-    let slide_distance = APP_PICKER_PAGE_SLIDE_DISTANCE.min(window_frame.size.width * 0.08);
-    let outgoing_direction = if to_page > from_page { -1.0 } else { 1.0 };
     let start_time = Instant::now();
     let mut page_updated = false;
-
     loop {
         let elapsed = start_time.elapsed();
         let normalized_progress =
             (elapsed.as_secs_f64() / APP_PICKER_PAGE_TRANSITION_DURATION.as_secs_f64())
                 .clamp(0.0, 1.0);
 
-        if normalized_progress < 0.5 {
+        let alpha: CGFloat = if normalized_progress < 0.5 {
             let progress = app_launch_animation_eased_progress(normalized_progress * 2.0);
-            let offset = outgoing_direction * slide_distance * progress as CGFloat;
-            for &(view, frame) in &views_and_frames {
-                () = msg![env; view setFrame:(horizontally_offset_rect(frame, offset))];
-                () = msg![env; view setAlpha:((1.0 - progress) as CGFloat)];
-            }
+            (1.0 - progress) as CGFloat
         } else {
             if !page_updated {
                 update_icon_grid(env, icon_grid_stuff, apps, to_page);
                 page_updated = true;
             }
-
-            let progress = app_launch_animation_eased_progress((normalized_progress - 0.5) * 2.0);
-            let offset = -outgoing_direction * slide_distance * (1.0 - progress as CGFloat);
-            for &(view, frame) in &views_and_frames {
-                () = msg![env; view setFrame:(horizontally_offset_rect(frame, offset))];
-                () = msg![env; view setAlpha:(progress as CGFloat)];
-            }
+            app_launch_animation_eased_progress((normalized_progress - 0.5) * 2.0) as CGFloat
+        };
+        for &view in &views {
+            () = msg![env; view setAlpha:alpha];
         }
 
         let _ = crate::frameworks::core_animation::recomposite_if_necessary(
@@ -1634,8 +1608,7 @@ fn animate_icon_grid_page_change(
     if !page_updated {
         update_icon_grid(env, icon_grid_stuff, apps, to_page);
     }
-    for &(view, frame) in &views_and_frames {
-        () = msg![env; view setFrame:frame];
+    for &view in &views {
         () = msg![env; view setAlpha:(1.0 as CGFloat)];
     }
     for button in buttons {
@@ -1660,7 +1633,7 @@ fn update_icon_grid(
     if have_prev_icon {
         let &(icon_button, label) = icon_iter.next().unwrap();
         let image = *icon_grid_stuff.prev_icon.get_or_insert_with(|| {
-            make_icon_from_glyph(env, '←', 50.0, -9.0, (0.25, 0.25, 0.25, 1.0))
+            make_icon_from_glyph(env, '←', 44.0, -8.0, (0.25, 0.25, 0.25, 1.0))
         });
         () = msg![env; icon_button setImage:image forState:UIControlStateNormal];
         () = msg![env; label setText:(ns_string::get_static_str(env, ""))];
@@ -1673,7 +1646,7 @@ fn update_icon_grid(
     if page_idx == 0 {
         let &(icon_button, label) = icon_iter.next().unwrap();
         let image = *icon_grid_stuff.plus_icon.get_or_insert_with(|| {
-            make_icon_from_glyph(env, '+', 50.0, -6.0, (0.25, 0.25, 0.25, 1.0))
+            make_icon_from_glyph(env, '+', 44.0, -5.0, (0.25, 0.25, 0.25, 1.0))
         });
         () = msg![env; icon_button setImage:image forState:UIControlStateNormal];
         () = msg![env; label setText:(ns_string::get_static_str(env, ""))];
@@ -1706,7 +1679,7 @@ fn update_icon_grid(
 
         let image = app.icon_ui_image.unwrap_or_else(|| {
             *icon_grid_stuff.placeholder_icon.get_or_insert_with(|| {
-                make_icon_from_glyph(env, '?', 40.0, 0.0, (0.5, 0.5, 0.5, 1.0))
+                make_icon_from_glyph(env, '?', 36.0, 0.0, (0.5, 0.5, 0.5, 1.0))
             })
         });
         () = msg![env; icon_button setImage:image forState:UIControlStateNormal];
@@ -1724,7 +1697,7 @@ fn update_icon_grid(
     if have_next_icon {
         let &(icon_button, label) = icon_iter.next().unwrap();
         let image = *icon_grid_stuff.next_icon.get_or_insert_with(|| {
-            make_icon_from_glyph(env, '→', 50.0, -9.0, (0.25, 0.25, 0.25, 1.0))
+            make_icon_from_glyph(env, '→', 44.0, -8.0, (0.25, 0.25, 0.25, 1.0))
         });
         () = msg![env; icon_button setImage:image forState:UIControlStateNormal];
         () = msg![env; label setText:(ns_string::get_static_str(env, ""))];
