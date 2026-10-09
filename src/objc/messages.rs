@@ -286,11 +286,6 @@ fn objc_msgSend_inner(
                 count + 1,
                 NIL_ISA_LOG_LIMIT,
             );
-            crate::environment::note_compat_gap(format!(
-                "message \"{}\" sent to freed/garbage object {:?}",
-                selector.as_str(&env.mem),
-                receiver
-            ));
         } else if count == NIL_ISA_LOG_LIMIT {
             log!(
                 "Warning: suppressing further nil-isa warnings ({} already logged). \
@@ -592,12 +587,6 @@ fn objc_msgSend_inner(
                         },
                     );
                 }
-                if count <= PER_PAIR_LOG_LIMIT {
-                    crate::environment::note_compat_gap(format!(
-                        "unimplemented method [{} {}] returned 0/nil",
-                        class_name_for_log, sel_str
-                    ));
-                }
             }
 
             // Имитируем возврат nil/0, чтобы приложение продолжило работу
@@ -884,13 +873,6 @@ Type mismatch when sending message {} to {:?}!
                 if is_metaclass { "class" } else { "instance" },
                 sel_name,
             );
-            // The guest just got nil/0 where it expected a real object.
-            crate::environment::note_compat_gap(format!(
-                "unimplemented class {}: [{} {}] returned nil",
-                class_name_for_log,
-                class_name_for_log,
-                sel_name
-            ));
             env.cpu.regs_mut()[0..2].fill(0);
             return;
         } else {

@@ -129,107 +129,6 @@ pub static LAST_HOST_CALL_SYMBOL_PTR: std::sync::atomic::AtomicUsize =
 pub static LAST_HOST_CALL_SYMBOL_LEN: std::sync::atomic::AtomicUsize =
     std::sync::atomic::AtomicUsize::new(0);
 
-/// How many "compatibility gap" events are kept for crash diagnostics.
-const RECENT_COMPAT_GAP_CAPACITY: usize = 8;
-
-/// A gap older than this had time to be handled by the guest, so it is
-/// reported as background information rather than as a likely cause.
-const COMPAT_GAP_FRESH_SECS: f32 = 2.0;
-
-/// One thing touchHLE could not provide to the guest.
-struct CompatGap {
-    detail: String,
-    /// When it last happened, for ageing the entry in diagnostics.
-    last_seen: std::time::Instant,
-    /// How many times it has happened in total.
-    occurrences: u32,
-}
-
-/// Ring of the most recent things touchHLE could not provide to the guest:
-/// unimplemented functions that got a return-0 stub, messages to faked
-/// classes that behaved like nil, unimplemented GLES entry points, and
-/// messages to freed objects.
-///
-/// A guest that executes a deliberate trap or calls `exit()`/`abort()` is
-/// often reacting to one of these, so the trap diagnostics print the list.
-/// Each entry carries its age, because a gap from app startup is almost
-/// never the reason the guest gave up minutes later; without the age the
-/// list reads as if stale events were suspects.
-static RECENT_COMPAT_GAPS: std::sync::Mutex<Vec<CompatGap>> = std::sync::Mutex::new(Vec::new());
-
-/// Record something touchHLE could not provide to the guest. Repeats update
-/// the existing entry instead of flushing the ring.
-pub(crate) fn note_compat_gap(detail: String) {
-    let Ok(mut gaps) = RECENT_COMPAT_GAPS.lock() else {
-        return;
-    };
-    let now = std::time::Instant::now();
-    if let Some(existing) = gaps.iter_mut().find(|gap| gap.detail == detail) {
-        existing.last_seen = now;
-        existing.occurrences = existing.occurrences.saturating_add(1);
-        return;
-    }
-    if gaps.len() >= RECENT_COMPAT_GAP_CAPACITY {
-        gaps.remove(0);
-    }
-    gaps.push(CompatGap {
-        detail,
-        last_seen: now,
-        occurrences: 1,
-    });
-}
-
-/// Human-readable summary of [RECENT_COMPAT_GAPS] for crash diagnostics.
-///
-/// Entries are split by age: only the ones from the last
-/// [COMPAT_GAP_FRESH_SECS] seconds are offered as a likely cause. When
-/// nothing is fresh the message says so explicitly, so the reader does not
-/// chase a stub that the guest shrugged off at startup.
-pub(crate) fn describe_recent_compat_gaps() -> String {
-    let Ok(gaps) = RECENT_COMPAT_GAPS.lock() else {
-        return "Missing-feature history unavailable.".to_string();
-    };
-    if gaps.is_empty() {
-        return "touchHLE did not stub out anything for this app, so the \
-                guest failed on its own logic or data."
-            .to_string();
-    }
-    let now = std::time::Instant::now();
-    let describe = |gap: &CompatGap| {
-        let age = now.saturating_duration_since(gap.last_seen).as_secs_f32();
-        if gap.occurrences > 1 {
-            format!("{} [{:.1}s ago, x{}]", gap.detail, age, gap.occurrences)
-        } else {
-            format!("{} [{:.1}s ago]", gap.detail, age)
-        }
-    };
-    let is_fresh = |gap: &&CompatGap| {
-        now.saturating_duration_since(gap.last_seen).as_secs_f32() < COMPAT_GAP_FRESH_SECS
-    };
-    let fresh: Vec<String> = gaps.iter().filter(is_fresh).map(describe).collect();
-    let stale: Vec<String> = gaps.iter().filter(|gap| !is_fresh(gap)).map(describe).collect();
-
-    let mut summary = if fresh.is_empty() {
-        "nothing was stubbed out in the last couple of seconds, so this is \
-         most likely the guest's own logic failing (bad data, a failed \
-         check, or a side effect of an older gap) rather than a missing \
-         feature at this exact moment"
-            .to_string()
-    } else {
-        format!(
-            "most recently missing, newest last: {}",
-            fresh.join(" | ")
-        )
-    };
-    if !stale.is_empty() {
-        summary.push_str(&format!(
-            ". Older, probably unrelated: {}",
-            stale.join(" | ")
-        ));
-    }
-    format!("{summary}.")
-}
-
 /// The struct containing the entire emulator state. Methods are provided for
 /// execution and management of threads.
 pub struct Environment {
@@ -3305,16 +3204,6 @@ impl Environment {
                             self.dump_guest_code_around(pc, is_thumb),
                             self.describe_call_site_before(lr)
                         );
-                        // A deliberate trap is the guest giving up, so say
-                        // what it most likely gave up *on*. Without this the
-                        // user has to re-run with extra logging and correlate
-                        // the log by hand.
-                        if matches!(trap_kind, GuestTrapKind::DeliberateTrap { .. }) {
-                            log_no_panic!(
-                                "Guest trap likely cause: {}",
-                                describe_recent_compat_gaps()
-                            );
-                        }
                         if trap_kind != GuestTrapKind::OutsideCode {
                             self.stack_trace_current();
                         }
