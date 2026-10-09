@@ -1190,21 +1190,21 @@ fn app_picker_inner(
 
 const HYPERHLE_FORK_NAME: &str = "HyperHLE-Fork";
 
-const APP_PICKER_DEFAULT_SCREEN_SIZE: (u32, u32) = (336, 504);
+const APP_PICKER_DEFAULT_SCREEN_SIZE: (u32, u32) = (360, 540);
 const APP_PICKER_VERSION_LABEL_HEIGHT: CGFloat = 15.0;
 const APP_PICKER_VERSION_LABEL_BOTTOM_INSET: CGFloat = 5.0;
 const APP_PICKER_GRID_TOP: CGFloat = 44.0;
 const APP_PICKER_GRID_TO_VERSION_LABEL_GAP: CGFloat = 6.0;
-const APP_PICKER_ICON_ROWS: usize = 5;
+const APP_PICKER_ICON_ROWS: usize = 4;
 const QUICK_OPTIONS_BUTTON_ROW_HEIGHT: CGFloat = 30.0;
 
 const ICON_SIZE: CGSize = CGSize {
-    width: 64.0,
-    height: 64.0,
+    width: 72.0,
+    height: 72.0,
 };
-const ICON_IMAGE_INSET: CGFloat = 6.0;
-const ICON_LABEL_TOP_GAP: CGFloat = 1.0;
-const ICON_ROW_GAP: CGFloat = 1.0;
+const ICON_IMAGE_INSET: CGFloat = 9.0;
+const ICON_LABEL_TOP_GAP: CGFloat = 2.0;
+const ICON_ROW_GAP: CGFloat = 2.0;
 
 fn app_picker_version_label_top(app_height: CGFloat) -> CGFloat {
     app_height - APP_PICKER_VERSION_LABEL_HEIGHT - APP_PICKER_VERSION_LABEL_BOTTOM_INSET
@@ -1222,25 +1222,40 @@ fn app_picker_icon_grid_num_rows(app_height: CGFloat, label_height: CGFloat) -> 
     ((available_height / cell_step_y).floor() as usize + 1).clamp(1, APP_PICKER_ICON_ROWS)
 }
 
+fn app_picker_icon_grid_top(
+    app_height: CGFloat,
+    label_height: CGFloat,
+    num_rows: usize,
+) -> CGFloat {
+    let cell_content_height = ICON_SIZE.height + ICON_LABEL_TOP_GAP + label_height;
+    let cell_step_y = cell_content_height + ICON_ROW_GAP;
+    let grid_content_height =
+        cell_content_height + cell_step_y * (num_rows.saturating_sub(1) as CGFloat);
+    let grid_area_height = (app_picker_grid_bottom(app_height) - APP_PICKER_GRID_TOP).max(0.0);
+    APP_PICKER_GRID_TOP + ((grid_area_height - grid_content_height).max(0.0) / 2.0)
+}
+
 #[cfg(test)]
 mod layout_tests {
     use super::*;
 
     #[test]
-    fn picker_fits_five_rows_on_default_and_classic_phone_canvases() {
-        // The default picker canvas is 336x504; a visible status bar leaves 484 points.
+    fn picker_fits_four_rows_on_default_and_classic_phone_canvases() {
+        // The default picker canvas is 360x540; a visible status bar leaves 520 points.
         let default_app_height = APP_PICKER_DEFAULT_SCREEN_SIZE.1 as CGFloat - 20.0;
         assert_eq!(
             app_picker_icon_grid_num_rows(default_app_height, 12.0),
             APP_PICKER_ICON_ROWS
         );
         assert_eq!(app_picker_icon_grid_num_rows(460.0, 12.0), APP_PICKER_ICON_ROWS);
+        assert_eq!(app_picker_icon_grid_top(default_app_height, 12.0, 4), 94.0);
+        assert_eq!(app_picker_icon_grid_top(460.0, 12.0, 4), 64.0);
     }
 
     #[test]
     fn first_page_reserves_adjacent_add_and_settings_tiles() {
-        assert_eq!(compute_pages(15, 13), vec![0..13]);
-        assert_eq!(compute_pages(15, 14), vec![0..12, 12..14]);
+        assert_eq!(compute_pages(12, 10), vec![0..10]);
+        assert_eq!(compute_pages(12, 11), vec![0..9, 9..11]);
     }
 }
 
@@ -1284,8 +1299,9 @@ fn make_icon_grid(
     };
     let icon_gap_x: CGFloat = 19.0;
     let icon_gap_y = ICON_LABEL_TOP_GAP + label_size.height + ICON_ROW_GAP;
-    let grid_top = APP_PICKER_GRID_TOP;
     let num_rows = app_picker_icon_grid_num_rows(app_frame.size.height, label_size.height);
+    let grid_top =
+        app_picker_icon_grid_top(app_frame.size.height, label_size.height, num_rows);
     let icon_grid_width = (ICON_SIZE.width * num_cols_f) + icon_gap_x * (num_cols_f - 1.0);
     let icon_grid_origin = CGPoint {
         x: (app_frame.size.width - icon_grid_width) / 2.0,
@@ -1648,7 +1664,7 @@ fn update_icon_grid(
     if have_prev_icon {
         let &(icon_button, label) = icon_iter.next().unwrap();
         let image = *icon_grid_stuff.prev_icon.get_or_insert_with(|| {
-            make_icon_from_glyph(env, '←', 44.0, -8.0, (0.25, 0.25, 0.25, 1.0))
+            make_icon_from_glyph(env, '←', 50.0, -9.0, (0.25, 0.25, 0.25, 1.0))
         });
         () = msg![env; icon_button setImage:image forState:UIControlStateNormal];
         () = msg![env; label setText:(ns_string::get_static_str(env, ""))];
@@ -1661,7 +1677,7 @@ fn update_icon_grid(
     if page_idx == 0 {
         let &(icon_button, label) = icon_iter.next().unwrap();
         let image = *icon_grid_stuff.plus_icon.get_or_insert_with(|| {
-            make_icon_from_glyph(env, '+', 44.0, -5.0, (0.25, 0.25, 0.25, 1.0))
+            make_icon_from_glyph(env, '+', 50.0, -6.0, (0.25, 0.25, 0.25, 1.0))
         });
         () = msg![env; icon_button setImage:image forState:UIControlStateNormal];
         () = msg![env; label setText:(ns_string::get_static_str(env, ""))];
@@ -1694,7 +1710,7 @@ fn update_icon_grid(
 
         let image = app.icon_ui_image.unwrap_or_else(|| {
             *icon_grid_stuff.placeholder_icon.get_or_insert_with(|| {
-                make_icon_from_glyph(env, '?', 36.0, 0.0, (0.5, 0.5, 0.5, 1.0))
+                make_icon_from_glyph(env, '?', 40.0, 0.0, (0.5, 0.5, 0.5, 1.0))
             })
         });
         () = msg![env; icon_button setImage:image forState:UIControlStateNormal];
@@ -1712,7 +1728,7 @@ fn update_icon_grid(
     if have_next_icon {
         let &(icon_button, label) = icon_iter.next().unwrap();
         let image = *icon_grid_stuff.next_icon.get_or_insert_with(|| {
-            make_icon_from_glyph(env, '→', 44.0, -8.0, (0.25, 0.25, 0.25, 1.0))
+            make_icon_from_glyph(env, '→', 50.0, -9.0, (0.25, 0.25, 0.25, 1.0))
         });
         () = msg![env; icon_button setImage:image forState:UIControlStateNormal];
         () = msg![env; label setText:(ns_string::get_static_str(env, ""))];
