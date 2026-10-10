@@ -1,6 +1,7 @@
 //! App picker GUI.
 
 use crate::bundle::Bundle;
+use crate::frameworks::core_graphics::cg_affine_transform::CGAffineTransform;
 use crate::frameworks::core_graphics::cg_bitmap_context::{
     CGBitmapContextCreate, CGBitmapContextCreateImage,
 };
@@ -804,7 +805,13 @@ fn app_picker_inner(
                 if let (Some(app_idx), Some(name)) = (app_idx, name) {
                     long_pressed_icon = Some(button);
                     pending_delete = Some(app_idx);
-                    show_delete_dialog(env, &delete_dialog, &name);
+                    show_delete_dialog(
+                        env,
+                        main_run_loop,
+                        delegate,
+                        &delete_dialog,
+                        &name,
+                    );
                 }
             }
         }
@@ -2901,13 +2908,43 @@ fn make_delete_dialog(
     }
 }
 
-/// Opens the delete dialog for the app called `app_name`.
-fn show_delete_dialog(env: &mut Environment, dialog: &DeleteDialog, app_name: &str) {
+/// How long the delete dialog takes to appear, and the scale its box starts
+/// from (it grows to full size while it fades in).
+const DELETE_DIALOG_APPEAR_DURATION: Duration = Duration::from_millis(200);
+const DELETE_DIALOG_START_SCALE: f64 = 0.8;
+
+/// Opens the delete dialog for the app called `app_name`, with the same
+/// pop-in as an old iOS alert: the screen dims and the box grows and fades in.
+fn show_delete_dialog(
+    env: &mut Environment,
+    run_loop: id,
+    delegate: id,
+    dialog: &DeleteDialog,
+    app_name: &str,
+) {
     let title = ns_string::from_rust_string(env, format!("Delete “{app_name}”?"));
     () = msg![env; (dialog.title) setText:title];
     release(env, title);
+    () = msg![env; (dialog.dimmer) setAlpha:(0.0 as CGFloat)];
     () = msg![env; (dialog.dimmer) setHidden:false];
+    () = msg![env; (dialog.panel) setAlpha:(0.0 as CGFloat)];
     () = msg![env; (dialog.panel) setHidden:false];
+
+    animate_for(
+        env,
+        run_loop,
+        delegate,
+        DELETE_DIALOG_APPEAR_DURATION,
+        |env, t| {
+            let p = ease_out_cubic(t);
+            let scale = DELETE_DIALOG_START_SCALE + (1.0 - DELETE_DIALOG_START_SCALE) * p;
+            let scale = scale as CGFloat;
+            let transform = CGAffineTransform::make_scale(scale, scale);
+            () = msg![env; (dialog.panel) setTransform:transform];
+            () = msg![env; (dialog.panel) setAlpha:(p as CGFloat)];
+            () = msg![env; (dialog.dimmer) setAlpha:(p as CGFloat)];
+        },
+    );
 }
 
 fn hide_delete_dialog(env: &mut Environment, dialog: &DeleteDialog) {
