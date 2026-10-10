@@ -1016,10 +1016,10 @@ fn app_picker_inner(
             );
         } else if std::mem::take(&mut host_obj.delete_cancel) {
             pending_delete = None;
-            hide_delete_dialog(env, &delete_dialog);
+            hide_delete_dialog(env, main_run_loop, delegate, &delete_dialog);
         } else if std::mem::take(&mut host_obj.delete_confirm) {
             if let Some(app_idx) = pending_delete.take() {
-                hide_delete_dialog(env, &delete_dialog);
+                hide_delete_dialog(env, main_run_loop, delegate, &delete_dialog);
                 let result = match apps.as_ref().ok().and_then(|list| list.get(app_idx)) {
                     Some(app) => delete_app(app),
                     None => Err("the app is no longer in the list".to_string()),
@@ -2947,7 +2947,34 @@ fn show_delete_dialog(
     );
 }
 
-fn hide_delete_dialog(env: &mut Environment, dialog: &DeleteDialog) {
+/// How long the delete dialog takes to disappear. It is the reverse of
+/// [show_delete_dialog]: the box shrinks and fades out, and the screen clears.
+const DELETE_DIALOG_DISAPPEAR_DURATION: Duration = Duration::from_millis(150);
+
+/// Closes the delete dialog with the reverse of its pop-in animation. This
+/// returns once the dialog is hidden.
+fn hide_delete_dialog(
+    env: &mut Environment,
+    run_loop: id,
+    delegate: id,
+    dialog: &DeleteDialog,
+) {
+    animate_for(
+        env,
+        run_loop,
+        delegate,
+        DELETE_DIALOG_DISAPPEAR_DURATION,
+        |env, t| {
+            let visible = 1.0 - ease_in_out_cubic(t);
+            let scale = DELETE_DIALOG_START_SCALE
+                + (1.0 - DELETE_DIALOG_START_SCALE) * visible;
+            let scale = scale as CGFloat;
+            let transform = CGAffineTransform::make_scale(scale, scale);
+            () = msg![env; (dialog.panel) setTransform:transform];
+            () = msg![env; (dialog.panel) setAlpha:(visible as CGFloat)];
+            () = msg![env; (dialog.dimmer) setAlpha:(visible as CGFloat)];
+        },
+    );
     () = msg![env; (dialog.dimmer) setHidden:true];
     () = msg![env; (dialog.panel) setHidden:true];
 }
