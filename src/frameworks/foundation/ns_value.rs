@@ -64,7 +64,7 @@ impl HostObject for NSValueHostObject {}
 
 macro_rules! impl_AsValue {
     ($method_name:tt, $typ:tt) => {
-        pub fn $method_name(&self) -> $typ {
+        pub(super) fn $method_name(&self) -> $typ {
             match self {
                 // Cast to u8 is needed for float conversions
                 NSNumberHostObject::Bool(x) => *x as u8 as _,

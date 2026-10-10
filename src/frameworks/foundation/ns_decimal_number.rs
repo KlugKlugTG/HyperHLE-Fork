@@ -6,11 +6,12 @@
 //! `NSDecimalNumber` and `NSDecimal`.
 
 use super::ns_string::{from_rust_string, to_rust_string};
+use super::ns_value::NSNumberHostObject;
 use super::NSUInteger;
 use crate::frameworks::foundation::{ns_string, NSInteger};
 use crate::objc::{
-    autorelease, id, msg, msg_class, nil, objc_classes, release, retain, ClassExports, HostObject,
-    NSZonePtr,
+    autorelease, id, impl_HostObject_with_superclass, msg, msg_class, nil, objc_classes, release,
+    retain, ClassExports, HostObject, NSZonePtr,
 };
 
 // MARK: - Rounding modes
@@ -32,13 +33,25 @@ const NSCalculationDivideByZero: NSCalculationError = 4;
 
 // MARK: - Host object
 
-/// We store the value as an `f64` for simplicity.  Full BCD decimal storage
-/// is not needed for the game use-cases touchHLE targets.
+/// NSDecimalNumber is an NSNumber subclass, so keep the NSNumber host object
+/// as its host-side superclass. Inherited NSNumber and Core Foundation methods
+/// can then borrow that representation through the host-object superclass
+/// chain instead of falling back to a fake wrong-type borrow.
 #[derive(Default)]
 struct NSDecimalNumberHostObject {
-    value: f64,
+    superclass: NSNumberHostObject,
 }
-impl HostObject for NSDecimalNumberHostObject {}
+impl_HostObject_with_superclass!(NSDecimalNumberHostObject);
+
+/// We approximate NSDecimal storage with an f64 for the game use-cases
+/// touchHLE targets. The shared NSNumber representation stores it as Double.
+fn decimal_number_value(env: &crate::Environment, number: id) -> f64 {
+    env.objc.borrow::<NSNumberHostObject>(number).as_double()
+}
+
+fn set_decimal_number_value(env: &mut crate::Environment, number: id, value: f64) {
+    *env.objc.borrow_mut::<NSNumberHostObject>(number) = NSNumberHostObject::Double(value);
+}
 
 // MARK: - NSDecimalNumberHandler host object
 
@@ -64,7 +77,9 @@ pub const CLASSES: ClassExports = objc_classes! {
 @implementation NSDecimalNumber: NSNumber
 
 + (id)allocWithZone:(NSZonePtr)_zone {
-    let host_object = Box::new(NSDecimalNumberHostObject { value: 0.0 });
+    let host_object = Box::new(NSDecimalNumberHostObject {
+        superclass: NSNumberHostObject::Double(0.0),
+    });
     env.objc.alloc_object(this, host_object, &mut env.mem)
 }
 
@@ -72,25 +87,25 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 + (id)zero {
     let n: id = msg![env; this alloc];
-    env.objc.borrow_mut::<NSDecimalNumberHostObject>(n).value = 0.0;
+    set_decimal_number_value(env, n, 0.0);
     autorelease(env, n)
 }
 
 + (id)one {
     let n: id = msg![env; this alloc];
-    env.objc.borrow_mut::<NSDecimalNumberHostObject>(n).value = 1.0;
+    set_decimal_number_value(env, n, 1.0);
     autorelease(env, n)
 }
 
 + (id)minimumDecimalNumber {
     let n: id = msg![env; this alloc];
-    env.objc.borrow_mut::<NSDecimalNumberHostObject>(n).value = f64::MIN;
+    set_decimal_number_value(env, n, f64::MIN);
     autorelease(env, n)
 }
 
 + (id)maximumDecimalNumber {
     let n: id = msg![env; this alloc];
-    env.objc.borrow_mut::<NSDecimalNumberHostObject>(n).value = f64::MAX;
+    set_decimal_number_value(env, n, f64::MAX);
     autorelease(env, n)
 }
 
@@ -102,7 +117,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 + (id)notANumber {
     let n: id = msg![env; this alloc];
-    env.objc.borrow_mut::<NSDecimalNumberHostObject>(n).value = f64::NAN;
+    set_decimal_number_value(env, n, f64::NAN);
     autorelease(env, n)
 }
 
@@ -123,7 +138,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     // NSDecimal is passed by pointer in the C API but as a value in ObjC.
     // We receive it as a raw bytes blob via the host; treat as f64.
     let new: id = msg![env; this alloc];
-    env.objc.borrow_mut::<NSDecimalNumberHostObject>(new).value = decimal as f64;
+    set_decimal_number_value(env, new, decimal as f64);
     autorelease(env, new)
 }
 
@@ -133,7 +148,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     let new: id = msg![env; this alloc];
     let value = mantissa as f64 * 10f64.powi(exponent as i32)
         * if is_negative { -1.0 } else { 1.0 };
-    env.objc.borrow_mut::<NSDecimalNumberHostObject>(new).value = value;
+    set_decimal_number_value(env, new, value);
     autorelease(env, new)
 }
 
@@ -144,7 +159,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     }
     let s = to_rust_string(env, string).into_owned();
     let value = s.trim().parse::<f64>().unwrap_or(0.0);
-    env.objc.borrow_mut::<NSDecimalNumberHostObject>(this).value = value;
+    set_decimal_number_value(env, this, value);
     this
 }
 
@@ -153,7 +168,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (id)initWithDecimal:(NSDecimal)decimal {
-    env.objc.borrow_mut::<NSDecimalNumberHostObject>(this).value = decimal as f64;
+    set_decimal_number_value(env, this, decimal as f64);
     this
 }
 
@@ -162,13 +177,13 @@ pub const CLASSES: ClassExports = objc_classes! {
             isNegative:(bool)is_negative {
     let value = mantissa as f64 * 10f64.powi(exponent as i32)
         * if is_negative { -1.0 } else { 1.0 };
-    env.objc.borrow_mut::<NSDecimalNumberHostObject>(this).value = value;
+    set_decimal_number_value(env, this, value);
     this
 }
 
 // Convenience init from double.
 - (id)initWithDouble:(f64)value {
-    env.objc.borrow_mut::<NSDecimalNumberHostObject>(this).value = value;
+    set_decimal_number_value(env, this, value);
     this
 }
 
@@ -179,83 +194,83 @@ pub const CLASSES: ClassExports = objc_classes! {
 // MARK: - NSNumber primitive overrides
 
 - (bool)boolValue {
-    env.objc.borrow::<NSDecimalNumberHostObject>(this).value != 0.0
+    decimal_number_value(env, this) != 0.0
 }
 
 - (i32)intValue {
-    env.objc.borrow::<NSDecimalNumberHostObject>(this).value as i32
+    decimal_number_value(env, this) as i32
 }
 
 - (NSInteger)integerValue {
-    env.objc.borrow::<NSDecimalNumberHostObject>(this).value as NSInteger
+    decimal_number_value(env, this) as NSInteger
 }
 
 - (i32)longValue {
-    env.objc.borrow::<NSDecimalNumberHostObject>(this).value as i32
+    decimal_number_value(env, this) as i32
 }
 
 - (i64)longLongValue {
-    env.objc.borrow::<NSDecimalNumberHostObject>(this).value as i64
+    decimal_number_value(env, this) as i64
 }
 
 - (u32)unsignedIntValue {
-    env.objc.borrow::<NSDecimalNumberHostObject>(this).value as u32
+    decimal_number_value(env, this) as u32
 }
 
 - (NSUInteger)unsignedIntegerValue {
-    env.objc.borrow::<NSDecimalNumberHostObject>(this).value as NSUInteger
+    decimal_number_value(env, this) as NSUInteger
 }
 
 - (u64)unsignedLongLongValue {
-    env.objc.borrow::<NSDecimalNumberHostObject>(this).value as u64
+    decimal_number_value(env, this) as u64
 }
 
 - (f32)floatValue {
-    env.objc.borrow::<NSDecimalNumberHostObject>(this).value as f32
+    decimal_number_value(env, this) as f32
 }
 
 - (f64)doubleValue {
-    env.objc.borrow::<NSDecimalNumberHostObject>(this).value
+    decimal_number_value(env, this)
 }
 
 - (i16)shortValue {
-    env.objc.borrow::<NSDecimalNumberHostObject>(this).value as i16
+    decimal_number_value(env, this) as i16
 }
 
 - (u16)unsignedShortValue {
-    env.objc.borrow::<NSDecimalNumberHostObject>(this).value as u16
+    decimal_number_value(env, this) as u16
 }
 
 - (i8)charValue {
-    env.objc.borrow::<NSDecimalNumberHostObject>(this).value as i8
+    decimal_number_value(env, this) as i8
 }
 
 // MARK: - Arithmetic
 
 - (id)decimalNumberByAdding:(id)other { // NSDecimalNumber*
-    let a = env.objc.borrow::<NSDecimalNumberHostObject>(this).value;
-    let b = env.objc.borrow::<NSDecimalNumberHostObject>(other).value;
+    let a = decimal_number_value(env, this);
+    let b = decimal_number_value(env, other);
     let result = decimal_from_f64(env, a + b);
     autorelease(env, result)
 }
 
 - (id)decimalNumberBySubtracting:(id)other {
-    let a = env.objc.borrow::<NSDecimalNumberHostObject>(this).value;
-    let b = env.objc.borrow::<NSDecimalNumberHostObject>(other).value;
+    let a = decimal_number_value(env, this);
+    let b = decimal_number_value(env, other);
     let result = decimal_from_f64(env, a - b);
     autorelease(env, result)
 }
 
 - (id)decimalNumberByMultiplyingBy:(id)other {
-    let a = env.objc.borrow::<NSDecimalNumberHostObject>(this).value;
-    let b = env.objc.borrow::<NSDecimalNumberHostObject>(other).value;
+    let a = decimal_number_value(env, this);
+    let b = decimal_number_value(env, other);
     let result = decimal_from_f64(env, a * b);
     autorelease(env, result)
 }
 
 - (id)decimalNumberByDividingBy:(id)other {
-    let a = env.objc.borrow::<NSDecimalNumberHostObject>(this).value;
-    let b = env.objc.borrow::<NSDecimalNumberHostObject>(other).value;
+    let a = decimal_number_value(env, this);
+    let b = decimal_number_value(env, other);
     if b == 0.0 {
         log!("NSDecimalNumber: divide by zero");
         return msg_class![env; NSDecimalNumber notANumber];
@@ -265,13 +280,13 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (id)decimalNumberByRaisingToPower:(NSUInteger)power {
-    let a = env.objc.borrow::<NSDecimalNumberHostObject>(this).value;
+    let a = decimal_number_value(env, this);
     let result = decimal_from_f64(env, a.powi(power as i32));
     autorelease(env, result)
 }
 
 - (id)decimalNumberByMultiplyingByPowerOf10:(i16)power {
-    let a = env.objc.borrow::<NSDecimalNumberHostObject>(this).value;
+    let a = decimal_number_value(env, this);
     let result = decimal_from_f64(env, a * 10f64.powi(power as i32));
     autorelease(env, result)
 }
@@ -300,42 +315,20 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 - (id)decimalNumberByRoundingAccordingToBehavior:(id)_behavior {
     // Round to nearest integer as a safe default.
-    let a = env.objc.borrow::<NSDecimalNumberHostObject>(this).value;
+    let a = decimal_number_value(env, this);
     let result = decimal_from_f64(env, a.round());
     autorelease(env, result)
 }
 
-// MARK: - Comparison
-
-- (NSComparisonResult)compare:(id)other {
-    let a = env.objc.borrow::<NSDecimalNumberHostObject>(this).value;
-    let b = env.objc.borrow::<NSDecimalNumberHostObject>(other).value;
-    if a < b  { return -1; } // NSOrderedAscending
-    if a > b  { return  1; } // NSOrderedDescending
-    0                        // NSOrderedSame
-}
-
-- (bool)isEqual:(id)other {
-    if this == other { return true; }
-    if other == nil  { return false; }
-
-    // ИСПРАВЛЕНИЕ: Безопасная проверка класса вместо try_borrow
-    let other_class: crate::objc::Class = msg![env; other class];
-    let ns_decimal_class = env.objc.get_known_class("NSDecimalNumber", &mut env.mem);
-    if !env.objc.class_is_subclass_of(other_class, ns_decimal_class) {
-        return false;
-    }
-
-    let a = env.objc.borrow::<NSDecimalNumberHostObject>(this).value;
-    let b = env.objc.borrow::<NSDecimalNumberHostObject>(other).value;
-    a == b
-}
+// NSNumber's inherited compare:/isEqual: implementations operate on the
+// shared NSNumberHostObject and therefore correctly compare decimal numbers
+// with ordinary NSNumbers as well.
 
 // MARK: - Accessors
 
 - (NSDecimal)decimalValue {
     // NSDecimal is a complex C struct; return value bits as f64.
-    env.objc.borrow::<NSDecimalNumberHostObject>(this).value as NSDecimal
+    decimal_number_value(env, this) as NSDecimal
 }
 
 - (id)objCType {
@@ -354,7 +347,7 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (id)description {
-    let value = env.objc.borrow::<NSDecimalNumberHostObject>(this).value;
+    let value = decimal_number_value(env, this);
     let s = if value.fract() == 0.0 && value.abs() < 1e15 {
         format!("{}", value as i64)
     } else {
@@ -440,7 +433,6 @@ pub const CLASSES: ClassExports = objc_classes! {
 
 // MARK: - Type alias (NSDecimal is an opaque struct — we use f64 as a proxy)
 type NSDecimal = f64;
-type NSComparisonResult = NSInteger;
 
 // MARK: - Helpers
 
@@ -449,7 +441,9 @@ fn decimal_from_f64(env: &mut crate::Environment, value: f64) -> crate::objc::id
 
     env.objc.alloc_object(
         class,
-        Box::new(NSDecimalNumberHostObject { value }),
+        Box::new(NSDecimalNumberHostObject {
+            superclass: NSNumberHostObject::Double(value),
+        }),
         &mut env.mem,
     )
 }

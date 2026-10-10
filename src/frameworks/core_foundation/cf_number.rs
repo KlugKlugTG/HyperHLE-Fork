@@ -102,6 +102,13 @@ fn CFNumberCreate(
     }
 }
 
+fn CFNumberGetType(env: &mut Environment, num: CFNumberRef) -> CFNumberType {
+    // NSNumber implements this as the type tag stored with the number. Since
+    // NSDecimalNumber embeds its NSNumber host object as a superclass, this
+    // also handles toll-free bridged decimal values.
+    msg![env; num cfNumberType]
+}
+
 fn CFNumberGetValue(
     env: &mut Environment,
     num: CFNumberRef,
@@ -335,6 +342,7 @@ pub const CONSTANTS: ConstantExports = &[
 
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CFNumberCreate(_, _, _)),
+    export_c_func!(CFNumberGetType(_)),
     export_c_func!(CFNumberGetValue(_, _, _)),
     export_c_func!(CFNumberCompare(_, _, _)),
     export_c_func!(CFBooleanGetValue(_)),

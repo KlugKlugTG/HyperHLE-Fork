@@ -40,6 +40,10 @@
 
 #import "SyncTester.h"
 
+@interface NSDecimalNumber : NSNumber
+- (id)initWithString:(NSString *)numberValue;
+@end
+
 @interface NSBundle : NSObject
 + (instancetype)mainBundle;
 + (instancetype)bundleWithPath:(NSString *)path;
@@ -4557,6 +4561,53 @@ int test_CFURL() {
   return 0;
 }
 
+#ifndef kCFNumberSInt8Type
+#define kCFNumberSInt8Type 1
+#define kCFNumberSInt16Type 2
+#define kCFNumberSInt32Type 3
+#define kCFNumberSInt64Type 4
+#define kCFNumberFloat32Type 5
+#define kCFNumberFloat64Type 6
+#endif
+
+int test_CFNumberGetType() {
+  int32_t intValue = 42;
+  CFNumberRef integer = CFNumberCreate(NULL, kCFNumberSInt32Type, &intValue);
+  if (CFNumberGetType(integer) != kCFNumberSInt32Type) {
+    CFRelease(integer);
+    return -1;
+  }
+  CFRelease(integer);
+
+  // NSDecimalNumber is an NSNumber subclass and is toll-free bridged to
+  // CFNumber.
+  NSString *decimalString = [NSString stringWithUTF8String:"12.5"];
+  NSDecimalNumber *decimal =
+      [[NSDecimalNumber alloc] initWithString:decimalString];
+  if (CFNumberGetType((CFNumberRef)decimal) != kCFNumberFloat64Type) {
+    [decimal release];
+    return -2;
+  }
+
+  double value = 0.0;
+  if (!CFNumberGetValue((CFNumberRef)decimal, kCFNumberFloat64Type, &value) ||
+      value != 12.5) {
+    [decimal release];
+    return -3;
+  }
+
+  double sameValue = 12.5;
+  CFNumberRef same = CFNumberCreate(NULL, kCFNumberFloat64Type, &sameValue);
+  CFComparisonResult result =
+      CFNumberCompare((CFNumberRef)decimal, same, NULL);
+  CFRelease(same);
+  [decimal release];
+  if (result != kCFCompareEqualTo) {
+    return -4;
+  }
+  return 0;
+}
+
 int test_CFNumberCompare_simple() {
   float a = 3.333;
   CFNumberRef aa = CFNumberCreate(NULL, 5, &a); // kCFNumberFloat32Type
@@ -4589,15 +4640,6 @@ int test_CFNumberCompare_simple() {
   }
   return 0;
 }
-
-#ifndef kCFNumberSInt8Type
-#define kCFNumberSInt8Type 1
-#define kCFNumberSInt16Type 2
-#define kCFNumberSInt32Type 3
-#define kCFNumberSInt64Type 4
-#define kCFNumberFloat32Type 5
-#define kCFNumberFloat64Type 6
-#endif
 
 static int cmp(CFNumberRef a, CFNumberRef b, CFComparisonResult expected,
                const char *label, int failCode) {
@@ -6358,6 +6400,7 @@ struct {
     FUNC_DEF(test_inet_ntop),
     FUNC_DEF(test_inet_pton),
     FUNC_DEF(test_CFURL),
+    FUNC_DEF(test_CFNumberGetType),
     FUNC_DEF(test_CFNumberCompare_simple),
     FUNC_DEF(test_CFNumberCompare_extended),
     FUNC_DEF(test_memset_pattern),
