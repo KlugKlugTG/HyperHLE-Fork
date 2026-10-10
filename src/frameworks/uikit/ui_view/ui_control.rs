@@ -25,15 +25,15 @@ use crate::objc::{
 use crate::Environment;
 
 pub type UIControlEvents = NSUInteger;
-const UIControlEventTouchDown: UIControlEvents = 1 << 0;
+pub const UIControlEventTouchDown: UIControlEvents = 1 << 0;
 const UIControlEventTouchDownRepeat: UIControlEvents = 1 << 1;
 const UIControlEventTouchDragInside: UIControlEvents = 1 << 2;
 const UIControlEventTouchDragOutside: UIControlEvents = 1 << 3;
 const UIControlEventTouchDragEnter: UIControlEvents = 1 << 4;
-const UIControlEventTouchDragExit: UIControlEvents = 1 << 5;
+pub const UIControlEventTouchDragExit: UIControlEvents = 1 << 5;
 pub const UIControlEventTouchUpInside: UIControlEvents = 1 << 6;
-const UIControlEventTouchUpOutside: UIControlEvents = 1 << 7;
-const UIControlEventTouchCancel: UIControlEvents = 1 << 8;
+pub const UIControlEventTouchUpOutside: UIControlEvents = 1 << 7;
+pub const UIControlEventTouchCancel: UIControlEvents = 1 << 8;
 pub const UIControlEventValueChanged: UIControlEvents = 1 << 12;
 pub const UIControlEventEditingDidBegin: UIControlEvents = 1 << 16;
 pub const UIControlEventEditingChanged: UIControlEvents = 1 << 17;
