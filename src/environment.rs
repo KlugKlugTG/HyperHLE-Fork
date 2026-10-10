@@ -37,80 +37,6 @@ use nullable_box::NullableBox;
 /// Index into the [Vec] of threads. Thread 0 is always the main thread.
 pub type ThreadId = usize;
 
-/// Cut the Rope's renderer polls GLES 2.0 vertex-attribute state even when it
-/// has requested an OpenGL ES 1.1 EAGL context. The native GLES 1.1 backend
-/// correctly rejects those GLES 2.0-only calls and cannot fill their output
-/// parameters. The GLES 1.1 hybrid backends support the fixed-function API
-/// and the GLES 2.0 query path side by side, so prefer one for the Cut the Rope
-/// family unless the user explicitly selected a backend (GLES 1.1-on-GLES 2.0
-/// on Android, GLES 1.1-on-GL 2.1 compatibility elsewhere).
-fn configure_cut_the_rope_gles_backend(bundle_id: &str, options: &mut options::Options) -> bool {
-    let is_cut_the_rope = bundle_id.starts_with("com.chillingo.cuttherope")
-        || bundle_id.starts_with("com.zeptolab.ctrexperiments");
-    if !is_cut_the_rope || options.gles1_implementation.is_some() {
-        return false;
-    }
-
-    let implementation = if cfg!(target_os = "android") {
-        crate::gles::GLESImplementation::GLES1OnGLES2
-    } else {
-        crate::gles::GLESImplementation::GLES1OnGL2
-    };
-    options.gles1_implementation = Some(implementation);
-    true
-}
-
-#[cfg(test)]
-mod cut_the_rope_gles_backend_tests {
-    use super::*;
-    use crate::gles::GLESImplementation;
-
-    #[test]
-    fn cut_the_rope_experiments_uses_the_hybrid_gles1_backend_by_default() {
-        let mut options = options::Options::default();
-
-        assert!(configure_cut_the_rope_gles_backend(
-            "com.zeptolab.ctrexperiments",
-            &mut options
-        ));
-        let expected_backend_is_selected = if cfg!(target_os = "android") {
-            matches!(
-                options.gles1_implementation,
-                Some(GLESImplementation::GLES1OnGLES2)
-            )
-        } else {
-            matches!(
-                options.gles1_implementation,
-                Some(GLESImplementation::GLES1OnGL2)
-            )
-        };
-        assert!(expected_backend_is_selected);
-    }
-
-    #[test]
-    fn explicit_backend_selection_is_preserved() {
-        let mut options = options::Options::default();
-        options.gles1_implementation = Some(GLESImplementation::GLES1Native);
-
-        assert!(!configure_cut_the_rope_gles_backend(
-            "com.zeptolab.ctrexperiments",
-            &mut options
-        ));
-        assert!(matches!(
-            options.gles1_implementation,
-            Some(GLESImplementation::GLES1Native)
-        ));
-    }
-
-    #[test]
-    fn unrelated_apps_keep_their_default_backend() {
-        let mut options = options::Options::default();
-
-        assert!(!configure_cut_the_rope_gles_backend("com.example.othergame", &mut options));
-        assert!(options.gles1_implementation.is_none());
-    }
-}
-
 pub type HostContext = Coroutine<Environment, Environment, Environment>;
 
 /// Bookkeeping for a thread.
@@ -520,20 +446,6 @@ impl Environment {
     ) -> Result<Environment, String> {
         let startup_time = Instant::now();
         let launched_bundle_id = bundle.bundle_identifier().to_owned();
-
-        let gles1_backend_is_forced_by_env = std::env::var("TOUCHHLE_FORCE_GLES1")
-            .ok()
-            .and_then(|value| crate::gles::GLESImplementation::from_short_name(&value).ok())
-            .is_some();
-        if !gles1_backend_is_forced_by_env
-            && configure_cut_the_rope_gles_backend(&launched_bundle_id, &mut options)
-        {
-            let implementation = options.gles1_implementation.unwrap();
-            log!(
-                "Applying Cut the Rope GLES compatibility profile: selecting {} for ES1 EAGL requests so GLES 2.0 vertex-attribute queries work alongside the fixed-function renderer. Override with an explicit --gles1= option.",
-                implementation.description()
-            );
-        }
 
         if launched_bundle_id == "at.source.potato.full" {
             log!(
