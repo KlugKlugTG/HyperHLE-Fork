@@ -462,7 +462,6 @@ pub const CLASSES: ClassExports = objc_classes! {
             log_dbg!("Old view frame: {view_frame:?}");
 
             () = msg![env; view setTransform:transform];
-            env.framework_state.uikit.autorotation_transform_applied = true;
 
             // Re-apply the view's old frame to compensate for the rotation
             // effectively offseting its center position and changing the size.
