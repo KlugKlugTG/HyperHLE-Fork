@@ -32,6 +32,7 @@ mod objects;
 mod properties;
 mod selectors;
 mod synchronization;
+pub(crate) mod type_encoding;
 mod weak;
 
 pub use classes::{
@@ -40,7 +41,9 @@ pub use classes::{
     class_getInstanceSize, class_getMethodImplementation, class_getMethodImplementation_stret,
     class_getName, class_getProperty, class_getSuperclass, class_isMetaClass, class_replaceMethod,
     class_respondsToSelector, class_setSuperclass, method_exchangeImplementations,
-    method_getImplementation, method_getName, method_getTypeEncoding, method_setImplementation,
+    method_copyArgumentType, method_copyReturnType, method_getArgumentType,
+    method_getImplementation, method_getName, method_getNumberOfArguments, method_getReturnType,
+    method_getTypeEncoding, method_setImplementation,
     objc_alloc, objc_allocWithZone, objc_allocateClassPair, objc_autorelease,
     objc_autoreleasePoolPop, objc_autoreleasePoolPush, objc_autoreleaseReturnValue,
     objc_begin_catch, objc_classes, objc_copyClassNamesForImage, objc_disposeClassPair,
@@ -436,6 +439,11 @@ const FUNCTIONS: FunctionExports = &[
     export_c_func!(method_getImplementation(_)),
     export_c_func!(method_setImplementation(_, _)),
     export_c_func!(method_getTypeEncoding(_)),
+    export_c_func!(method_getNumberOfArguments(_)),
+    export_c_func!(method_copyReturnType(_)),
+    export_c_func!(method_copyArgumentType(_, _)),
+    export_c_func!(method_getReturnType(_, _, _)),
+    export_c_func!(method_getArgumentType(_, _, _, _)),
     export_c_func!(method_getName(_)),
     export_c_func!(method_exchangeImplementations(_, _)),
     export_c_func!(class_getMethodImplementation(_, _)),

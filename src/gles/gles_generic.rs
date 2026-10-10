@@ -3047,6 +3047,12 @@ pub trait GLES {
     }
 
     // -- Sync objects --
+    /// Returns `true` if [GLES::FenceSync] and friends are backed by real
+    /// driver sync objects. When `false`, `gles_guest` emulates fences
+    /// itself (see the comment above `glFenceSync` there).
+    fn supports_sync_objects(&self) -> bool {
+        false
+    }
     unsafe fn FenceSync(&mut self, _condition: GLenum, _flags: GLbitfield) -> usize {
         log_unimplemented_gles_once!(
             self,

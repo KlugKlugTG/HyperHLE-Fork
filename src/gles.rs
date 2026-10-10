@@ -1368,6 +1368,9 @@ impl<'a> GLES for LoggingGLES<'a> {
     unsafe fn VertexAttribDivisor(&mut self, _index: GLuint, _divisor: GLuint) {
         self.inner.VertexAttribDivisor(_index, _divisor);
     }
+    fn supports_sync_objects(&self) -> bool {
+        self.inner.supports_sync_objects()
+    }
     unsafe fn FenceSync(&mut self, _condition: GLenum, _flags: GLbitfield) -> usize {
         self.inner.FenceSync(_condition, _flags)
     }

@@ -6,110 +6,14 @@ use crate::frameworks::foundation::NSUInteger;
 use crate::mem::{SafeRead, guest_size_of};
 use crate::objc::{Class, SEL, class_getInstanceMethod, id, method_getTypeEncoding, msg, msg_send};
 
-fn skip_objc_type(encoding: &[u8], offset: &mut usize) -> Option<u8> {
-    while encoding
-        .get(*offset)
-        .is_some_and(|byte| b"rnNoORV".contains(byte))
-    {
-        *offset += 1;
-    }
-
-    let kind = *encoding.get(*offset)?;
-    *offset += 1;
-    match kind {
-        b'@' if encoding.get(*offset) == Some(&b'?') => *offset += 1,
-        b'@' if encoding.get(*offset) == Some(&b'"') => {
-            *offset += 1;
-            while encoding.get(*offset).is_some_and(|byte| *byte != b'"') {
-                *offset += 1;
-            }
-            if encoding.get(*offset) == Some(&b'"') {
-                *offset += 1;
-            }
-        }
-        b'^' => {
-            skip_objc_type(encoding, offset)?;
-        }
-        b'[' => {
-            while encoding.get(*offset).is_some_and(u8::is_ascii_digit) {
-                *offset += 1;
-            }
-            skip_objc_type(encoding, offset)?;
-            while encoding.get(*offset).is_some_and(u8::is_ascii_digit) {
-                *offset += 1;
-            }
-            if encoding.get(*offset) == Some(&b']') {
-                *offset += 1;
-            }
-        }
-        b'{' | b'(' => {
-            let close = if kind == b'{' { b'}' } else { b')' };
-            while let Some(byte) = encoding.get(*offset) {
-                if *byte == b'=' || *byte == close {
-                    break;
-                }
-                *offset += 1;
-            }
-            if encoding.get(*offset) == Some(&b'=') {
-                *offset += 1;
-                while encoding.get(*offset).is_some_and(|byte| *byte != close) {
-                    if encoding.get(*offset) == Some(&b'"') {
-                        *offset += 1;
-                        while encoding.get(*offset).is_some_and(|byte| *byte != b'"') {
-                            *offset += 1;
-                        }
-                        if encoding.get(*offset) == Some(&b'"') {
-                            *offset += 1;
-                        }
-                    }
-                    skip_objc_type(encoding, offset)?;
-                }
-            }
-            if encoding.get(*offset) == Some(&close) {
-                *offset += 1;
-            }
-        }
-        b'b' => {
-            while encoding.get(*offset).is_some_and(u8::is_ascii_digit) {
-                *offset += 1;
-            }
-        }
-        _ => {}
-    }
-    Some(kind)
-}
-
 pub(super) fn objc_argument_encoding(encoding: &[u8], argument_index: usize) -> Option<&[u8]> {
-    let mut offset = 0;
-    skip_objc_type(encoding, &mut offset)?;
-    skip_method_offset(encoding, &mut offset);
-    for index in 0..=argument_index {
-        let start = offset;
-        skip_objc_type(encoding, &mut offset)?;
-        if index == argument_index {
-            return Some(&encoding[start..offset]);
-        }
-        skip_method_offset(encoding, &mut offset);
-    }
-    None
+    crate::objc::type_encoding::method_argument_type(encoding, argument_index)
 }
 
 pub(super) fn objc_argument_type(encoding: &[u8], argument_index: usize) -> Option<u8> {
     objc_argument_encoding(encoding, argument_index)?
         .first()
         .copied()
-}
-
-fn skip_method_offset(encoding: &[u8], offset: &mut usize) {
-    if encoding
-        .get(*offset)
-        .is_some_and(|byte| matches!(*byte, b'+' | b'-'))
-    {
-        *offset += 1;
-    }
-    while encoding.get(*offset).is_some_and(u8::is_ascii_digit) {
-        *offset += 1;
-    }
 }
 
 pub(super) fn kvc_setter_argument_encoding(

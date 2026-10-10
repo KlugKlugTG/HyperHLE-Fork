@@ -1713,6 +1713,152 @@ pub fn method_getTypeEncoding(env: &mut crate::Environment, m: ConstVoidPtr) -> 
     }
 }
 
+/// The method's type-encoding string as host bytes, if one is recorded.
+fn method_type_encoding_bytes(env: &mut crate::Environment, m: ConstVoidPtr) -> Option<Vec<u8>> {
+    let types = method_getTypeEncoding(env, m);
+    if types.is_null() {
+        return None;
+    }
+    Some(env.mem.cstr_at(types.cast()).to_vec())
+}
+
+/// Copy `bytes` into a fresh `malloc`-compatible, NUL-terminated guest
+/// string, as the `method_copy*Type` functions must return.
+fn copy_type_string_to_guest(env: &mut crate::Environment, bytes: &[u8]) -> ConstVoidPtr {
+    env.mem.alloc_and_write_cstr(bytes).cast_const().cast()
+}
+
+/// `strncpy`-style copy of `bytes` into the guest buffer `dst`, as
+/// `method_getReturnType` / `method_getArgumentType` specify: the remainder
+/// of the buffer is zero-filled and the result is not NUL-terminated if
+/// `bytes` doesn't fit.
+fn strncpy_type_string_to_guest(
+    env: &mut crate::Environment,
+    bytes: &[u8],
+    dst: MutVoidPtr,
+    dst_len: GuestUSize,
+) {
+    if dst.is_null() || dst_len == 0 {
+        return;
+    }
+    let buf = env.mem.bytes_at_mut(dst.cast(), dst_len);
+    let n = bytes.len().min(buf.len());
+    buf[..n].copy_from_slice(&bytes[..n]);
+    buf[n..].fill(0);
+}
+
+/// `unsigned int method_getNumberOfArguments(Method m)`
+///
+/// Per Apple's [Objective-C Runtime Reference](https://developer.apple.com/documentation/objectivec/1418968-method_getnumberofarguments?language=objc):
+///
+/// > Returns the number of arguments accepted by a method.
+///
+/// The count includes the implicit `self` and `_cmd` arguments, and is
+/// derived from the method's type encoding exactly like objc4's
+/// `encoding_getNumberOfArguments`. Methods implemented by the host have no
+/// recorded encoding; for those the count follows from the selector (one
+/// argument per `:`, plus `self` and `_cmd`), which is the same rule
+/// `-[NSObject methodSignatureForSelector:]` uses here.
+pub fn method_getNumberOfArguments(env: &mut crate::Environment, m: ConstVoidPtr) -> u32 {
+    let Some((_cls, sel)) = method_handle_decode(env, m) else {
+        return 0;
+    };
+    if let Some(types) = method_type_encoding_bytes(env, m) {
+        return super::type_encoding::method_argument_count(&types) as u32;
+    }
+    let colons = sel.as_str(&env.mem).bytes().filter(|&b| b == b':').count();
+    (colons + 2) as u32
+}
+
+/// `char *method_copyReturnType(Method m)`
+///
+/// Per Apple's [Objective-C Runtime Reference](https://developer.apple.com/documentation/objectivec/1418783-method_copyreturntype?language=objc):
+///
+/// > Returns a string describing a method's return type. You must free the
+/// > string with `free()`.
+pub fn method_copyReturnType(env: &mut crate::Environment, m: ConstVoidPtr) -> ConstVoidPtr {
+    if method_handle_decode(env, m).is_none() {
+        return ConstVoidPtr::null();
+    }
+    let ret = method_type_encoding_bytes(env, m)
+        .and_then(|types| super::type_encoding::method_return_type(&types).map(<[u8]>::to_vec));
+    match ret {
+        Some(ret) => copy_type_string_to_guest(env, &ret),
+        None => ConstVoidPtr::null(),
+    }
+}
+
+/// `char *method_copyArgumentType(Method m, unsigned int index)`
+///
+/// Per Apple's [Objective-C Runtime Reference](https://developer.apple.com/documentation/objectivec/1418642-method_copyargumenttype?language=objc):
+///
+/// > Returns a string describing a single parameter type of a method, or
+/// > `NULL` if method has no parameter at the specified index. You must free
+/// > the string with `free()`.
+pub fn method_copyArgumentType(
+    env: &mut crate::Environment,
+    m: ConstVoidPtr,
+    index: u32,
+) -> ConstVoidPtr {
+    if method_handle_decode(env, m).is_none() {
+        return ConstVoidPtr::null();
+    }
+    let arg = method_type_encoding_bytes(env, m).and_then(|types| {
+        super::type_encoding::method_argument_type(&types, index as usize).map(<[u8]>::to_vec)
+    });
+    match arg {
+        Some(arg) => copy_type_string_to_guest(env, &arg),
+        None => ConstVoidPtr::null(),
+    }
+}
+
+/// `void method_getReturnType(Method m, char *dst, size_t dst_len)`
+///
+/// Per Apple's [Objective-C Runtime Reference](https://developer.apple.com/documentation/objectivec/1418617-method_getreturntype?language=objc):
+///
+/// > The method's return type string is copied to `dst`. `dst` is filled as
+/// > if `strncpy(dst, parameter_type, dst_len)` were called.
+pub fn method_getReturnType(
+    env: &mut crate::Environment,
+    m: ConstVoidPtr,
+    dst: MutVoidPtr,
+    dst_len: GuestUSize,
+) {
+    let ret = if method_handle_decode(env, m).is_some() {
+        method_type_encoding_bytes(env, m)
+            .and_then(|types| super::type_encoding::method_return_type(&types).map(<[u8]>::to_vec))
+    } else {
+        None
+    };
+    strncpy_type_string_to_guest(env, ret.as_deref().unwrap_or(&[]), dst, dst_len);
+}
+
+/// `void method_getArgumentType(Method m, unsigned int index, char *dst,
+///                              size_t dst_len)`
+///
+/// Per Apple's [Objective-C Runtime Reference](https://developer.apple.com/documentation/objectivec/1418989-method_getargumenttype?language=objc):
+///
+/// > The parameter type string is copied to `dst`. `dst` is filled as if
+/// > `strncpy(dst, parameter_type, dst_len)` were called. If the method
+/// > contains no parameter with that index, `dst` is filled as if
+/// > `strncpy(dst, "", dst_len)` were called.
+pub fn method_getArgumentType(
+    env: &mut crate::Environment,
+    m: ConstVoidPtr,
+    index: u32,
+    dst: MutVoidPtr,
+    dst_len: GuestUSize,
+) {
+    let arg = if method_handle_decode(env, m).is_some() {
+        method_type_encoding_bytes(env, m).and_then(|types| {
+            super::type_encoding::method_argument_type(&types, index as usize).map(<[u8]>::to_vec)
+        })
+    } else {
+        None
+    };
+    strncpy_type_string_to_guest(env, arg.as_deref().unwrap_or(&[]), dst, dst_len);
+}
+
 /// `SEL method_getName(Method m)`
 ///
 /// Per Apple's [Objective-C Runtime Reference](https://developer.apple.com/documentation/objectivec/1418758-method_getname?language=objc):

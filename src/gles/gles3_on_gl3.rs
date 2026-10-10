@@ -2049,6 +2049,9 @@ impl GLES for GLES3OnGL3<'_> {
     // of touchHLE as `usize` for portability — guest code never holds the
     // pointer directly; it goes via a host->guest GLsync handle table in
     // `gles_guest.rs`.
+    fn supports_sync_objects(&self) -> bool {
+        true
+    }
     unsafe fn FenceSync(&mut self, condition: GLenum, flags: GLbitfield) -> usize {
         gl33::FenceSync(condition, flags) as usize
     }

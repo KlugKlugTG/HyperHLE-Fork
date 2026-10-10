@@ -12,7 +12,7 @@
 mod eagl;
 mod gles_guest;
 
-use touchHLE_gl_bindings::gles11::types::GLenum;
+use touchHLE_gl_bindings::gles11::types::{GLenum, GLuint};
 
 use crate::mem::ConstPtr;
 
@@ -34,6 +34,12 @@ pub struct State {
     /// which renderer code path to use — mismatching the API leaves Unity in
     /// a half-initialised ES 2.0 path that emits torn / overlapping frames).
     strings_cache: std::collections::HashMap<(bool, GLenum), ConstPtr<u8>>,
+    /// Guest `GLsync` handles (`glFenceSync` / `glFenceSyncAPPLE`). Host
+    /// `GLsync` values are pointers and don't fit in a 32-bit guest value,
+    /// so the guest gets an opaque handle into this table instead.
+    sync_objects: std::collections::HashMap<GLuint, gles_guest::GuestSyncObject>,
+    /// Next candidate guest `GLsync` handle (0 is never handed out).
+    next_sync_handle: GLuint,
 }
 impl State {
     fn current_ctx_for_thread(&mut self, thread: crate::ThreadId) -> &mut Option<crate::objc::id> {

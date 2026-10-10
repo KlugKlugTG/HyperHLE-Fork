@@ -7581,54 +7581,337 @@ fn glUniformBlockBinding(
     });
 }
 
-// -- Sync objects --
+// -- Sync objects (OpenGL ES 3.0 core / GL_APPLE_sync) --
 //
-// `GLsync` is opaque on the host (a pointer). We expose it to the guest as
-// an opaque 32-bit handle. EAGL keeps the mapping in
-// `EAGLContextHostObject::sync_objects`.
+// Host `GLsync` values are pointers, so they can't be handed to a 32-bit
+// guest directly (truncating them, as this code used to, makes distinct
+// syncs collide and hands the driver garbage pointers on 64-bit hosts).
+// Instead the guest gets a small opaque handle that indexes
+// `State::sync_objects`.
+//
+// Backends with native sync objects (`GLES::supports_sync_objects`, i.e.
+// the ES 3.0 native and GL 3.3 Core backends, which also serve ES 2.0
+// contexts on desktop) get a real host fence. On the other backends (the
+// ES 1.1 backends and the native ES 2.0 driver) the fence is emulated: we
+// `glFinish()` when the fence is inserted, so it is already signalled by the
+// time the guest can query it. That's a valid implementation of the spec
+// (the GPU merely "finished quickly"), and every later wait/query is exact.
 
-fn glFenceSync(env: &mut Environment, condition: GLenum, flags: GLbitfield) -> GLuint {
-    let host_sync = with_ctx_and_mem(env, |gles, _mem| unsafe {
-        gles.FenceSync(condition, flags)
+const GL_SYNC_FLUSH_COMMANDS_BIT: GLbitfield = 0x0000_0001;
+const GL_MAX_SERVER_WAIT_TIMEOUT: GLenum = 0x9111;
+const GL_OBJECT_TYPE: GLenum = 0x9112;
+const GL_SYNC_CONDITION: GLenum = 0x9113;
+const GL_SYNC_STATUS: GLenum = 0x9114;
+const GL_SYNC_FLAGS: GLenum = 0x9115;
+const GL_SYNC_FENCE: GLenum = 0x9116;
+const GL_SYNC_GPU_COMMANDS_COMPLETE: GLenum = 0x9117;
+const GL_SIGNALED: GLenum = 0x9119;
+const GL_ALREADY_SIGNALED: GLenum = 0x911A;
+const GL_WAIT_FAILED: GLenum = 0x911D;
+const GL_TIMEOUT_IGNORED: u64 = u64::MAX;
+
+/// Guest-visible `GLsync` handle (a 32-bit opaque value; 0 is "no sync").
+type GuestGLsync = GLuint;
+
+/// Book-keeping for one guest `GLsync`. See the comment above.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct GuestSyncObject {
+    /// Host `GLsync`, or `None` for an emulated (already signalled) fence.
+    host: Option<usize>,
+}
+
+fn has_current_ctx(env: &mut Environment) -> bool {
+    env.framework_state
+        .opengles
+        .current_ctx_for_thread(env.current_thread)
+        .is_some()
+}
+
+fn lookup_sync(env: &Environment, sync: GuestGLsync) -> Option<GuestSyncObject> {
+    env.framework_state.opengles.sync_objects.get(&sync).copied()
+}
+
+fn glFenceSync(env: &mut Environment, condition: GLenum, flags: GLbitfield) -> GuestGLsync {
+    if condition != GL_SYNC_GPU_COMMANDS_COMPLETE || flags != 0 {
+        // The spec mandates GL_INVALID_ENUM / GL_INVALID_VALUE and a 0 return.
+        log!(
+            "Warning: glFenceSync(condition={:#x}, flags={:#x}) called with invalid arguments",
+            condition,
+            flags
+        );
+        return 0;
+    }
+    if !has_current_ctx(env) {
+        return 0;
+    }
+    let host = with_ctx_and_mem(env, |gles, _mem| unsafe {
+        if gles.supports_sync_objects() {
+            match gles.FenceSync(condition, flags) {
+                0 => None,
+                host => Some(Some(host)),
+            }
+        } else {
+            gles.Finish();
+            Some(None)
+        }
     });
-    // Allocate a guest-visible "handle" by storing the host sync in a
-    // table keyed by its own address (which is unique). Truncate to 32
-    // bits for the handle exposed to guest code.
-    host_sync as GLuint
+    let Some(host) = host else {
+        return 0;
+    };
+    let state = &mut env.framework_state.opengles;
+    let handle = loop {
+        let candidate = state.next_sync_handle.max(1);
+        state.next_sync_handle = candidate.wrapping_add(1);
+        if !state.sync_objects.contains_key(&candidate) {
+            break candidate;
+        }
+    };
+    state
+        .sync_objects
+        .insert(handle, GuestSyncObject { host });
+    handle
 }
 
-fn glIsSync(env: &mut Environment, sync: GLuint) -> GLboolean {
-    with_ctx_and_mem(env, |gles, _mem| unsafe { gles.IsSync(sync as usize) })
+fn glIsSync(env: &mut Environment, sync: GuestGLsync) -> GLboolean {
+    if sync != 0 && lookup_sync(env, sync).is_some() {
+        gles11::TRUE
+    } else {
+        gles11::FALSE
+    }
 }
 
-fn glDeleteSync(env: &mut Environment, sync: GLuint) {
-    with_ctx_and_mem(env, |gles, _mem| unsafe { gles.DeleteSync(sync as usize) });
+fn glDeleteSync(env: &mut Environment, sync: GuestGLsync) {
+    if sync == 0 {
+        // Silently ignored, per spec.
+        return;
+    }
+    let Some(object) = env.framework_state.opengles.sync_objects.remove(&sync) else {
+        log!("Warning: glDeleteSync({:#x}): not a sync object", sync);
+        return;
+    };
+    if let Some(host) = object.host {
+        with_ctx_and_mem(env, |gles, _mem| unsafe { gles.DeleteSync(host) });
+    }
+}
+
+fn client_wait_sync_impl(
+    env: &mut Environment,
+    sync: GuestGLsync,
+    flags: GLbitfield,
+    timeout: u64,
+) -> GLenum {
+    let Some(object) = lookup_sync(env, sync) else {
+        log!("Warning: glClientWaitSync({:#x}): not a sync object", sync);
+        return GL_WAIT_FAILED;
+    };
+    if flags & !GL_SYNC_FLUSH_COMMANDS_BIT != 0 {
+        log!("Warning: glClientWaitSync(): invalid flags {:#x}", flags);
+        return GL_WAIT_FAILED;
+    }
+    match object.host {
+        Some(host) => {
+            let res = with_ctx_and_mem(env, |gles, _mem| unsafe {
+                gles.ClientWaitSync(host, flags, timeout)
+            });
+            // `with_ctx_and_mem` yields 0 if no context is current.
+            if res == 0 {
+                GL_WAIT_FAILED
+            } else {
+                res
+            }
+        }
+        None => GL_ALREADY_SIGNALED,
+    }
 }
 
 fn glClientWaitSync(
     env: &mut Environment,
-    sync: GLuint,
+    sync: GuestGLsync,
     flags: GLbitfield,
     timeout_lo: GLuint,
     timeout_hi: GLuint,
 ) -> GLenum {
     let timeout = ((timeout_hi as u64) << 32) | (timeout_lo as u64);
-    with_ctx_and_mem(env, |gles, _mem| unsafe {
-        gles.ClientWaitSync(sync as usize, flags, timeout)
-    })
+    client_wait_sync_impl(env, sync, flags, timeout)
+}
+
+fn wait_sync_impl(env: &mut Environment, sync: GuestGLsync, flags: GLbitfield, timeout: u64) {
+    let Some(object) = lookup_sync(env, sync) else {
+        log!("Warning: glWaitSync({:#x}): not a sync object", sync);
+        return;
+    };
+    if flags != 0 || timeout != GL_TIMEOUT_IGNORED {
+        log!(
+            "Warning: glWaitSync(): invalid flags {:#x} / timeout {:#x}",
+            flags,
+            timeout
+        );
+        return;
+    }
+    // Emulated fences are signalled on creation, so a server-side wait on
+    // them has nothing to wait for.
+    if let Some(host) = object.host {
+        with_ctx_and_mem(env, |gles, _mem| unsafe {
+            gles.WaitSync(host, flags, timeout)
+        });
+    }
 }
 
 fn glWaitSync(
     env: &mut Environment,
-    sync: GLuint,
+    sync: GuestGLsync,
     flags: GLbitfield,
     timeout_lo: GLuint,
     timeout_hi: GLuint,
 ) {
     let timeout = ((timeout_hi as u64) << 32) | (timeout_lo as u64);
-    with_ctx_and_mem(env, |gles, _mem| unsafe {
-        gles.WaitSync(sync as usize, flags, timeout)
-    });
+    wait_sync_impl(env, sync, flags, timeout)
+}
+
+/// `void glGetSynciv(GLsync sync, GLenum pname, GLsizei bufSize,
+///                   GLsizei *length, GLint *values)`
+fn glGetSynciv(
+    env: &mut Environment,
+    sync: GuestGLsync,
+    pname: GLenum,
+    buf_size: GLsizei,
+    length: MutPtr<GLsizei>,
+    values: MutPtr<GLint>,
+) {
+    let Some(object) = lookup_sync(env, sync) else {
+        log!("Warning: glGetSynciv({:#x}): not a sync object", sync);
+        return;
+    };
+    let value: GLint = match pname {
+        GL_OBJECT_TYPE => GL_SYNC_FENCE as GLint,
+        GL_SYNC_CONDITION => GL_SYNC_GPU_COMMANDS_COMPLETE as GLint,
+        GL_SYNC_FLAGS => 0,
+        GL_SYNC_STATUS => match object.host {
+            Some(host) => {
+                let mut status: GLint = 0;
+                let mut written: GLsizei = 0;
+                with_ctx_and_mem(env, |gles, _mem| unsafe {
+                    gles.GetSynciv(host, pname, 1, &mut written, &mut status)
+                });
+                if written < 1 {
+                    // No context current (or the query failed): nothing to
+                    // report, mirror GL by leaving the outputs untouched.
+                    return;
+                }
+                status
+            }
+            None => GL_SIGNALED as GLint,
+        },
+        _ => {
+            log!("Warning: glGetSynciv(): invalid pname {:#x}", pname);
+            return;
+        }
+    };
+    let written: GLsizei = if buf_size >= 1 && !values.is_null() {
+        env.mem.write(values, value);
+        1
+    } else {
+        0
+    };
+    if !length.is_null() {
+        env.mem.write(length, written);
+    }
+}
+
+// GL_APPLE_sync entry points (iOS 6+). Same semantics and enum values as the
+// ES 3.0 core functions above.
+fn glFenceSyncAPPLE(env: &mut Environment, condition: GLenum, flags: GLbitfield) -> GuestGLsync {
+    glFenceSync(env, condition, flags)
+}
+fn glIsSyncAPPLE(env: &mut Environment, sync: GuestGLsync) -> GLboolean {
+    glIsSync(env, sync)
+}
+fn glDeleteSyncAPPLE(env: &mut Environment, sync: GuestGLsync) {
+    glDeleteSync(env, sync)
+}
+fn glClientWaitSyncAPPLE(
+    env: &mut Environment,
+    sync: GuestGLsync,
+    flags: GLbitfield,
+    timeout_lo: GLuint,
+    timeout_hi: GLuint,
+) -> GLenum {
+    glClientWaitSync(env, sync, flags, timeout_lo, timeout_hi)
+}
+fn glWaitSyncAPPLE(
+    env: &mut Environment,
+    sync: GuestGLsync,
+    flags: GLbitfield,
+    timeout_lo: GLuint,
+    timeout_hi: GLuint,
+) {
+    glWaitSync(env, sync, flags, timeout_lo, timeout_hi)
+}
+fn glGetSyncivAPPLE(
+    env: &mut Environment,
+    sync: GuestGLsync,
+    pname: GLenum,
+    buf_size: GLsizei,
+    length: MutPtr<GLsizei>,
+    values: MutPtr<GLint>,
+) {
+    glGetSynciv(env, sync, pname, buf_size, length, values)
+}
+
+/// `void glGetInteger64vAPPLE(GLenum pname, GLint64 *params)`
+///
+/// GL_APPLE_sync adds this so `GL_MAX_SERVER_WAIT_TIMEOUT_APPLE` can be
+/// queried, but it accepts every `glGetIntegerv` pname too. Backends without
+/// a native `glGetInteger64v` are served by widening `glGetIntegerv`.
+fn glGetInteger64vAPPLE(env: &mut Environment, pname: GLenum, params: MutPtr<i64>) {
+    if params.is_null() || !has_current_ctx(env) {
+        return;
+    }
+    let native = with_ctx_and_mem(env, |gles, _mem| gles.supports_sync_objects());
+    if native {
+        glGetInteger64v(env, pname, params);
+        return;
+    }
+    if pname == GL_MAX_SERVER_WAIT_TIMEOUT {
+        // Emulated server waits never block, so there is no meaningful
+        // upper bound; 0 is an allowed value for this limit.
+        env.mem.write(params, 0i64);
+        return;
+    }
+    let count = get_integer_value_count(pname);
+    let tmp: MutPtr<GLint> = env
+        .mem
+        .alloc((count.max(16) * 4) as GuestUSize)
+        .cast();
+    glGetIntegerv(env, pname, tmp);
+    for i in 0..count {
+        let value: GLint = env.mem.read(tmp + i as GuestUSize);
+        env.mem.write(params + i as GuestUSize, value as i64);
+    }
+    env.mem.free(tmp.cast());
+}
+
+/// Number of values `glGetIntegerv(pname, ...)` writes, for the pnames that
+/// return more than one.
+fn get_integer_value_count(pname: GLenum) -> u32 {
+    match pname {
+        gles11::COMPRESSED_TEXTURE_FORMATS => SUPPORTED_COMPRESSED_TEXTURE_FORMATS.len() as u32,
+        0x0BA6 | 0x0BA7 | 0x0BA8 => 16, // MODELVIEW/PROJECTION/TEXTURE_MATRIX
+        0x0BA2 | 0x0C10 | 0x0C22 | 0x0C23 | 0x8005 | 0x0B00 | 0x0B03 | 0x0B66 | 0x0B53 => {
+            // VIEWPORT, SCISSOR_BOX, COLOR_CLEAR_VALUE, COLOR_WRITEMASK,
+            // BLEND_COLOR, CURRENT_COLOR, CURRENT_TEXTURE_COORDS, FOG_COLOR,
+            // LIGHT_MODEL_AMBIENT
+            4
+        }
+        0x0B02 => 3, // CURRENT_NORMAL
+        0x0D3A | 0x846D | 0x846E | 0x0B12 | 0x0B22 | 0x0B70 => {
+            // MAX_VIEWPORT_DIMS, ALIASED_POINT_SIZE_RANGE,
+            // ALIASED_LINE_WIDTH_RANGE, SMOOTH_POINT_SIZE_RANGE,
+            // SMOOTH_LINE_WIDTH_RANGE, DEPTH_RANGE
+            2
+        }
+        _ => 1,
+    }
 }
 
 // -- Misc --
@@ -8101,6 +8384,15 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(glDeleteSync(_)),
     export_c_func!(glClientWaitSync(_, _, _, _)),
     export_c_func!(glWaitSync(_, _, _, _)),
+    export_c_func!(glGetSynciv(_, _, _, _, _)),
+    // GL_APPLE_sync (iOS 6+)
+    export_c_func!(glFenceSyncAPPLE(_, _)),
+    export_c_func!(glIsSyncAPPLE(_)),
+    export_c_func!(glDeleteSyncAPPLE(_)),
+    export_c_func!(glClientWaitSyncAPPLE(_, _, _, _)),
+    export_c_func!(glWaitSyncAPPLE(_, _, _, _)),
+    export_c_func!(glGetSyncivAPPLE(_, _, _, _, _)),
+    export_c_func!(glGetInteger64vAPPLE(_, _)),
     export_c_func!(glGetStringi(_, _)),
     export_c_func!(glGetFragDataLocation(_, _)),
     export_c_func!(glProgramParameteri(_, _, _)),

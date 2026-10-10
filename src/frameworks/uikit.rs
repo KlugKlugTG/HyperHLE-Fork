@@ -25,6 +25,7 @@ const FUNCTIONS: FunctionExports = &[
     export_c_func!(UIAccessibilityIsGuidedAccessEnabled()),
 ];
 
+pub mod ns_paragraph_style;
 pub mod ui_accelerometer;
 pub mod ui_action_sheet;
 pub mod ui_activity;
@@ -920,6 +921,7 @@ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
     path: "/System/Library/Frameworks/UIKit.framework/UIKit",
     aliases: &[],
     class_exports: &[
+        ns_paragraph_style::CLASSES,
         ui_accelerometer::CLASSES,
         ui_action_sheet::CLASSES,
         ui_activity_indicator_view::CLASSES,

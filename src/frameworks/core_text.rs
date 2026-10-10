@@ -388,6 +388,74 @@ fn CTFontCreateWithName(
     alloc_font(env, font)
 }
 
+/// Resolve a `CTFontRef` to the `UIFont` backing it. Also accepts a bare
+/// `UIFont`, which some apps pass where a `CTFontRef` is expected.
+fn ui_font_for_ct_font(env: &mut Environment, font: CTFontRef) -> id {
+    if font == nil {
+        return nil;
+    }
+    if is_uifont(env, font) {
+        return font;
+    }
+    env.objc
+        .get_host_object(font)
+        .and_then(|host| host.as_any().downcast_ref::<CTFontHostObject>())
+        .map(|host| host.font)
+        .unwrap_or(nil)
+}
+
+/// `CTFontRef CTFontCreateCopyWithAttributes(CTFontRef font, CGFloat size,
+///     const CGAffineTransform *matrix, CTFontDescriptorRef attributes)`
+///
+/// Reference: <https://developer.apple.com/documentation/coretext/1509393-ctfontcreatecopywithattributes>
+///
+/// > Returns a new font with additional attributes based on the original
+/// > font. [...] `size`: The point size for the font reference. If 0.0 is
+/// > specified, the original font's size is preserved.
+///
+/// The original font's name is kept unless `attributes` carries a font name
+/// or family of its own, in which case those win (descriptor attributes
+/// override the original font's, as on iOS). Like the other CTFont
+/// constructors here the transform matrix is not applied: touchHLE's text
+/// renderer only supports untransformed fonts.
+fn CTFontCreateCopyWithAttributes(
+    env: &mut Environment,
+    font: CTFontRef,
+    size: CGFloat,
+    _matrix: ConstPtr<CGAffineTransform>,
+    attributes: CTFontDescriptorRef,
+) -> CTFontRef {
+    let original = ui_font_for_ct_font(env, font);
+    if original == nil {
+        return nil;
+    }
+    let size: CGFloat = if size > 0.0 {
+        size
+    } else {
+        msg![env; original pointSize]
+    };
+
+    let overrides_face = attributes != nil && {
+        let attrs = descriptor_attrs(env, attributes);
+        attrs != nil && {
+            let name_key = get_static_str(env, "NSFontNameAttribute");
+            let family_key = get_static_str(env, "NSFontFamilyAttribute");
+            let by_name: id = msg![env; attrs objectForKey:name_key];
+            let by_family: id = msg![env; attrs objectForKey:family_key];
+            by_name != nil || by_family != nil
+        }
+    };
+
+    let new_font: id = if overrides_face {
+        font_from_descriptor(env, attributes, size)
+    } else {
+        msg![env; original fontWithSize:size]
+    };
+    let new_font = if new_font == nil { original } else { new_font };
+    retain(env, new_font);
+    alloc_font(env, new_font)
+}
+
 fn CTFontGetSize(env: &mut Environment, font: CTFontRef) -> CGFloat {
     if font.is_null() {
         return 0.0;
@@ -1206,6 +1274,7 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CTFontCreateWithGraphicsFont(_, _, _, _)),
     export_c_func!(CTFontCreateWithName(_, _, _)),
     export_c_func!(CTFontCreateWithFontDescriptor(_, _, _)),
+    export_c_func!(CTFontCreateCopyWithAttributes(_, _, _, _)),
     export_c_func!(CTFontDescriptorCreateWithAttributes(_)),
     export_c_func!(CTFontDescriptorCreateMatchingFontDescriptors(_, _)),
     export_c_func!(CTFontManagerRegisterGraphicsFont(_, _)),
