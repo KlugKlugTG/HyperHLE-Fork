@@ -1891,13 +1891,6 @@ fn glDrawArrays(env: &mut Environment, mode: GLenum, first: GLint, count: GLsize
         return;
     }
     with_ctx_mem_and_shadow(env, |gles, mem, shadow| unsafe {
-        if crate::env_flag_cached!("TOUCHHLE_DEBUG_ES2_DRAW") {
-            use std::sync::atomic::{AtomicU32, Ordering};
-            static DRAW_ARRAY_COUNT: AtomicU32 = AtomicU32::new(0);
-            if DRAW_ARRAY_COUNT.fetch_add(1, Ordering::Relaxed) == 400 {
-                log_es2_draw_state_once(gles, shadow, mem);
-            }
-        }
         // DIAG (TOUCHHLE_TRACE_DRAW=1): dump the vertex-attribute + texture
         // state for the first several draws, to see whether the texcoord
         // attribute (A1 / loc 1) is actually fed and a texture is bound.
@@ -1905,7 +1898,7 @@ fn glDrawArrays(env: &mut Environment, mode: GLenum, first: GLint, count: GLsize
             use std::sync::atomic::{AtomicU32, Ordering};
             static DN: AtomicU32 = AtomicU32::new(0);
             let dn = DN.fetch_add(1, Ordering::Relaxed);
-            if dn < 12 || (dn >= 200 && dn % 40 == 0) {
+            if dn < 12 {
                 let mut prog: GLint = 0;
                 gles.GetIntegerv(0x8B8D /*CURRENT_PROGRAM*/, &mut prog);
                 let mut tex: GLint = 0;
@@ -1935,9 +1928,6 @@ fn glDrawArrays(env: &mut Environment, mode: GLenum, first: GLint, count: GLsize
                     "DRAW-DIAG #{} mode={:#x} count={} program={} tex2d={} minf={:#x} magf={:#x} wrapS={:#x} blend={} src={:#x} dst={:#x} depth={} dfunc={:#x} scissor={} vp={:?} attribs:",
                     dn, mode, count, prog, tex, minf, magf, wraps, blend_on, bsrc, bdst, depth_on, dfunc, scissor_on, vp
                 );
-                let mut color_mask = [0i32; 4];
-                gles.GetIntegerv(0x0C23 /*COLOR_WRITEMASK*/, color_mask.as_mut_ptr());
-                line.push_str(&format!(" first={} color_mask={:?}", first, color_mask));
                 for i in 0..(maxa.clamp(0, 16) as GLuint) {
                     let mut en: GLint = 0;
                     gles.GetVertexAttribiv(i, 0x8622 /*ARRAY_ENABLED*/, &mut en);
@@ -1959,19 +1949,7 @@ fn glDrawArrays(env: &mut Environment, mode: GLenum, first: GLint, count: GLsize
                     line.push_str(&format!(
                         " [#{} sz={} type={:#x} norm={} stride={} vbo={} off={:?}]",
                         i, sz, ty, norm, strd, buf, p
-                    )); let sample_len = match ty {
-                        0x1406 => (sz.clamp(0, 4) as usize) * 4,
-                        0x1401 => sz.clamp(0, 4) as usize,
-                        _ => 0,
-                    };
-                    if buf == 0 && !p.is_null() && sample_len > 0 && mem.is_host_ptr_in_guest_mem(p) {
-                        let guest_pointer = mem.host_ptr_to_guest_ptr(p);
-                        let sample = mem
-                            .get_bytes_fallible(guest_pointer, sample_len as u32)
-                            .unwrap_or(&[]);
-                        line.push_str(&format!(" data={:02x?}", sample));
-                    }
-
+                    ));
                 }
                 log!("{}", line);
                 // Read the ACTUAL texcoord values for attr #1 from the cached
@@ -4002,43 +3980,9 @@ fn glUniformMatrix4fv(
     transpose: GLboolean,
     value: ConstPtr<GLfloat>,
 ) {
-    let registers = *env.cpu.regs();
     with_ctx_and_mem(env, |gles, mem| unsafe {
         let n = (count as usize) * 16;
         let ptr = mem.ptr_at(value, n.try_into().unwrap_or(0));
-        if crate::env_flag_cached!("TOUCHHLE_TRACE_SINGULAR_MVP") && location >= 0 {
-            let mut matrix = [0.0_f32; 16];
-            std::ptr::copy_nonoverlapping(ptr, matrix.as_mut_ptr(), 16);
-            if matrix[0].abs() < 1e-10 || matrix[5].abs() < 1e-10 {
-                static SEEN: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-                let seen = SEEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                if seen < 16 {
-                    if registers[14] == 0xb919d {
-                        let read_stack_matrix = |offset: u32| {
-                            let address: ConstPtr<GLfloat> =
-                                Ptr::from_bits(registers[13].wrapping_add(offset));
-                            let source = mem.ptr_at(address, 16);
-                            let mut values = [0.0_f32; 16];
-                            std::ptr::copy_nonoverlapping(source, values.as_mut_ptr(), 16);
-                            values
-                        };
-                        log!(
-                            "SINGULAR-MVP #{} value_ptr={:#x} stack_mvp={:?} projection={:?} modelview={:?}",
-                            seen,
-                            value.to_bits(),
-                            read_stack_matrix(0x20),
-                            read_stack_matrix(0xa0),
-                            read_stack_matrix(0x60)
-                        );
-                    } else {
-                        log!(
-                            "SINGULAR-MVP #{} loc={} lr={:#x} pc={:#x} matrix={:?}",
-                            seen, location, registers[14], registers[15], matrix
-                        );
-                    }
-                }
-            }
-        }
         if crate::env_flag_cached!("TOUCHHLE_DEBUG_ES2_DRAW") && location >= 0 {
             static SEEN: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
             let seen = SEEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
