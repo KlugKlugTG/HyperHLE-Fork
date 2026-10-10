@@ -46,7 +46,8 @@ use crate::frameworks::foundation::{ns_string, ns_url, NSInteger, NSUInteger};
 use crate::frameworks::uikit::ui_device::UIDeviceOrientation;
 use crate::mem::MutPtr;
 use crate::objc::{
-    id, msg, msg_class, nil, objc_classes, release, retain, ClassExports, HostObject, NSZonePtr,
+    id, msg, msg_class, msg_super, nil, objc_classes, release, retain, ClassExports, HostObject,
+    NSZonePtr,
 };
 use crate::Environment;
 use std::collections::{HashMap, VecDeque};
@@ -126,6 +127,12 @@ pub struct State {
     /// Video decoders for players that are currently playing (see
     /// [super::movie_video]).
     videos: HashMap<id, MovieVideo>,
+    /// The `MPMoviePlayerController` owned by each live
+    /// `MPMoviePlayerViewController` (its `moviePlayer` property). Each value
+    /// is retained and released when the view controller is deallocated.
+    /// `UIViewController`'s host object is shared with every subclass, so the
+    /// link lives here rather than in a host-object field.
+    view_controller_players: HashMap<id, id>,
 }
 impl State {
     fn get(env: &mut Environment) -> &mut Self {
@@ -1236,21 +1243,38 @@ pub const CLASSES: ClassExports = objc_classes! {
     // https://developer.apple.com/documentation/mediaplayer/mpmovieplayerviewcontroller
     let player: id = msg_class![env; MPMoviePlayerController alloc];
     let player: id = msg![env; player initWithContentURL:url];
-    // Store as associated value via a dynamic property slot.
-    // We use setValue:forKey: with a special key.
-    let key = ns_string::get_static_str(env, "_touchHLE_moviePlayer");
-    () = msg![env; this setValue:player forKey:key];
-    release(env, player); // setValue:forKey: retains
+    // The +1 reference from alloc/init is owned by the view controller and
+    // given up in -dealloc. This deliberately isn't stored through KVC: an
+    // app subclass has no setter for a private key, so KVC would fall back
+    // to its never-freed dynamic storage (and warn about it).
+    if this != nil {
+        let old = State::get(env).view_controller_players.insert(this, player);
+        if let Some(old) = old {
+            release(env, old);
+        }
+    } else {
+        release(env, player);
+    }
 
     this
+}
+
+- (())dealloc {
+    if let Some(player) = State::get(env).view_controller_players.remove(&this) {
+        release(env, player);
+    }
+    msg_super![env; this dealloc]
 }
 
 // Apple docs: "The movie player controller object used to present the movie."
 // @property(nonatomic, readonly) MPMoviePlayerController *moviePlayer
 // https://developer.apple.com/documentation/mediaplayer/mpmovieplayerviewcontroller/1619165-movieplayer
 - (id)moviePlayer {
-    let key = ns_string::get_static_str(env, "_touchHLE_moviePlayer");
-    msg![env; this valueForKey:key]
+    State::get(env)
+        .view_controller_players
+        .get(&this)
+        .copied()
+        .unwrap_or(nil)
 }
 
 - (())viewDidLoad {
