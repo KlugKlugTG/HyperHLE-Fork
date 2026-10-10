@@ -2678,6 +2678,18 @@ unsafe fn texture_min_filter_is_default(gles: &mut dyn GLES, target: GLenum) -> 
     is_default_texture_min_filter(min_filter)
 }
 
+fn should_forward_texture_crop_rect(
+    is_native_es1: bool,
+    is_translator: bool,
+    force_translator_support: bool,
+) -> bool {
+    // Native ES1 drivers implement GL_OES_draw_texture's crop rectangle as
+    // per-texture state. The GLES1-on-GLES2 translator has a software
+    // implementation, but it remains opt-in until its crop-rectangle state
+    // and coordinate handling match the extension's per-texture semantics.
+    is_native_es1 || (is_translator && force_translator_support)
+}
+
 fn glTexParameteri(env: &mut Environment, target: GLenum, pname: GLenum, param: GLint) {
     {
         use std::sync::atomic::{AtomicBool, Ordering};
@@ -2720,11 +2732,16 @@ fn glTexParameterx(env: &mut Environment, target: GLenum, pname: GLenum, param: 
 }
 fn glTexParameteriv(env: &mut Environment, target: GLenum, pname: GLenum, params: ConstPtr<GLint>) {
     if pname == gles11::TEXTURE_CROP_RECT_OES {
-        if !crate::env_flag_cached!("TOUCHHLE_ENABLE_TEXTURE_CROP_RECT") {
-            return;
-        }
-
+        let force_translator_support =
+            crate::env_flag_cached!("TOUCHHLE_ENABLE_TEXTURE_CROP_RECT");
         with_ctx_and_mem(env, |gles, mem| unsafe {
+            if !should_forward_texture_crop_rect(
+                gles.is_native_es1(),
+                gles.is_translator(),
+                force_translator_support,
+            ) {
+                return;
+            }
             let params_ptr = mem.ptr_at(params, 4);
             {
                 use std::sync::atomic::{AtomicBool, Ordering};
@@ -2732,7 +2749,7 @@ fn glTexParameteriv(env: &mut Environment, target: GLenum, pname: GLenum, params
                 if !SEEN.swap(true, Ordering::Relaxed) {
                     let crop = from_raw_parts(params_ptr, 4);
                     log!(
-                        "TOUCHHLE_ENABLE_TEXTURE_CROP_RECT=1: first glTexParameteriv(GL_TEXTURE_CROP_RECT_OES) = [{}, {}, {}, {}]",
+                        "Forwarding first glTexParameteriv(GL_TEXTURE_CROP_RECT_OES) = [{}, {}, {}, {}]",
                         crop[0],
                         crop[1],
                         crop[2],
@@ -2766,11 +2783,16 @@ fn glTexParameterfv(
     params: ConstPtr<GLfloat>,
 ) {
     if pname == gles11::TEXTURE_CROP_RECT_OES {
-        if !crate::env_flag_cached!("TOUCHHLE_ENABLE_TEXTURE_CROP_RECT") {
-            return;
-        }
-
+        let force_translator_support =
+            crate::env_flag_cached!("TOUCHHLE_ENABLE_TEXTURE_CROP_RECT");
         with_ctx_and_mem(env, |gles, mem| unsafe {
+            if !should_forward_texture_crop_rect(
+                gles.is_native_es1(),
+                gles.is_translator(),
+                force_translator_support,
+            ) {
+                return;
+            }
             let params_ptr = mem.ptr_at(params, 4);
             {
                 use std::sync::atomic::{AtomicBool, Ordering};
@@ -2778,7 +2800,7 @@ fn glTexParameterfv(
                 if !SEEN.swap(true, Ordering::Relaxed) {
                     let crop = from_raw_parts(params_ptr, 4);
                     log!(
-                        "TOUCHHLE_ENABLE_TEXTURE_CROP_RECT=1: first glTexParameterfv(GL_TEXTURE_CROP_RECT_OES) = [{}, {}, {}, {}]",
+                        "Forwarding first glTexParameterfv(GL_TEXTURE_CROP_RECT_OES) = [{}, {}, {}, {}]",
                         crop[0],
                         crop[1],
                         crop[2],
@@ -2812,11 +2834,16 @@ fn glTexParameterxv(
     params: ConstPtr<GLfixed>,
 ) {
     if pname == gles11::TEXTURE_CROP_RECT_OES {
-        if !crate::env_flag_cached!("TOUCHHLE_ENABLE_TEXTURE_CROP_RECT") {
-            return;
-        }
-
+        let force_translator_support =
+            crate::env_flag_cached!("TOUCHHLE_ENABLE_TEXTURE_CROP_RECT");
         with_ctx_and_mem(env, |gles, mem| unsafe {
+            if !should_forward_texture_crop_rect(
+                gles.is_native_es1(),
+                gles.is_translator(),
+                force_translator_support,
+            ) {
+                return;
+            }
             let params_ptr = mem.ptr_at(params, 4);
             {
                 use std::sync::atomic::{AtomicBool, Ordering};
@@ -2824,7 +2851,7 @@ fn glTexParameterxv(
                 if !SEEN.swap(true, Ordering::Relaxed) {
                     let crop = from_raw_parts(params_ptr, 4);
                     log!(
-                        "TOUCHHLE_ENABLE_TEXTURE_CROP_RECT=1: first glTexParameterxv(GL_TEXTURE_CROP_RECT_OES) = [{}, {}, {}, {}]",
+                        "Forwarding first glTexParameterxv(GL_TEXTURE_CROP_RECT_OES) = [{}, {}, {}, {}]",
                         crop[0],
                         crop[1],
                         crop[2],
@@ -8804,5 +8831,28 @@ mod uniform_array_reconciliation_tests {
         let fixes = vec![("light".to_string(), 4u32)];
         let patched = rewrite_uniform_array_sizes(fragment, &fd, &fixes);
         assert!(patched.contains("light[4]"), "{patched}");
+    }
+}
+
+#[cfg(test)]
+mod texture_crop_rect_forwarding_tests {
+    use super::should_forward_texture_crop_rect;
+
+    #[test]
+    fn native_es1_always_forwards_crop_rect_state() {
+        assert!(should_forward_texture_crop_rect(true, false, false));
+        assert!(should_forward_texture_crop_rect(true, false, true));
+    }
+
+    #[test]
+    fn translator_crop_rect_state_stays_opt_in() {
+        assert!(!should_forward_texture_crop_rect(false, true, false));
+        assert!(should_forward_texture_crop_rect(false, true, true));
+    }
+
+    #[test]
+    fn backends_without_draw_texture_support_do_not_receive_crop_rect_state() {
+        assert!(!should_forward_texture_crop_rect(false, false, false));
+        assert!(!should_forward_texture_crop_rect(false, false, true));
     }
 }
