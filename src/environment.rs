@@ -47,11 +47,7 @@ pub type ThreadId = usize;
 fn configure_cut_the_rope_gles_backend(bundle_id: &str, options: &mut options::Options) -> bool {
     let is_cut_the_rope = bundle_id.starts_with("com.chillingo.cuttherope")
         || bundle_id.starts_with("com.zeptolab.ctrexperiments");
-    let env_backend_is_explicit = std::env::var("TOUCHHLE_FORCE_GLES1")
-        .ok()
-        .and_then(|value| crate::gles::GLESImplementation::from_short_name(&value).ok())
-        .is_some();
-    if !is_cut_the_rope || options.gles1_implementation.is_some() || env_backend_is_explicit {
+    if !is_cut_the_rope || options.gles1_implementation.is_some() {
         return false;
     }
 
@@ -525,10 +521,16 @@ impl Environment {
         let startup_time = Instant::now();
         let launched_bundle_id = bundle.bundle_identifier().to_owned();
 
-        if configure_cut_the_rope_gles_backend(&launched_bundle_id, &mut options) {
+        let gles1_backend_is_forced_by_env = std::env::var("TOUCHHLE_FORCE_GLES1")
+            .ok()
+            .and_then(|value| crate::gles::GLESImplementation::from_short_name(&value).ok())
+            .is_some();
+        if !gles1_backend_is_forced_by_env
+            && configure_cut_the_rope_gles_backend(&launched_bundle_id, &mut options)
+        {
             let implementation = options.gles1_implementation.unwrap();
             log!(
-                "Applying Cut the Rope GLES compatibility profile: using {} so GLES 2.0 vertex-attribute queries work alongside the fixed-function renderer. Override with an explicit --gles1= option.",
+                "Applying Cut the Rope GLES compatibility profile: selecting {} for ES1 EAGL requests so GLES 2.0 vertex-attribute queries work alongside the fixed-function renderer. Override with an explicit --gles1= option.",
                 implementation.description()
             );
         }
