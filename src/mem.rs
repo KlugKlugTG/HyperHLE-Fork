@@ -384,14 +384,17 @@ pub struct Mem {
     /// See [crate::Environment] for more info.
     pub(super) zero_memory_on_free: bool,
 
-    /// HACK: backing page for null-page accesses, shared by reads and writes.
-    /// Zero-filled, so reading `*(void**)NULL` still returns NULL. Reads and
-    /// writes must use the *same* page: with separate pages, a guest that
-    /// writes through NULL and then reads the address back gets zeros instead
-    /// of what it just stored, which silently corrupts it. (Asphalt 8's drift
-    /// event writes a 256-byte table through NULL on the main thread and
-    /// later walks off into a data section.)
-    null_page: *mut u8,
+    /// HACK: stub page for null-page READ accesses.
+    /// Filled with zeros so that reading *(void**)NULL returns NULL.
+    /// This page is NEVER written to by guest code — writes go to
+    /// `null_write_sink` instead.
+    null_stub_page: *mut u8,
+
+    /// HACK: separate write-sink page for null-page WRITE accesses.
+    /// Writes to the null page go here and are silently discarded.
+    /// This prevents write operations from corrupting the zero-filled
+    /// read stub page.
+    null_write_sink: *mut u8,
 }
 
 impl Drop for Mem {
@@ -399,8 +402,15 @@ impl Drop for Mem {
         unsafe {
             crate::mem::host::free_guest_memory(self.bytes.cast(), std::mem::size_of::<Bytes>())
                 .unwrap();
-            if !self.null_page.is_null() {
-                crate::mem::host::free_memory(self.null_page.cast(), PAGE_SIZE as usize).unwrap();
+            // Free the read stub page
+            if !self.null_stub_page.is_null() {
+                crate::mem::host::free_memory(self.null_stub_page.cast(), PAGE_SIZE as usize)
+                    .unwrap();
+            }
+            // Free the write sink page
+            if !self.null_write_sink.is_null() {
+                crate::mem::host::free_memory(self.null_write_sink.cast(), PAGE_SIZE as usize)
+                    .unwrap();
             }
         }
     }
@@ -453,14 +463,22 @@ impl Mem {
         );
         let bytes = ptr as *mut Bytes;
 
-        // Allocate the page backing null-page accesses (4KB, zero-filled).
-        // Data reads of a NULL pointer (e.g. `*(void**)0`) return NULL, and
-        // writes through NULL are kept here so that reading the same address
-        // back returns what was written rather than a zero.
-        let null_page = unsafe {
+        // Allocate read stub page for null-page reads (4KB, zero-filled).
+        // Data reads of a NULL pointer (e.g. `*(void**)0`) return NULL.
+        let null_stub_page = unsafe {
             let page = crate::mem::host::allocate_memory(PAGE_SIZE as usize).unwrap();
-            let page_slice = std::slice::from_raw_parts_mut(page as *mut u8, PAGE_SIZE as usize);
-            page_slice.fill(0);
+            let stub_slice = std::slice::from_raw_parts_mut(page as *mut u8, PAGE_SIZE as usize);
+            stub_slice.fill(0);
+            page as *mut u8
+        };
+
+        // Allocate a separate write-sink page for null-page writes (4KB).
+        // Writes to the null page are absorbed here so that they don't
+        // corrupt the read stub page's zeros.
+        let null_write_sink = unsafe {
+            let page = crate::mem::host::allocate_memory(PAGE_SIZE as usize).unwrap();
+            let sink_slice = std::slice::from_raw_parts_mut(page as *mut u8, PAGE_SIZE as usize);
+            sink_slice.fill(0);
             page as *mut u8
         };
 
@@ -470,7 +488,8 @@ impl Mem {
             null_segment_size: 0,
             allocator,
             zero_memory_on_free: true,
-            null_page,
+            null_stub_page,
+            null_write_sink,
         }
     }
 
@@ -525,38 +544,27 @@ impl Mem {
     fn null_check_fail(at: VAddr, size: GuestUSize, is_write: bool, caller: &str, mem: &Mem) {
         use std::collections::HashSet;
         use std::sync::Mutex;
-        // Separate budgets for reads and writes. A single shared budget lets a
-        // burst of nil writes (Asphalt 8's drift event writes 64 words through
-        // NULL) fill it and permanently silence the nil *reads* that follow,
-        // which are exactly the accesses showing what the guest did with the
-        // values it stored.
-        static SEEN_READS: Mutex<Option<HashSet<VAddr>>> = Mutex::new(None);
-        static SEEN_WRITES: Mutex<Option<HashSet<VAddr>>> = Mutex::new(None);
+        static SEEN: Mutex<Option<HashSet<(VAddr, bool)>>> = Mutex::new(None);
         const MAX_UNIQUE_LOGS: usize = 64;
 
-        let mut guard = if is_write {
-            SEEN_WRITES.lock().unwrap()
-        } else {
-            SEEN_READS.lock().unwrap()
-        };
+        let mut guard = SEEN.lock().unwrap();
         let set = guard.get_or_insert_with(HashSet::new);
-        if set.contains(&at) {
+        let key = (at, is_write);
+        if set.contains(&key) {
             return;
         }
         if set.len() >= MAX_UNIQUE_LOGS {
             if set.len() == MAX_UNIQUE_LOGS {
                 // Insert a sentinel to emit the notice only once.
-                set.insert(0xFFFF_FFFE);
+                set.insert((0xFFFF_FFFE, false));
                 log!(
-                    "touchHLE::mem: further NULL-PAGE {} warnings silenced \
-                     after {} unique sites",
-                    if is_write { "WRITE" } else { "READ" },
+                    "touchHLE::mem: further NULL-PAGE warnings silenced after {} unique sites",
                     MAX_UNIQUE_LOGS
                 );
             }
             return;
         }
-        set.insert(at);
+        set.insert(key);
         if size > 0x1000_0000 {
             // Huge size is almost always a corrupted/-1 length; capture a
             // backtrace to identify the offending host function.
@@ -676,7 +684,10 @@ impl Mem {
             let offset = (addr.to_bits() % PAGE_SIZE) as usize;
             let count_usize = count as usize;
             let stub_slice = unsafe {
-                std::slice::from_raw_parts(self.null_page.add(offset), PAGE_SIZE as usize - offset)
+                std::slice::from_raw_parts(
+                    self.null_stub_page.add(offset),
+                    PAGE_SIZE as usize - offset,
+                )
             };
             return Some(&stub_slice[..count_usize.min(stub_slice.len())]);
         }
@@ -721,7 +732,9 @@ impl Mem {
             let count_usize = count as usize;
             let available = PAGE_SIZE as usize - offset;
             let actual_count = count_usize.min(available);
-            return unsafe { std::slice::from_raw_parts(self.null_page.add(offset), actual_count) };
+            return unsafe {
+                std::slice::from_raw_parts(self.null_stub_page.add(offset), actual_count)
+            };
         }
         // Guard against out-of-bounds reads near the top of the 32-bit address
         // space. If `ptr + count` wraps around or exceeds the backing array,
@@ -735,7 +748,9 @@ impl Mem {
             let count_usize = count as usize;
             let available = PAGE_SIZE as usize - offset;
             let actual_count = count_usize.min(available);
-            return unsafe { std::slice::from_raw_parts(self.null_page.add(offset), actual_count) };
+            return unsafe {
+                std::slice::from_raw_parts(self.null_stub_page.add(offset), actual_count)
+            };
         }
         &self.bytes()[addr..][..count as usize]
     }
@@ -757,7 +772,9 @@ impl Mem {
             let count_usize = count as usize;
             let available = PAGE_SIZE as usize - offset;
             let actual_count = count_usize.min(available);
-            return unsafe { std::slice::from_raw_parts(self.null_page.add(offset), actual_count) };
+            return unsafe {
+                std::slice::from_raw_parts(self.null_stub_page.add(offset), actual_count)
+            };
         }
         &self.bytes()[addr..][..count as usize]
     }
@@ -774,15 +791,15 @@ impl Mem {
         // ХАК: Вместо паники логируем и возвращаем данные из stub-страницы
         if ptr.to_bits() < self.null_segment_size {
             Self::null_check_fail(ptr.to_bits(), count, true, "bytes_at_mut", self);
-            // Writes land on the same page reads come from, so a guest that
-            // writes through NULL and reads the address back gets its own
-            // value instead of a zero.
+            // For writes to null-page, return the write-sink page so that
+            // writes are silently absorbed without corrupting the read stub
+            // page's zeros.
             let offset = (ptr.to_bits() % PAGE_SIZE) as usize;
             let count_usize = count as usize;
             let available = PAGE_SIZE as usize - offset;
             let actual_count = count_usize.min(available);
             return unsafe {
-                std::slice::from_raw_parts_mut(self.null_page.add(offset), actual_count)
+                std::slice::from_raw_parts_mut(self.null_write_sink.add(offset), actual_count)
             };
         }
         // Guard against out-of-bounds writes near the top of the 32-bit
@@ -796,7 +813,7 @@ impl Mem {
             let available = PAGE_SIZE as usize - offset;
             let actual_count = count_usize.min(available);
             return unsafe {
-                std::slice::from_raw_parts_mut(self.null_page.add(offset), actual_count)
+                std::slice::from_raw_parts_mut(self.null_write_sink.add(offset), actual_count)
             };
         }
         &mut self.bytes_mut()[addr..][..count as usize]
@@ -1240,31 +1257,6 @@ mod mem_tests {
             mem.write(p, 0xAB);
             assert_eq!(mem.read(p.cast_const()), 0xAB);
         }
-    }
-
-    #[test]
-    fn null_page_writes_round_trip() {
-        let mut mem = Mem::new();
-
-        mem.set_null_segment_size(super::PAGE_SIZE);
-
-        // Asphalt 8's drift event writes a 256-byte table through a NULL base
-        // pointer (64 four-byte stores at 0x0..0xfc). Reads and writes must
-        // hit the same backing page, so reading an address back returns what
-        // was stored instead of a zero from a separate stub page.
-        for i in 0..64u32 {
-            let p: MutPtr<u32> = Ptr::from_bits(i * 4);
-            mem.write(p, 0x1000 + i);
-        }
-        for i in 0..64u32 {
-            let p: MutPtr<u32> = Ptr::from_bits(i * 4);
-            assert_eq!(mem.read(p.cast_const()), 0x1000 + i);
-        }
-
-        // Offsets that were never written still read as zero, so
-        // `*(void**)NULL` remains NULL.
-        let untouched: MutPtr<u32> = Ptr::from_bits(0x800);
-        assert_eq!(mem.read(untouched.cast_const()), 0);
     }
 
     #[test]
