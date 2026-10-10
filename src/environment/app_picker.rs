@@ -20,7 +20,9 @@ use crate::frameworks::uikit::ui_font::{
 use crate::frameworks::uikit::ui_graphics::{UIGraphicsPopContext, UIGraphicsPushContext};
 use crate::frameworks::uikit::ui_view::ui_control::ui_button::UIButtonTypeCustom;
 use crate::frameworks::uikit::ui_view::ui_control::{
-    UIControlEventTouchUpInside, UIControlEventValueChanged, UIControlStateNormal,
+    UIControlEventTouchCancel, UIControlEventTouchDown, UIControlEventTouchDragExit,
+    UIControlEventTouchUpInside, UIControlEventTouchUpOutside, UIControlEventValueChanged,
+    UIControlStateNormal,
 };
 use crate::fs::BundleData;
 use crate::image::Image;
@@ -49,6 +51,8 @@ pub fn post_arrow_key(dir: i8) {
 struct AppInfo {
     path: PathBuf,
     display_name: String,
+    /// `CFBundleIdentifier`, which also names the app's sandbox directory.
+    bundle_id: String,
     icon: Option<Image>,
     /// `NSString*`
     display_name_ns_string: Option<id>,
@@ -100,6 +104,7 @@ fn enumerate_apps(apps_dir: &Path) -> Result<Vec<AppInfo>, std::io::Error> {
                 };
 
                 let display_name = bundle.display_name().to_owned();
+                let bundle_id = bundle.bundle_identifier().to_owned();
                 let icon = match bundle.load_icon(&fs) {
                     Ok(icon) => Some(icon),
                     Err(e) => {
@@ -111,6 +116,7 @@ fn enumerate_apps(apps_dir: &Path) -> Result<Vec<AppInfo>, std::io::Error> {
                 apps.push(AppInfo {
                     path: app_path,
                     display_name,
+                    bundle_id,
                     icon,
                     display_name_ns_string: None,
                     icon_ui_image: None,
@@ -123,6 +129,97 @@ fn enumerate_apps(apps_dir: &Path) -> Result<Vec<AppInfo>, std::io::Error> {
 
     apps.sort_by_key(|app| app.display_name.to_uppercase());
     Ok(apps)
+}
+
+/// Deletes an app completely, like iOS does when an app and its data are
+/// removed: the `.app` folder or `.ipa` file in the apps directory, the
+/// sandbox folder (`Documents`, `Library`, ...) and the SQLite databases.
+fn delete_app(app: &AppInfo) -> Result<(), String> {
+    // The app goes first. If that fails, its data is kept.
+    let removed = if app.path.is_dir() {
+        std::fs::remove_dir_all(&app.path)
+    } else {
+        std::fs::remove_file(&app.path)
+    };
+    removed.map_err(|e| format!("couldn't delete {}: {}", app.path.display(), e))?;
+    echo!("Deleted app: {}", app.path.display());
+
+    // The app is already gone, so failures from here on are only logged.
+    if is_plain_name(&app.bundle_id) {
+        let sandbox_dir = paths::user_data_base_path()
+            .join(paths::SANDBOX_DIR)
+            .join(&app.bundle_id);
+        if sandbox_dir.exists() {
+            match std::fs::remove_dir_all(&sandbox_dir) {
+                Ok(()) => echo!("Deleted app data: {}", sandbox_dir.display()),
+                Err(e) => log!("Warning: couldn't delete {}: {}", sandbox_dir.display(), e),
+            }
+        }
+    } else {
+        log!(
+            "Warning: not deleting the data of {:?}, its bundle identifier is not a plain name",
+            app.bundle_id
+        );
+    }
+
+    // touchHLE names each database `{namespace}_{file name}`.
+    let sqlite_dir = paths::user_data_base_path().join(paths::SQLITE_DIR);
+    let prefix = format!("{}_", sqlite_namespace(&app.bundle_id));
+    if let Ok(entries) = std::fs::read_dir(&sqlite_dir) {
+        for entry in entries.flatten() {
+            let file_name = entry.file_name().to_string_lossy().into_owned();
+            let path = entry.path();
+            if file_name.starts_with(prefix.as_str()) && path.is_file() {
+                if let Err(e) = std::fs::remove_file(&path) {
+                    log!("Warning: couldn't delete {}: {}", path.display(), e);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The name that libsqlite3.rs uses for an app's databases.
+fn sqlite_namespace(bundle_id: &str) -> String {
+    bundle_id
+        .replace('/', "_")
+        .replace('\\', "_")
+        .replace(':', "_")
+        .replace(' ', "_")
+}
+
+/// Whether `name` is one ordinary path component, so that joining it onto a
+/// directory can't point somewhere else (e.g. `..` or `a/b`).
+fn is_plain_name(name: &str) -> bool {
+    let mut components = Path::new(name).components();
+    !name.is_empty()
+        && !name.contains('/')
+        && !name.contains('\\')
+        && matches!(
+            (components.next(), components.next()),
+            (Some(std::path::Component::Normal(_)), None)
+        )
+}
+
+#[cfg(test)]
+mod delete_app_tests {
+    use super::*;
+
+    #[test]
+    fn sqlite_namespace_matches_libsqlite3() {
+        assert_eq!(sqlite_namespace("com.example.game"), "com.example.game");
+        assert_eq!(sqlite_namespace("com.example.my game"), "com.example.my_game");
+    }
+
+    #[test]
+    fn only_plain_names_are_accepted() {
+        assert!(is_plain_name("com.example.game"));
+        assert!(!is_plain_name(""));
+        assert!(!is_plain_name("."));
+        assert!(!is_plain_name(".."));
+        assert!(!is_plain_name("a/b"));
+        assert!(!is_plain_name("a\\b"));
+    }
 }
 
 /// Watch state for detecting a newly copied-in .ipa file.
@@ -191,6 +288,16 @@ struct AppPickerDelegateHostObject {
     device_model_toggle: bool,
     device_model_scroll_up: bool,
     device_model_scroll_down: bool,
+    language_tag: Option<i32>,
+    language_toggle: bool,
+    language_scroll_up: bool,
+    language_scroll_down: bool,
+    /// Set when a finger goes down on an app icon (`UIControlEventTouchDown`).
+    icon_touch_down: id,
+    /// Set when a touch that started on an icon stops being a tap.
+    icon_touch_cancelled: bool,
+    delete_cancel: bool,
+    delete_confirm: bool,
 }
 impl HostObject for AppPickerDelegateHostObject {}
 
@@ -312,6 +419,31 @@ const CLASSES: ClassExports = objc_classes! {
 }
 - (())deviceModelScrollDown {
     env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).device_model_scroll_down = true;
+}
+- (())language:(id)sender { // UIButton*
+    let tag: NSInteger = msg![env; sender tag];
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).language_tag = Some(tag as i32);
+}
+- (())languageToggle {
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).language_toggle = true;
+}
+- (())languageScrollUp {
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).language_scroll_up = true;
+}
+- (())languageScrollDown {
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).language_scroll_down = true;
+}
+- (())iconTouchDown:(id)sender { // UIButton*
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).icon_touch_down = sender;
+}
+- (())iconTouchCancelled:(id)_sender { // UIButton*
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).icon_touch_cancelled = true;
+}
+- (())deleteCancel {
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).delete_cancel = true;
+}
+- (())deleteConfirm {
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).delete_confirm = true;
 }
 - (())openFileManager {
     // Assert (see above).
@@ -569,19 +701,26 @@ fn app_picker_inner(
     let mut quick_options_show_fps = false;
     let mut quick_options_trace_gl_errors = false;
     let mut quick_options_force_composition_override: Option<bool> = None;
-    let mut quick_options_device_tag: Option<i32> = None;
-    let mut quick_options_device_model_open = false;
-    let mut quick_options_device_model_scroll: isize = 0;
+    let mut device_state = DropdownState::default();
+    let mut language_state = DropdownState::default();
 
     update_scale_hack_buttons(env, &settings.scale_hack_buttons, quick_options_scale_hack);
     update_orientation_buttons(env, &settings.orientation_buttons, quick_options_orientation);
-    update_device_model_menu(
+    refresh_dropdown(
         env,
-        &settings.device_model_items,
-        settings.device_model_thumb,
-        quick_options_device_tag,
-        quick_options_device_model_scroll,
+        &settings.device_dropdown,
+        &device_model_label_for_tag(device_state.selected),
+        &device_state,
     );
+    refresh_dropdown(
+        env,
+        &settings.language_dropdown,
+        &language_label_for_tag(language_state.selected),
+        &language_state,
+    );
+
+    // Built after the settings screen, so that it is drawn on top of it.
+    let delete_dialog = make_delete_dialog(env, delegate, main_view, app_frame.size);
 
     () = msg![env; window makeKeyAndVisible];
 
@@ -592,6 +731,13 @@ fn app_picker_inner(
     // If the user taps the "+" tile, this records the .ipa files that existed
     // at that moment; once a new one shows up, the app list is re-enumerated.
     let mut awaited_ipa: Option<IpaWatch> = None;
+    // The app icon under a finger that may turn into a long press, and when
+    // the finger went down.
+    let mut press: Option<(id, Instant)> = None;
+    // The icon of the last long press. The release that ends it is not a tap.
+    let mut long_pressed_icon: Option<id> = None;
+    // Index of the app whose delete dialog is open, if any.
+    let mut pending_delete: Option<usize> = None;
 
     let main_run_loop: id = msg_class![env; NSRunLoop mainRunLoop];
     // If an app is picked, this loop returns. If the user quits touchHLE, the
@@ -609,7 +755,7 @@ fn app_picker_inner(
             } else {
                 current_page.wrapping_sub(1)
             };
-            if !settings_open && new_page < grid.pages.len() {
+            if !settings_open && pending_delete.is_none() && new_page < grid.pages.len() {
                 slide_to_page(
                     env,
                     main_run_loop,
@@ -622,9 +768,52 @@ fn app_picker_inner(
                 current_page = new_page;
             }
         }
-        let host_obj = env.objc.borrow_mut::<AppPickerDelegateHostObject>(delegate);
-        let icon_tapped = std::mem::take(&mut host_obj.icon_tapped);
+        let (touch_down_icon, touch_cancelled, icon_tapped) = {
+            let host_obj = env.objc.borrow_mut::<AppPickerDelegateHostObject>(delegate);
+            (
+                std::mem::take(&mut host_obj.icon_touch_down),
+                std::mem::take(&mut host_obj.icon_touch_cancelled),
+                std::mem::take(&mut host_obj.icon_tapped),
+            )
+        };
+        if touch_down_icon != nil {
+            press = Some((touch_down_icon, Instant::now()));
+            long_pressed_icon = None;
+        }
+        if touch_cancelled {
+            press = None;
+        }
+        // Holding an app icon long enough opens its delete dialog, as in the
+        // iOS icon menu. The dialog is shown while the finger is still down.
+        if let Some((button, pressed_at)) = press {
+            if pressed_at.elapsed() >= APP_LONG_PRESS_DURATION {
+                press = None;
+                let app_idx = match icon_grid_stuff
+                    .as_ref()
+                    .and_then(|grid| grid.icon_map.get(&button))
+                {
+                    Some(&TappedIcon::App(app_idx)) => Some(app_idx),
+                    _ => None,
+                };
+                let name = app_idx.and_then(|app_idx| {
+                    apps.as_ref()
+                        .ok()
+                        .and_then(|list| list.get(app_idx))
+                        .map(|app| app.display_name.clone())
+                });
+                if let (Some(app_idx), Some(name)) = (app_idx, name) {
+                    long_pressed_icon = Some(button);
+                    pending_delete = Some(app_idx);
+                    show_delete_dialog(env, &delete_dialog, &name);
+                }
+            }
+        }
         if icon_tapped != nil {
+            press = None;
+            // The release that ends a long press is not a tap.
+            if long_pressed_icon.take() == Some(icon_tapped) {
+                continue;
+            }
             match icon_grid_stuff.as_ref().unwrap().icon_map.get(&icon_tapped) {
                 Some(&TappedIcon::App(app_idx)) => {
                     let app_path = apps.as_ref().unwrap()[app_idx].path.clone();
@@ -673,6 +862,7 @@ fn app_picker_inner(
             }
             continue;
         }
+        let host_obj = env.objc.borrow_mut::<AppPickerDelegateHostObject>(delegate);
         if std::mem::take(&mut host_obj.add_ipa) {
             // Snapshot the .ipa files that exist right now, so that when the
             // system file picker finishes, we can detect the new file and
@@ -750,72 +940,92 @@ fn app_picker_inner(
                 quick_options_orientation,
             );
         } else if let Some(tag) = std::mem::take(&mut host_obj.device_model_tag) {
-            quick_options_device_tag = Some(tag);
-            quick_options_device_model_open = false;
-            set_device_model_menu_open(
+            device_state.selected = Some(tag);
+            device_state.open = false;
+            refresh_dropdown(
                 env,
-                settings.device_model_menu,
-                settings.device_model_dimmer,
-                false,
+                &settings.device_dropdown,
+                &device_model_label_for_tag(device_state.selected),
+                &device_state,
             );
-            update_device_model_menu(
-                env,
-                &settings.device_model_items,
-                settings.device_model_thumb,
-                quick_options_device_tag,
-                quick_options_device_model_scroll,
-            );
-            let title = format!("{} ▼", device_model_label_for_tag(quick_options_device_tag));
-            let title_ns = ns_string::from_rust_string(env, title);
-            () = msg![env; (settings.device_model_btn)
-                setTitle:title_ns forState:UIControlStateNormal];
-            release(env, title_ns);
         } else if std::mem::take(&mut host_obj.device_model_toggle) {
-            quick_options_device_model_open = !quick_options_device_model_open;
-            set_device_model_menu_open(
+            device_state.open = !device_state.open;
+            refresh_dropdown(
                 env,
-                settings.device_model_menu,
-                settings.device_model_dimmer,
-                quick_options_device_model_open,
+                &settings.device_dropdown,
+                &device_model_label_for_tag(device_state.selected),
+                &device_state,
             );
-            let arrow = if quick_options_device_model_open {
-                "▲"
-            } else {
-                "▼"
-            };
-            let title = format!(
-                "{} {}",
-                device_model_label_for_tag(quick_options_device_tag),
-                arrow
-            );
-            let title_ns = ns_string::from_rust_string(env, title);
-            () = msg![env; (settings.device_model_btn)
-                setTitle:title_ns forState:UIControlStateNormal];
-            release(env, title_ns);
         } else if std::mem::take(&mut host_obj.device_model_scroll_up) {
-            if quick_options_device_model_scroll > 0 {
-                quick_options_device_model_scroll -= 1;
-            }
-            update_device_model_menu(
+            device_state.scroll = (device_state.scroll - 1).max(0);
+            refresh_dropdown(
                 env,
-                &settings.device_model_items,
-                settings.device_model_thumb,
-                quick_options_device_tag,
-                quick_options_device_model_scroll,
+                &settings.device_dropdown,
+                &device_model_label_for_tag(device_state.selected),
+                &device_state,
             );
         } else if std::mem::take(&mut host_obj.device_model_scroll_down) {
-            let max_scroll = (settings.device_model_items.len() as isize)
-                .saturating_sub(DEVICE_MENU_VISIBLE_ITEMS as isize);
-            if quick_options_device_model_scroll < max_scroll {
-                quick_options_device_model_scroll += 1;
-            }
-            update_device_model_menu(
+            device_state.scroll = (device_state.scroll + 1)
+                .min(dropdown_max_scroll(settings.device_dropdown.items.len()));
+            refresh_dropdown(
                 env,
-                &settings.device_model_items,
-                settings.device_model_thumb,
-                quick_options_device_tag,
-                quick_options_device_model_scroll,
+                &settings.device_dropdown,
+                &device_model_label_for_tag(device_state.selected),
+                &device_state,
             );
+        } else if let Some(tag) = std::mem::take(&mut host_obj.language_tag) {
+            language_state.selected = Some(tag);
+            language_state.open = false;
+            refresh_dropdown(
+                env,
+                &settings.language_dropdown,
+                &language_label_for_tag(language_state.selected),
+                &language_state,
+            );
+        } else if std::mem::take(&mut host_obj.language_toggle) {
+            language_state.open = !language_state.open;
+            refresh_dropdown(
+                env,
+                &settings.language_dropdown,
+                &language_label_for_tag(language_state.selected),
+                &language_state,
+            );
+        } else if std::mem::take(&mut host_obj.language_scroll_up) {
+            language_state.scroll = (language_state.scroll - 1).max(0);
+            refresh_dropdown(
+                env,
+                &settings.language_dropdown,
+                &language_label_for_tag(language_state.selected),
+                &language_state,
+            );
+        } else if std::mem::take(&mut host_obj.language_scroll_down) {
+            language_state.scroll = (language_state.scroll + 1)
+                .min(dropdown_max_scroll(settings.language_dropdown.items.len()));
+            refresh_dropdown(
+                env,
+                &settings.language_dropdown,
+                &language_label_for_tag(language_state.selected),
+                &language_state,
+            );
+        } else if std::mem::take(&mut host_obj.delete_cancel) {
+            pending_delete = None;
+            hide_delete_dialog(env, &delete_dialog);
+        } else if std::mem::take(&mut host_obj.delete_confirm) {
+            if let Some(app_idx) = pending_delete.take() {
+                hide_delete_dialog(env, &delete_dialog);
+                let result = match apps.as_ref().ok().and_then(|list| list.get(app_idx)) {
+                    Some(app) => delete_app(app),
+                    None => Err("the app is no longer in the list".to_string()),
+                };
+                match result {
+                    Ok(()) => {
+                        if let Some(grid) = icon_grid_stuff.as_mut() {
+                            reload_app_grid(env, grid, &mut apps, &mut current_page, &apps_dir);
+                        }
+                    }
+                    Err(e) => echo!("Couldn't delete app: {}", e),
+                }
+            }
         } else if let Some(enabled) = std::mem::take(&mut host_obj.analog_stick_tilt_controls) {
             quick_options_analog_stick_tilt_controls = enabled;
         } else if let Some(enabled) = std::mem::take(&mut host_obj.network) {
@@ -852,17 +1062,8 @@ fn app_picker_inner(
                     .is_some_and(|t| t.elapsed() >= IPA_COPY_SETTLE_TIME)
             {
                 watch.dirty = false;
-                if let Ok(new_apps) = enumerate_apps(&apps_dir) {
-                    if let Some(grid) = icon_grid_stuff.as_mut() {
-                        let mut new_apps = new_apps;
-                        grid.pages = compute_pages(grid.containers[0].cells.len(), new_apps.len());
-                        if current_page >= grid.pages.len() {
-                            current_page = grid.pages.len() - 1;
-                        }
-                        let visible = grid.visible;
-                        update_icon_grid(env, grid, &mut new_apps, current_page, visible);
-                        apps = Ok(new_apps);
-                    }
+                if let Some(grid) = icon_grid_stuff.as_mut() {
+                    reload_app_grid(env, grid, &mut apps, &mut current_page, &apps_dir);
                 }
             }
         }
@@ -916,7 +1117,7 @@ fn app_picker_inner(
     // `--gles-native`/`--no-gles-native` in the options files.
     option_args.push(quick_options_gles_native_argument(quick_options_gles_native).to_string());
 
-    if let Some(tag) = quick_options_device_tag {
+    if let Some(tag) = device_state.selected {
         let tag = tag as NSInteger;
         if tag == DEVICE_TAG_DEFAULT {
             // No override — fall back to the app bundle / built-in default.
@@ -925,6 +1126,10 @@ fn app_picker_inner(
         } else if let Some(family) = crate::window::DeviceFamily::ALL_SELECTABLE.get(tag as usize) {
             option_args.push(format!("--device-family={}", family.option_name()));
         }
+    }
+
+    if let Some(arg) = language_argument(language_state.selected) {
+        option_args.push(arg);
     }
 
     // Return the environment so some parts of it can be salvaged.
@@ -1036,6 +1241,8 @@ fn make_icon_grid(
     };
 
     let icon_tapped_sel = env.objc.lookup_selector("iconTapped:").unwrap();
+    let icon_touch_down_sel = env.objc.lookup_selector("iconTouchDown:").unwrap();
+    let icon_touch_cancelled_sel = env.objc.lookup_selector("iconTouchCancelled:").unwrap();
 
     let mut containers = Vec::new();
     for container_idx in 0..2 {
@@ -1087,6 +1294,16 @@ fn make_icon_grid(
             () = msg![env; icon_button addTarget:delegate
                                           action:icon_tapped_sel
                                 forControlEvents:UIControlEventTouchUpInside];
+            // Finger-down starts a possible long press; leaving the icon or
+            // lifting the finger outside it cancels that.
+            () = msg![env; icon_button addTarget:delegate
+                                          action:icon_touch_down_sel
+                                forControlEvents:UIControlEventTouchDown];
+            () = msg![env; icon_button addTarget:delegate
+                                          action:icon_touch_cancelled_sel
+                                forControlEvents:(UIControlEventTouchDragExit
+                                    | UIControlEventTouchUpOutside
+                                    | UIControlEventTouchCancel)];
             () = msg![env; container addSubview:icon_button];
 
             // Rounding is needed here to avoid blurry text.
@@ -1438,6 +1655,8 @@ const APP_LAUNCH_BLACK_HOLD_DURATION: Duration = Duration::from_millis(250);
 const APP_LAUNCH_ICON_SIZE: CGFloat = 120.0;
 /// Duration of the settings screen slide (iOS-style push from the right).
 const SETTINGS_SLIDE_DURATION: Duration = Duration::from_millis(350);
+/// How long an app icon must be held down before its delete dialog opens.
+const APP_LONG_PRESS_DURATION: Duration = Duration::from_millis(500);
 
 /// Runs the main run loop for `duration`, calling `step` with the linear
 /// progress (0.0 to 1.0) before every iteration. Taps delivered while the
@@ -1696,6 +1915,8 @@ enum SettingsRow {
     Segmented(&'static str, &'static [(&'static str, &'static str)]),
     /// The "Device model" row (its dropdown is a root-level overlay).
     DeviceDropdown,
+    /// The "Language" row (its dropdown is a root-level overlay).
+    LanguageDropdown,
     /// Label and switch: (label, selector, initial state, enabled).
     Toggle(&'static str, &'static str, bool, bool),
 }
@@ -1708,8 +1929,8 @@ const SETTINGS_ROW_HEIGHT: CGFloat = 44.0;
 const SETTINGS_SEGMENT_ROW_HEIGHT: CGFloat = 58.0;
 const SETTINGS_HEADER_HEIGHT: CGFloat = 28.0;
 const SETTINGS_SECTION_GAP: CGFloat = 10.0;
-/// Width of the device-model dropdown (list plus scrollbar).
-const SETTINGS_DEVICE_MENU_WIDTH: CGFloat = 280.0;
+/// Width of the dropdown lists (list plus scrollbar).
+const SETTINGS_DROPDOWN_MENU_WIDTH: CGFloat = 280.0;
 
 fn settings_row_height(row: &SettingsRow) -> CGFloat {
     match row {
@@ -1724,30 +1945,79 @@ struct SettingsStuff {
     main_view: id,
     scale_hack_buttons: [id; 5],
     orientation_buttons: [id; 4],
-    /// The button in the "Device model" row. Its title shows the selection.
-    device_model_btn: id,
-    /// The dropdown list (hidden until the button is tapped).
-    device_model_menu: id,
-    /// Dims the screen behind the open dropdown; tapping it closes the list.
-    device_model_dimmer: id,
-    /// One button per choice in `device_model_entries()` order.
-    device_model_items: Vec<id>,
-    /// The scrollbar thumb shown alongside the dropdown list.
-    device_model_thumb: id,
+    /// The "Device model" dropdown.
+    device_dropdown: SettingsDropdown,
+    /// The "Language" dropdown.
+    language_dropdown: SettingsDropdown,
 }
 
-/// Views created by [make_device_model_dropdown].
-struct DeviceModelDropdown {
+/// The views of one settings dropdown: a button in a settings row, and a list
+/// that opens over the whole Settings screen when the button is tapped.
+struct SettingsDropdown {
+    /// The button in the settings row. Its title shows the selection.
     button: id,
+    /// The list (hidden until the button is tapped).
     menu: id,
+    /// Dims the screen behind the open list; tapping it closes the list.
     dimmer: id,
+    /// One button per choice, in the order of the spec's entries.
     items: Vec<id>,
+    /// The scrollbar thumb shown alongside the list.
     thumb: id,
 }
 
-fn set_device_model_menu_open(env: &mut Environment, menu: id, dimmer: id, open: bool) {
+/// What a settings dropdown offers, and which delegate selectors its buttons
+/// call (the `&'static str` names are looked up when the views are built).
+struct DropdownSpec {
+    /// `(title, tag)` for each choice, in display order.
+    entries: Vec<(String, NSInteger)>,
+    toggle_selector: &'static str,
+    item_selector: &'static str,
+    scroll_up_selector: &'static str,
+    scroll_down_selector: &'static str,
+}
+
+/// The state that the picker keeps for one settings dropdown.
+#[derive(Default)]
+struct DropdownState {
+    /// The tag of the chosen entry, or `None` for the default.
+    selected: Option<i32>,
+    /// Whether the list is currently open.
+    open: bool,
+    /// Index of the first visible entry in the list.
+    scroll: isize,
+}
+
+fn set_dropdown_open(env: &mut Environment, menu: id, dimmer: id, open: bool) {
     () = msg![env; menu setHidden:(!open)];
     () = msg![env; dimmer setHidden:(!open)];
+}
+
+/// Makes the dropdown match `state`: the list open or closed, the selection
+/// highlighted, the list scrolled, and the button titled with `label`.
+fn refresh_dropdown(
+    env: &mut Environment,
+    dropdown: &SettingsDropdown,
+    label: &str,
+    state: &DropdownState,
+) {
+    set_dropdown_open(env, dropdown.menu, dropdown.dimmer, state.open);
+    update_dropdown_menu(
+        env,
+        &dropdown.items,
+        dropdown.thumb,
+        state.selected,
+        state.scroll,
+    );
+    let arrow = if state.open { "▲" } else { "▼" };
+    let title = ns_string::from_rust_string(env, format!("{label} {arrow}"));
+    () = msg![env; (dropdown.button) setTitle:title forState:UIControlStateNormal];
+    release(env, title);
+}
+
+/// The largest scroll offset for a list of `item_count` entries.
+fn dropdown_max_scroll(item_count: usize) -> isize {
+    (item_count as isize).saturating_sub(DEVICE_MENU_VISIBLE_ITEMS as isize)
 }
 
 /// Builds the Settings screen: a navigation bar with a "Done" button, and a
@@ -1769,10 +2039,6 @@ fn setup_settings(
     // strip above the application frame. Nothing is clipped by the emulator,
     // so scrolled content must not be able to show up in that strip.
     let status_offset = app_frame.origin.y;
-    let root_size = CGSize {
-        width,
-        height: height + status_offset,
-    };
 
     let grouped_bg = ui_color(env, 0.937, 0.937, 0.957, 1.0);
     let settings_view = new_view(
@@ -1902,7 +2168,13 @@ fn setup_settings(
             SettingsRow::Toggle("Trace GL errors", "traceGLErrors:", false, true),
         ],
     ));
-    sections.push(("DEVICE", vec![SettingsRow::DeviceDropdown]));
+    sections.push((
+        "DEVICE",
+        vec![
+            SettingsRow::DeviceDropdown,
+            SettingsRow::LanguageDropdown,
+        ],
+    ));
     sections.push((
         "EMULATION",
         vec![
@@ -1921,7 +2193,13 @@ fn setup_settings(
     let side = SETTINGS_ROW_SIDE_INSET;
     let mut scale_hack_buttons: Vec<id> = Vec::new();
     let mut orientation_buttons: Vec<id> = Vec::new();
-    let mut dropdown: Option<DeviceModelDropdown> = None;
+    let mut device_dropdown: Option<SettingsDropdown> = None;
+    let mut language_dropdown: Option<SettingsDropdown> = None;
+    // Where the lists of both dropdowns open: just under the navigation bar.
+    let menu_origin = CGPoint {
+        x: (width - SETTINGS_DROPDOWN_MENU_WIDTH) / 2.0,
+        y: SETTINGS_NAV_BAR_HEIGHT + status_offset + 12.0,
+    };
 
     let mut y: CGFloat = SETTINGS_TOP_PADDING;
     for (header, rows) in sections {
@@ -1983,18 +2261,34 @@ fn setup_settings(
                         black,
                     );
                     () = msg![env; group addSubview:label_view];
-                    let menu_origin = CGPoint {
-                        x: (width - SETTINGS_DEVICE_MENU_WIDTH) / 2.0,
-                        y: SETTINGS_NAV_BAR_HEIGHT + status_offset + 12.0,
-                    };
-                    dropdown = Some(make_device_model_dropdown(
+                    device_dropdown = Some(make_settings_dropdown(
                         env,
                         delegate,
                         group,
                         settings_view,
                         rect(inner_width - side - 170.0, row_y + 7.0, 170.0, 30.0),
                         menu_origin,
-                        root_size,
+                        device_model_dropdown_spec(),
+                    ));
+                }
+                SettingsRow::LanguageDropdown => {
+                    let label_view = new_label(
+                        env,
+                        rect(side, row_y + 11.0, 150.0, 22.0),
+                        "Language",
+                        16.0,
+                        false,
+                        black,
+                    );
+                    () = msg![env; group addSubview:label_view];
+                    language_dropdown = Some(make_settings_dropdown(
+                        env,
+                        delegate,
+                        group,
+                        settings_view,
+                        rect(inner_width - side - 170.0, row_y + 7.0, 170.0, 30.0),
+                        menu_origin,
+                        language_dropdown_spec(),
                     ));
                 }
                 SettingsRow::Toggle(label_text, selector, default_state, enabled) => {
@@ -2063,16 +2357,14 @@ fn setup_settings(
 
     () = msg![env; scroll setContentSize:(CGSize { width, height: y + 24.0 })];
 
-    let dropdown = dropdown.expect("the settings screen always has a device model row");
     SettingsStuff {
         main_view: settings_view,
         scale_hack_buttons: scale_hack_buttons.try_into().unwrap(),
         orientation_buttons: orientation_buttons.try_into().unwrap(),
-        device_model_btn: dropdown.button,
-        device_model_menu: dropdown.menu,
-        device_model_dimmer: dropdown.dimmer,
-        device_model_items: dropdown.items,
-        device_model_thumb: dropdown.thumb,
+        device_dropdown: device_dropdown
+            .expect("the settings screen always has a device model row"),
+        language_dropdown: language_dropdown
+            .expect("the settings screen always has a language row"),
     }
 }
 
@@ -2103,6 +2395,72 @@ fn device_model_entries() -> Vec<(String, NSInteger)> {
     entries
 }
 
+/// The spec of the "Device model" dropdown.
+fn device_model_dropdown_spec() -> DropdownSpec {
+    DropdownSpec {
+        entries: device_model_entries(),
+        toggle_selector: "deviceModelToggle",
+        item_selector: "deviceModel:",
+        scroll_up_selector: "deviceModelScrollUp",
+        scroll_down_selector: "deviceModelScrollDown",
+    }
+}
+
+/// The languages offered by the "Language" dropdown, as `(title, value)`.
+/// `value` is what `--preferred-languages=` gets. `None` means "Auto": no
+/// override, so the game sees the host's own language settings. Only codes
+/// that ns_bundle.rs maps to `.lproj` folders are listed, with English as a
+/// fallback.
+const LANGUAGE_CHOICES: &[(&str, Option<&str>)] = &[
+    ("Auto", None),
+    ("English", Some("en")),
+    ("Русский", Some("ru,en")),
+    ("Deutsch", Some("de,en")),
+    ("Français", Some("fr,en")),
+    ("Español", Some("es,en")),
+    ("Italiano", Some("it,en")),
+    ("Português", Some("pt,en")),
+    ("Nederlands", Some("nl,en")),
+    ("Svenska", Some("sv,en")),
+    ("Dansk", Some("da,en")),
+    ("Norsk", Some("no,en")),
+    ("Suomi", Some("fi,en")),
+    ("Türkçe", Some("tr,en")),
+    ("日本語", Some("ja,en")),
+    ("简体中文", Some("zh-Hans,zh,en")),
+];
+
+/// The spec of the "Language" dropdown.
+fn language_dropdown_spec() -> DropdownSpec {
+    DropdownSpec {
+        entries: LANGUAGE_CHOICES
+            .iter()
+            .enumerate()
+            .map(|(idx, (title, _))| (title.to_string(), idx as NSInteger))
+            .collect(),
+        toggle_selector: "languageToggle",
+        item_selector: "language:",
+        scroll_up_selector: "languageScrollUp",
+        scroll_down_selector: "languageScrollDown",
+    }
+}
+
+/// The button title of the language dropdown for the chosen tag.
+fn language_label_for_tag(tag: Option<i32>) -> String {
+    let idx = tag.unwrap_or(0) as usize;
+    LANGUAGE_CHOICES
+        .get(idx)
+        .map_or("Auto", |choice| choice.0)
+        .to_string()
+}
+
+/// The launch argument for the chosen language, or `None` for "Auto".
+fn language_argument(tag: Option<i32>) -> Option<String> {
+    let idx = tag?;
+    let &(_, codes) = LANGUAGE_CHOICES.get(idx as usize)?;
+    codes.map(|codes| format!("--preferred-languages={codes}"))
+}
+
 /// Human-readable label for a device-model choice tag, used as the dropdown
 /// button title.
 fn device_model_label_for_tag(tag: Option<i32>) -> String {
@@ -2122,7 +2480,7 @@ fn device_model_label_for_tag(tag: Option<i32>) -> String {
 /// (each row is `DEVICE_MENU_ITEM_HEIGHT` tall); rows outside the visible
 /// window are hidden. The currently-selected item is highlighted in magenta,
 /// the rest in dark gray. The scrollbar thumb is moved to reflect `scroll`.
-fn update_device_model_menu(
+fn update_dropdown_menu(
     env: &mut Environment,
     items: &[id],
     thumb: id,
@@ -2178,25 +2536,35 @@ fn update_device_model_menu(
     () = msg![env; thumb setFrame:thumb_frame];
 }
 
-/// Build the "Device model" dropdown: a toggle button in the settings row,
-/// plus a (initially hidden) list that is shown as an overlay on the whole
-/// Settings screen, with a dimmer behind it. The list contains a
-/// vertically-scrollable list of every choice from [device_model_entries], a
-/// scrollbar track + thumb, and transparent up/down scroll arrows. Each list
-/// item is wired to the delegate's `deviceModel:` selector and tagged with its
-/// choice; the arrows fire `deviceModelScrollUp` / `deviceModelScrollDown`.
-fn make_device_model_dropdown(
+/// Builds a settings dropdown: a button in a settings row, whose title shows
+/// the selection, plus a list that is shown as an overlay on the whole Settings
+/// screen, with a dimmer behind it. The list holds one button per entry of
+/// `spec`, a scrollbar track and thumb, and transparent up/down halves that
+/// scroll it. The list starts out hidden, and its titles are set by
+/// [refresh_dropdown].
+fn make_settings_dropdown(
     env: &mut Environment,
     delegate: id,
     group_view: id,
     root_view: id,
     button_frame: CGRect,
     menu_origin: CGPoint,
-    root_size: CGSize,
-) -> DeviceModelDropdown {
+    spec: DropdownSpec,
+) -> SettingsDropdown {
+    let DropdownSpec {
+        entries,
+        toggle_selector,
+        item_selector,
+        scroll_up_selector,
+        scroll_down_selector,
+    } = spec;
     let list_width: CGFloat = 256.0;
     let scrollbar_width: CGFloat = 24.0;
     let dark_gray: id = msg_class![env; UIColor darkGrayColor];
+    let root_size: CGSize = {
+        let bounds: CGRect = msg![env; root_view bounds];
+        bounds.size
+    };
 
     // Dimmer covering the whole Settings screen while the list is open.
     let dimmer: id = msg_class![env; UIButton buttonWithType:UIButtonTypeCustom];
@@ -2204,17 +2572,14 @@ fn make_device_model_dropdown(
     let dim_color = ui_color(env, 0.0, 0.0, 0.0, 0.35);
     () = msg![env; dimmer setBackgroundColor:dim_color];
     () = msg![env; dimmer addTarget:delegate
-                             action:(env.objc.lookup_selector("deviceModelToggle").unwrap())
+                             action:(env.objc.lookup_selector(toggle_selector).unwrap())
                    forControlEvents:UIControlEventTouchUpInside];
     () = msg![env; dimmer setHidden:true];
     () = msg![env; root_view addSubview:dimmer];
 
-    // The toggle button, shown in the "Device model" row.
+    // The toggle button, shown in the settings row. Its title is set by
+    // `refresh_dropdown`.
     let button: id = msg_class![env; UIButton buttonWithType:UIButtonTypeCustom];
-    let initial_title = format!("{} ▼", device_model_label_for_tag(None));
-    let text = ns_string::from_rust_string(env, initial_title);
-    () = msg![env; button setTitle:text forState:UIControlStateNormal];
-    release(env, text);
     let blue = ui_color(env, 0.0, 0.478, 1.0, 1.0);
     () = msg![env; button setTitleColor:blue forState:UIControlStateNormal];
     () = msg![env; button setFrame:button_frame];
@@ -2223,7 +2588,7 @@ fn make_device_model_dropdown(
     let button_font: id = msg_class![env; UIFont systemFontOfSize:(16.0 as CGFloat)];
     () = msg![env; button_label setFont:button_font];
     () = msg![env; button addTarget:delegate
-                             action:(env.objc.lookup_selector("deviceModelToggle").unwrap())
+                             action:(env.objc.lookup_selector(toggle_selector).unwrap())
                    forControlEvents:UIControlEventTouchUpInside];
     () = msg![env; group_view addSubview:button];
 
@@ -2233,7 +2598,7 @@ fn make_device_model_dropdown(
     let menu_frame = CGRect {
         origin: menu_origin,
         size: CGSize {
-            width: SETTINGS_DEVICE_MENU_WIDTH,
+            width: SETTINGS_DROPDOWN_MENU_WIDTH,
             height: visible_menu_height,
         },
     };
@@ -2246,9 +2611,8 @@ fn make_device_model_dropdown(
 
     // List items: one button per choice. Items that fall outside the initially
     // visible window are hidden; scrolling reveals them (see
-    // `update_device_model_menu`).
-    let entries = device_model_entries();
-    let item_selector = env.objc.lookup_selector("deviceModel:").unwrap();
+    // `update_dropdown_menu`).
+    let item_selector = env.objc.lookup_selector(item_selector).unwrap();
     let white: id = msg_class![env; UIColor whiteColor];
     let mut items: Vec<id> = Vec::new();
     for (j, (title, tag)) in entries.into_iter().enumerate() {
@@ -2327,7 +2691,7 @@ fn make_device_model_dropdown(
     () = msg![env; up_btn setFrame:up_frame];
     () = msg![env; up_btn setBackgroundColor:clear];
     () = msg![env; up_btn addTarget:delegate
-                             action:(env.objc.lookup_selector("deviceModelScrollUp").unwrap())
+                             action:(env.objc.lookup_selector(scroll_up_selector).unwrap())
                    forControlEvents:UIControlEventTouchUpInside];
     () = msg![env; menu_view addSubview:up_btn];
 
@@ -2345,17 +2709,210 @@ fn make_device_model_dropdown(
     () = msg![env; down_btn setFrame:down_frame];
     () = msg![env; down_btn setBackgroundColor:clear];
     () = msg![env; down_btn addTarget:delegate
-                               action:(env.objc.lookup_selector("deviceModelScrollDown").unwrap())
+                               action:(env.objc.lookup_selector(scroll_down_selector).unwrap())
                      forControlEvents:UIControlEventTouchUpInside];
     () = msg![env; menu_view addSubview:down_btn];
 
-    DeviceModelDropdown {
+    SettingsDropdown {
         button,
         menu: menu_view,
         dimmer,
         items,
         thumb: thumb_view,
     }
+}
+
+/// Re-reads the apps directory and redraws the icon grid to match. The current
+/// page is kept if it still exists. If the directory can't be read, nothing
+/// changes.
+fn reload_app_grid(
+    env: &mut Environment,
+    grid: &mut IconGridStuff,
+    apps: &mut Result<Vec<AppInfo>, String>,
+    current_page: &mut usize,
+    apps_dir: &Path,
+) {
+    let mut new_apps = match enumerate_apps(apps_dir) {
+        Ok(new_apps) => new_apps,
+        Err(e) => {
+            log!("Warning: couldn't reload the apps directory: {}", e);
+            return;
+        }
+    };
+    grid.pages = compute_pages(grid.containers[0].cells.len(), new_apps.len());
+    if *current_page >= grid.pages.len() {
+        *current_page = grid.pages.len() - 1;
+    }
+    let visible = grid.visible;
+    update_icon_grid(env, grid, &mut new_apps, *current_page, visible);
+    *apps = Ok(new_apps);
+}
+
+/// Width and height of the delete dialog's box, and the height of its row of
+/// buttons at the bottom.
+const DELETE_DIALOG_WIDTH: CGFloat = 270.0;
+const DELETE_DIALOG_HEIGHT: CGFloat = 166.0;
+const DELETE_DIALOG_BUTTON_HEIGHT: CGFloat = 44.0;
+
+/// The confirmation shown after a long press on an app icon.
+struct DeleteDialog {
+    /// Covers the picker. Tapping it cancels.
+    dimmer: id,
+    /// The alert box, with its title, message and buttons.
+    panel: id,
+    /// Names the app being deleted.
+    title: id,
+}
+
+/// Builds one button of an alert box.
+fn make_alert_button(
+    env: &mut Environment,
+    delegate: id,
+    frame: CGRect,
+    title: &str,
+    color: id,
+    bold: bool,
+    selector: &str,
+) -> id {
+    let button: id = msg_class![env; UIButton buttonWithType:UIButtonTypeCustom];
+    () = msg![env; button setFrame:frame];
+    let text = ns_string::from_rust_string(env, title.to_string());
+    () = msg![env; button setTitle:text forState:UIControlStateNormal];
+    release(env, text);
+    () = msg![env; button setTitleColor:color forState:UIControlStateNormal];
+    // FIXME: manually calling layoutSubviews shouldn't be needed?
+    () = msg![env; button layoutSubviews];
+    let label: id = msg![env; button titleLabel];
+    let font: id = if bold {
+        msg_class![env; UIFont boldSystemFontOfSize:(17.0 as CGFloat)]
+    } else {
+        msg_class![env; UIFont systemFontOfSize:(17.0 as CGFloat)]
+    };
+    () = msg![env; label setFont:font];
+    let sel = env.objc.lookup_selector(selector).unwrap();
+    () = msg![env; button addTarget:delegate
+                             action:sel
+                   forControlEvents:UIControlEventTouchUpInside];
+    button
+}
+
+/// Builds the delete dialog in the style of an old iOS alert: a white rounded
+/// box over a dimmed screen, with a title, a message, and Cancel and Delete
+/// buttons. It is hidden until [show_delete_dialog].
+fn make_delete_dialog(
+    env: &mut Environment,
+    delegate: id,
+    main_view: id,
+    screen_size: CGSize,
+) -> DeleteDialog {
+    let dimmer: id = msg_class![env; UIButton buttonWithType:UIButtonTypeCustom];
+    () = msg![env; dimmer setFrame:(rect(0.0, 0.0, screen_size.width, screen_size.height))];
+    let dim_color = ui_color(env, 0.0, 0.0, 0.0, 0.4);
+    () = msg![env; dimmer setBackgroundColor:dim_color];
+    let cancel_sel = env.objc.lookup_selector("deleteCancel").unwrap();
+    () = msg![env; dimmer addTarget:delegate
+                             action:cancel_sel
+                   forControlEvents:UIControlEventTouchUpInside];
+    () = msg![env; dimmer setHidden:true];
+    () = msg![env; main_view addSubview:dimmer];
+
+    let panel_frame = rect(
+        (screen_size.width - DELETE_DIALOG_WIDTH) / 2.0,
+        (screen_size.height - DELETE_DIALOG_HEIGHT) / 2.0,
+        DELETE_DIALOG_WIDTH,
+        DELETE_DIALOG_HEIGHT,
+    );
+    let white: id = msg_class![env; UIColor whiteColor];
+    let panel = new_view(env, panel_frame, white);
+    let panel_layer: id = msg![env; panel layer];
+    () = msg![env; panel_layer setCornerRadius:(10.0 as CGFloat)];
+    () = msg![env; panel setHidden:true];
+    () = msg![env; main_view addSubview:panel];
+
+    let black: id = msg_class![env; UIColor blackColor];
+    let title = new_label(
+        env,
+        rect(12.0, 14.0, DELETE_DIALOG_WIDTH - 24.0, 44.0),
+        "",
+        17.0,
+        true,
+        black,
+    );
+    () = msg![env; title setTextAlignment:UITextAlignmentCenter];
+    () = msg![env; title setNumberOfLines:2];
+    () = msg![env; panel addSubview:title];
+
+    let message_color = ui_color(env, 0.25, 0.25, 0.25, 1.0);
+    let message = new_label(
+        env,
+        rect(12.0, 58.0, DELETE_DIALOG_WIDTH - 24.0, 52.0),
+        "This will delete the app and all of its saved data.",
+        14.0,
+        false,
+        message_color,
+    );
+    () = msg![env; message setTextAlignment:UITextAlignmentCenter];
+    () = msg![env; message setNumberOfLines:3];
+    () = msg![env; panel addSubview:message];
+
+    let separator_color = ui_color(env, 0.78, 0.78, 0.8, 1.0);
+    let button_y = DELETE_DIALOG_HEIGHT - DELETE_DIALOG_BUTTON_HEIGHT;
+    let half = DELETE_DIALOG_WIDTH / 2.0;
+    let separator = new_view(
+        env,
+        rect(0.0, button_y, DELETE_DIALOG_WIDTH, 1.0),
+        separator_color,
+    );
+    () = msg![env; panel addSubview:separator];
+    let v_separator = new_view(
+        env,
+        rect(half, button_y, 1.0, DELETE_DIALOG_BUTTON_HEIGHT),
+        separator_color,
+    );
+    () = msg![env; panel addSubview:v_separator];
+
+    let blue = ui_color(env, 0.0, 0.478, 1.0, 1.0);
+    let red = ui_color(env, 0.85, 0.12, 0.12, 1.0);
+    let cancel = make_alert_button(
+        env,
+        delegate,
+        rect(0.0, button_y, half, DELETE_DIALOG_BUTTON_HEIGHT),
+        "Cancel",
+        blue,
+        false,
+        "deleteCancel",
+    );
+    () = msg![env; panel addSubview:cancel];
+    let delete = make_alert_button(
+        env,
+        delegate,
+        rect(half, button_y, half, DELETE_DIALOG_BUTTON_HEIGHT),
+        "Delete",
+        red,
+        true,
+        "deleteConfirm",
+    );
+    () = msg![env; panel addSubview:delete];
+
+    DeleteDialog {
+        dimmer,
+        panel,
+        title,
+    }
+}
+
+/// Opens the delete dialog for the app called `app_name`.
+fn show_delete_dialog(env: &mut Environment, dialog: &DeleteDialog, app_name: &str) {
+    let title = ns_string::from_rust_string(env, format!("Delete “{app_name}”?"));
+    () = msg![env; (dialog.title) setText:title];
+    release(env, title);
+    () = msg![env; (dialog.dimmer) setHidden:false];
+    () = msg![env; (dialog.panel) setHidden:false];
+}
+
+fn hide_delete_dialog(env: &mut Environment, dialog: &DeleteDialog) {
+    () = msg![env; (dialog.dimmer) setHidden:true];
+    () = msg![env; (dialog.panel) setHidden:true];
 }
 
 fn quick_options_trainer_enabled(options: &Options) -> bool {
