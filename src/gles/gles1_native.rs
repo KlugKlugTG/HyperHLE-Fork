@@ -1763,19 +1763,23 @@ impl GLES1Native<'_> {
         )
     }
     unsafe fn fix_mipmap_min_filter(&mut self, target: GLenum) {
+        // `GL_TEXTURE_MIN_FILTER` is a `glGetTexParameteriv` pname, not a
+        // `glGetIntegerv` pname. Query the parameter on the texture object
+        // bound to this target; using GetIntegerv raises GL_INVALID_ENUM and
+        // leaves `min_filter` at zero, silently disabling this workaround.
+        let p_target = if (0x8515..=0x851A).contains(&target) {
+            0x8513 // cube-map face -> GL_TEXTURE_CUBE_MAP
+        } else {
+            target
+        };
         let mut min_filter: GLint = 0;
-        gles11::GetIntegerv(gles11::TEXTURE_MIN_FILTER, &mut min_filter);
+        gles11::GetTexParameteriv(p_target, gles11::TEXTURE_MIN_FILTER, &mut min_filter);
         // 0x2700 NEAREST_MIPMAP_NEAREST, 0x2701 LINEAR_MIPMAP_NEAREST,
         // 0x2702 NEAREST_MIPMAP_LINEAR, 0x2703 LINEAR_MIPMAP_LINEAR
         let replacement: GLint = match min_filter {
             0x2700 | 0x2702 => gles11::NEAREST as GLint,
             0x2701 | 0x2703 => gles11::LINEAR as GLint,
             _ => return,
-        };
-        let p_target = if (0x8515..=0x851A).contains(&target) {
-            0x8513
-        } else {
-            target
         };
         gles11::TexParameteri(p_target, gles11::TEXTURE_MIN_FILTER, replacement as _);
         log_dbg!(

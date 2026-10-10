@@ -2647,6 +2647,37 @@ fn maybe_demipmap_min_filter(env: &Environment, pname: GLenum, param: GLint) -> 
     demipmap_filter_value(pname, param)
 }
 
+/// `glGetTexParameteriv` takes the texture target, not the image target. For
+/// cube-map image uploads (where `glTexImage2D` receives one of the six face
+/// enums), query the parameters on the cube-map binding itself.
+fn texture_parameter_target(target: GLenum) -> Option<GLenum> {
+    match target {
+        gles11::TEXTURE_2D => Some(target),
+        0x8515..=0x851A => Some(0x8513), // cube-map face -> GL_TEXTURE_CUBE_MAP
+        _ => None,
+    }
+}
+
+fn is_default_texture_min_filter(min_filter: GLint) -> bool {
+    min_filter as GLenum == gles11::NEAREST_MIPMAP_LINEAR
+}
+
+/// The GLES 1.1 default is `GL_NEAREST_MIPMAP_LINEAR`. The fallback should
+/// only replace that untouched default; a guest-selected filter is deliberate
+/// state and must not be overwritten after its image upload.
+unsafe fn texture_min_filter_is_default(gles: &mut dyn GLES, target: GLenum) -> bool {
+    let Some(parameter_target) = texture_parameter_target(target) else {
+        return false;
+    };
+    let mut min_filter = 0;
+    gles.GetTexParameteriv(
+        parameter_target,
+        gles11::TEXTURE_MIN_FILTER,
+        &mut min_filter,
+    );
+    is_default_texture_min_filter(min_filter)
+}
+
 fn glTexParameteri(env: &mut Environment, target: GLenum, pname: GLenum, param: GLint) {
     {
         use std::sync::atomic::{AtomicBool, Ordering};
@@ -2897,8 +2928,10 @@ fn glTexImage2D(
         }
     }
     let guest_pixels = pixels;
-    let fix_filter = env.options.fix_texture_min_filter && level == 0;
+    let fix_filter_enabled = env.options.fix_texture_min_filter && level == 0;
     with_ctx_mem_and_shadow(env, |gles, mem, shadow| unsafe {
+        let parameter_target = texture_parameter_target(target).unwrap_or(target);
+        let fix_filter = fix_filter_enabled && texture_min_filter_is_default(gles, target);
         let bound_texture = current_bound_texture(gles, target);
         let pixels = if pixels.is_null() {
             std::ptr::null()
@@ -2963,7 +2996,11 @@ fn glTexImage2D(
                     "First fix_texture_min_filter override: forcing GL_TEXTURE_MIN_FILTER=GL_LINEAR after glTexImage2D(level=0) [this log will only be shown once]"
                 );
             }
-            gles.TexParameteri(target, gles11::TEXTURE_MIN_FILTER, gles11::LINEAR as GLint);
+            gles.TexParameteri(
+                parameter_target,
+                gles11::TEXTURE_MIN_FILTER,
+                gles11::LINEAR as GLint,
+            );
         }
     })
 }
@@ -3015,7 +3052,7 @@ fn glCompressedTexImage2D(
             target, level, internalformat, width, height, border, image_size, data.to_bits()
         );
     }
-    let fix_filter = env.options.fix_texture_min_filter && level == 0;
+    let fix_filter_enabled = env.options.fix_texture_min_filter && level == 0;
     with_ctx_mem_and_shadow(env, |gles, mem, shadow| unsafe {
         let bound_texture = current_bound_texture(gles, target);
         if let Some(texture) = bound_texture {
@@ -3044,6 +3081,8 @@ fn glCompressedTexImage2D(
             }
         }
 
+        let parameter_target = texture_parameter_target(target).unwrap_or(target);
+        let fix_filter = fix_filter_enabled && texture_min_filter_is_default(gles, target);
         let image_size_usize = match usize::try_from(image_size) {
             Ok(size) => size,
             Err(_) => return,
@@ -3107,7 +3146,11 @@ fn glCompressedTexImage2D(
                 }
             }
             if fix_filter {
-                gles.TexParameteri(target, gles11::TEXTURE_MIN_FILTER, gles11::LINEAR as GLint);
+                gles.TexParameteri(
+                    parameter_target,
+                    gles11::TEXTURE_MIN_FILTER,
+                    gles11::LINEAR as GLint,
+                );
             }
             return;
         }
@@ -3141,7 +3184,11 @@ fn glCompressedTexImage2D(
                     }
                 }
                 if fix_filter {
-                    gles.TexParameteri(target, gles11::TEXTURE_MIN_FILTER, gles11::LINEAR as GLint);
+                    gles.TexParameteri(
+                        parameter_target,
+                        gles11::TEXTURE_MIN_FILTER,
+                        gles11::LINEAR as GLint,
+                    );
                 }
                 return;
             }
@@ -3208,7 +3255,11 @@ fn glCompressedTexImage2D(
         }
 
         if fix_filter {
-            gles.TexParameteri(target, gles11::TEXTURE_MIN_FILTER, gles11::LINEAR as GLint);
+            gles.TexParameteri(
+                parameter_target,
+                gles11::TEXTURE_MIN_FILTER,
+                gles11::LINEAR as GLint,
+            );
         }
     })
 }
@@ -8397,6 +8448,36 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(glLabelObjectEXT(_, _, _, _)),
     export_c_func!(glGetObjectLabelEXT(_, _, _, _, _)),
 ];
+
+#[cfg(test)]
+mod texture_min_filter_fix_tests {
+    use super::{is_default_texture_min_filter, texture_parameter_target};
+    use crate::gles::gles11_raw as gles11;
+
+    #[test]
+    fn only_the_gles_default_filter_needs_the_fallback() {
+        assert!(is_default_texture_min_filter(
+            gles11::NEAREST_MIPMAP_LINEAR as i32
+        ));
+        assert!(!is_default_texture_min_filter(gles11::LINEAR as i32));
+        assert!(!is_default_texture_min_filter(gles11::NEAREST as i32));
+        assert!(!is_default_texture_min_filter(
+            gles11::LINEAR_MIPMAP_LINEAR as i32
+        ));
+    }
+
+    #[test]
+    fn cube_map_image_targets_query_the_cube_map_texture_parameter() {
+        assert_eq!(
+            texture_parameter_target(gles11::TEXTURE_2D),
+            Some(gles11::TEXTURE_2D)
+        );
+        for face in 0x8515..=0x851A {
+            assert_eq!(texture_parameter_target(face), Some(0x8513));
+        }
+        assert_eq!(texture_parameter_target(gles11::TEXTURE_MIN_FILTER), None);
+    }
+}
 
 #[cfg(test)]
 mod pvrtc_subimage_matching_tests {
