@@ -7369,36 +7369,6 @@ fn glGetTransformFeedbackVarying(
     }
 }
 
-// -- Sync object query (OpenGL ES 3.0 §6.1.8) --
-fn glGetSynciv(
-    env: &mut Environment,
-    sync: GLuint,
-    pname: GLenum,
-    buf_size: GLsizei,
-    length: MutPtr<GLsizei>,
-    values: MutPtr<GLint>,
-) {
-    let mut host_length: GLsizei = 0;
-    let count = buf_size.max(0) as usize;
-    let mut host_values: Vec<GLint> = vec![0; count];
-    with_ctx_and_mem(env, |gles, _mem| unsafe {
-        gles.GetSynciv(
-            sync as usize,
-            pname,
-            buf_size,
-            &mut host_length,
-            host_values.as_mut_ptr(),
-        );
-    });
-    if !length.is_null() {
-        env.mem.write(length, host_length);
-    }
-    let written = (host_length.max(0) as usize).min(count);
-    for i in 0..written {
-        env.mem.write(values + (i as GuestUSize), host_values[i]);
-    }
-}
-
 /// `void glGetBufferPointerv(GLenum target, GLenum pname, void **params)` —
 /// ES 3.0 §6.1.15. The only valid `pname` is `GL_BUFFER_MAP_POINTER`, which
 /// is NULL unless the buffer is currently mapped. touchHLE exposes buffer
@@ -8422,7 +8392,6 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(glGetUniformIndices(_, _, _, _)),
     export_c_func!(glTransformFeedbackVaryings(_, _, _, _)),
     export_c_func!(glGetTransformFeedbackVarying(_, _, _, _, _, _, _)),
-    export_c_func!(glGetSynciv(_, _, _, _, _)),
     // GL_EXT_debug_label — debug-label extension, no-op implementations.
     // Reference: <https://registry.khronos.org/OpenGL/extensions/EXT/EXT_debug_label.txt>
     export_c_func!(glLabelObjectEXT(_, _, _, _)),
