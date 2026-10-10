@@ -1018,6 +1018,7 @@ pub struct State {
     ui_touch: ui_touch::State,
     pub ui_view: ui_view::State,
     ui_responder: ui_responder::State,
+    pub autorotation_transform_applied: bool,
 }
 
 /// For use by `NSRunLoop`: handles any events that have queued up.

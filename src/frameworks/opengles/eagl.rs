@@ -2456,11 +2456,12 @@ unsafe fn present_renderbuffer(
     // FIXME: A cleaner solution would be to read the actual transform from
     //        the EAGL layer's view hierarchy and apply it here, instead of
     //        using a device-family heuristic.
-    let needs_autorotation_compensation = device_family.is_ipad()
-        && !matches!(
-            device_orientation,
-            crate::window::DeviceOrientation::Portrait
-        );
+    let needs_autorotation_compensation =
+        env.framework_state.uikit.autorotation_transform_applied
+            && !matches!(
+                device_orientation,
+                crate::window::DeviceOrientation::Portrait
+            );
     // PERF: cached read-once flag; present_renderbuffer runs every frame.
     let rotation_matrix = if crate::env_flag_cached!("TOUCHHLE_DISABLE_PRESENT_ROTATION") {
         log_once!(
