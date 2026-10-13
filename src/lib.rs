@@ -37,6 +37,7 @@ mod bundle;
 mod cpu;
 mod crash_handler;
 mod debug;
+mod device_frame;
 mod dyld;
 mod environment;
 pub mod font;

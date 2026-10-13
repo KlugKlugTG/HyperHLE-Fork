@@ -745,6 +745,9 @@ pub struct Window {
     /// Copy of `fullscreen` on [Options]. Note that this is meaningless when
     /// [Self::rotatable_fullscreen] returns [true].
     fullscreen: bool,
+    /// Copy of `device_frame` on [Options], gated on whether a device
+    /// front image exists for the emulated model (iPhones only).
+    device_frame: bool,
     scale_hack: NonZeroU32,
     host_screen_size: Option<(u32, u32)>,
     internal_gl_ins: Option<Box<dyn GLESContext>>,
@@ -969,6 +972,9 @@ impl Window {
         let device_family = options.device_family.unwrap_or(DeviceFamily::iPhone);
         let device_orientation = options.initial_orientation;
         let fullscreen = options.fullscreen;
+        // The frame overlay needs a front image for the model; iPads and
+        // iPods silently run without it.
+        let device_frame = options.device_frame && crate::device_frame::supported(device_family);
         let portrait_screen_size =
             host_screen_size.unwrap_or_else(|| device_family.portrait_size());
 
@@ -1125,6 +1131,7 @@ impl Window {
             #[cfg(target_os = "macos")]
             viewport_y_offset: 0,
             fullscreen,
+            device_frame,
             scale_hack,
             host_screen_size,
             internal_gl_ins: None,
@@ -2358,6 +2365,7 @@ impl Window {
         let matrix = rotation.multiply(&Matrix::y_flip());
         let (vx, vy, vw, vh) = self.viewport();
         let viewport = (vx, vy + self.viewport_y_offset(), vw, vh);
+        let device_frame = self.device_frame_draw_info();
 
         unsafe {
             let mut gl_ctx = self
@@ -2401,6 +2409,7 @@ impl Window {
                 viewport,
                 matrix,
                 /* virtual_cursor_visible_at: */ None,
+                device_frame,
             );
 
             gl_ctx.DeleteTextures(1, &texture);
@@ -2522,6 +2531,32 @@ impl Window {
         self.device_family
     }
 
+    /// The screen hole of the device front image in window drawable
+    /// pixels, i.e. the viewport the app content is letterboxed into
+    /// while the frame overlay is on.
+    fn device_frame_hole(&self) -> Option<(u32, u32, u32, u32)> {
+        crate::device_frame::layout(
+            self.device_family,
+            self.device_orientation,
+            self.window.drawable_size(),
+        )
+        .map(|(_, hole)| hole)
+    }
+
+    /// Draw arguments for the device front overlay, or `None` when the
+    /// feature is off (or the model has no front image).
+    pub fn device_frame_draw_info(&self) -> Option<crate::device_frame::DrawInfo> {
+        if !self.device_frame {
+            return None;
+        }
+        crate::device_frame::layout(
+            self.device_family,
+            self.device_orientation,
+            self.window.drawable_size(),
+        )
+        .map(|(info, _)| info)
+    }
+
     pub fn screen_size(&self) -> (u32, u32) {
         self.host_screen_size
             .unwrap_or_else(|| self.device_family.portrait_size())
@@ -2558,6 +2593,15 @@ impl Window {
     /// The aspect ratio of this region always reflects the guest app's view of
     /// the world, but the scale and orientation might not.
     pub fn viewport(&self) -> (u32, u32, u32, u32) {
+        // With the device frame overlay on, the app content is letterboxed
+        // into the screen hole of the device front image instead of the
+        // whole window. Touch input and host overlays derive their mapping
+        // from this rect, so everything stays aligned with the picture.
+        if self.device_frame {
+            if let Some(hole) = self.device_frame_hole() {
+                return hole;
+            }
+        }
         let (app_width, app_height) = size_for_orientation_from_size(
             self.screen_size(),
             self.device_orientation,

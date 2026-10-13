@@ -8,6 +8,15 @@ View options:
         in use, the result may be a bit blurry. An internal resolution larger
         than your screen's is possible, in which case the output is downscaled.
 
+    --device-frame
+        Draw the physical front of the emulated iPhone around the app's
+        screen, so the game appears to run inside a real device. There is one
+        front image per iPhone model (iPhone, 3G, 3GS, 4, 4s, 5, 5c), and the
+        app's screen (with touch input and host overlays) is letterboxed into
+        the picture's screen area. Off by default; also available as the
+        "Device frame" switch in the Settings screen's DEVICE section.
+        Ignored for iPad and iPod touch device families.
+
     --landscape-left
     --landscape-right
     --upside-down

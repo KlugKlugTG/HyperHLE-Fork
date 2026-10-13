@@ -108,6 +108,7 @@ pub unsafe fn present_frame(
     viewport: (u32, u32, u32, u32),
     rotation_matrix: Matrix<2>,
     virtual_cursor_visible_at: Option<(f32, f32, bool)>,
+    device_frame: Option<crate::device_frame::DrawInfo>,
 ) {
     // While this is a generic utility, it is closely tied to
     // crate::frameworks::opengles::eagl::present_renderbuffer, which handles
@@ -187,6 +188,12 @@ pub unsafe fn present_frame(
     gles.DrawArrays(gles11::TRIANGLES, 0, 6);
     // clean this up so we don't need to worry about it in e.g. Core Animation
     gles.LoadIdentity();
+
+    // Physical device front ("Device frame" feature) over the whole window,
+    // underneath the host overlays (cursor, FPS text, trainer).
+    if let Some(info) = &device_frame {
+        crate::device_frame::draw_es1(gles, info);
+    }
 
     // Display virtual cursor
     if let Some((x, y, pressed)) = virtual_cursor_visible_at {

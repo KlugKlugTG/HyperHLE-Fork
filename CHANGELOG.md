@@ -184,6 +184,8 @@ Quality and performance:
 
 Usability:
 
+- New "Device frame" feature (`--device-frame`, or the "Device frame" switch in the Settings screen's DEVICE section, off by default): the app's screen is presented inside a picture of the emulated iPhone's front, so games appear to run on the actual device. Each iPhone model (iPhone, 3G, 3GS, 4, 4s, 5, 5c) has its own front image; the guest screen, touch input and host overlays are letterboxed into the picture's screen area. iPhones only — other device families ignore the option. (@KlugKlugTG)
+
 - Opening the app picker now plays the iOS 4-style home screen unlock animation: the app icons and their labels fly in radially from outside the screen into their grid slots, with inner icons leading and outer corners settling right after.
 
 - The app picker has been reworked to feel like iOS. Opening an app animates its icon to the middle of the screen while the screen fades to black. Pressing the arrow tiles or the ← and → keys slides the icon grid to the next or previous page. The "Quick options" button is gone; a new "Settings" app icon in the grid opens a full-screen Settings screen with grouped sections, switches, and a "Done" button. It holds the same options as before.

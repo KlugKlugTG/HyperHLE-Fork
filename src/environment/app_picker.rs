@@ -287,6 +287,7 @@ struct AppPickerDelegateHostObject {
     force_composition: Option<bool>,
     gles_native: Option<bool>,
     fullscreen: Option<bool>,
+    device_frame: Option<bool>,
     device_model_tag: Option<i32>,
     device_model_toggle: bool,
     device_model_scroll_up: bool,
@@ -409,6 +410,10 @@ const CLASSES: ClassExports = objc_classes! {
 - (())fullscreen:(id)switch { // UISwitch*
     let switch_state: bool = msg![env; switch isOn];
     env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).fullscreen = Some(switch_state);
+}
+- (())deviceFrame:(id)switch { // UISwitch*
+    let switch_state: bool = msg![env; switch isOn];
+    env.objc.borrow_mut::<AppPickerDelegateHostObject>(this).device_frame = Some(switch_state);
 }
 - (())deviceModel:(id)sender { // UIButton*
     let tag: NSInteger = msg![env; sender tag];
@@ -701,6 +706,7 @@ fn app_picker_inner(
     );
     let mut quick_options_scale_hack: Option<NonZeroU32> = None;
     let mut quick_options_fullscreen: Option<()> = None;
+    let mut quick_options_device_frame = false;
     let mut quick_options_orientation: Option<DeviceOrientation> = None;
     let mut quick_options_analog_stick_tilt_controls = true;
     let mut quick_options_network = false;
@@ -1070,6 +1076,8 @@ fn app_picker_inner(
                 false => None,
                 true => Some(()),
             };
+        } else if let Some(device_frame) = std::mem::take(&mut host_obj.device_frame) {
+            quick_options_device_frame = device_frame;
         }
 
         // Detect .ipa files copied in by the "+" tile flow and refresh the
@@ -1111,6 +1119,9 @@ fn app_picker_inner(
     }
     if let Some(()) = quick_options_fullscreen {
         option_args.push("--fullscreen".to_string());
+    }
+    if quick_options_device_frame {
+        option_args.push("--device-frame".to_string());
     }
     if !quick_options_analog_stick_tilt_controls {
         option_args.push("--disable-analog-stick-tilt-controls".to_string());
@@ -2399,6 +2410,7 @@ fn setup_settings(
         vec![
             SettingsRow::DeviceDropdown,
             SettingsRow::LanguageDropdown,
+            SettingsRow::Toggle("Device frame", "deviceFrame:", false, true),
         ],
     ));
     sections.push((

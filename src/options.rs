@@ -93,6 +93,10 @@ impl VsyncMode {
 #[derive(Clone)]
 pub struct Options {
     pub fullscreen: bool,
+    /// Draw the physical front of the emulated iPhone around the app's
+    /// screen (iPhone models only). Opt in with `--device-frame`; also
+    /// available as the "Device frame" switch in the Settings screen.
+    pub device_frame: bool,
     pub device_family: Option<DeviceFamily>,
     pub auto_device_family: bool,
     /// When set, the guest sees a screen of exactly this size (in points) and
@@ -274,6 +278,7 @@ impl Default for Options {
     fn default() -> Self {
         Options {
             fullscreen: false,
+            device_frame: false,
             trainer_disabled: true,
             device_family: None,
             auto_device_family: false,
@@ -382,6 +387,8 @@ impl Options {
 
         if arg == "--fullscreen" {
             self.fullscreen = true;
+        } else if arg == "--device-frame" {
+            self.device_frame = true;
         } else if arg == "--fix-music" {
             self.gd_music_bypass = true;
         } else if arg == "--xml-dom-mirror" {

@@ -1609,6 +1609,7 @@ unsafe fn present_renderbuffer_es2(
     virtual_cursor_visible_at: Option<(f32, f32, bool)>,
     present_finish: bool,
     context_token: usize,
+    device_frame: Option<crate::device_frame::DrawInfo>,
 ) {
     use crate::gles::gles2_raw as gles2;
 
@@ -1902,6 +1903,12 @@ unsafe fn present_renderbuffer_es2(
         8usize as *const _,
     );
     gles.DrawArrays(gles2::TRIANGLES, 0, 6);
+
+    // Physical device front ("Device frame" feature), under the host
+    // overlays so the trainer button stays visible and tappable.
+    if let Some(info) = &device_frame {
+        crate::device_frame::draw_es2(gles, info);
+    }
 
     // Cheat Engine-style trainer overlay (floating button + panel), drawn
     // with a dedicated ES 2.0 shader so it also works on native ES 2.0
@@ -2439,6 +2446,7 @@ unsafe fn present_renderbuffer(
 
     // Save these for when we need to draw the frame
     let viewport = env.window.as_mut().unwrap().viewport();
+    let device_frame = env.window.as_mut().unwrap().device_frame_draw_info();
     let device_family = env.window.as_mut().unwrap().device_family();
     let device_orientation = env.window.as_mut().unwrap().current_rotation();
     // For iPad apps in a non-portrait orientation, the UIKit auto-rotation
@@ -2622,6 +2630,7 @@ unsafe fn present_renderbuffer(
             virtual_cursor_visible_at,
             options.present_finish,
             context_token,
+            device_frame,
         );
         std::mem::drop(gles_boxed);
         env.window.as_mut().unwrap().swap_window();
@@ -3385,7 +3394,13 @@ unsafe fn present_renderbuffer(
     }
 
     // Draw the quad
-    present_frame(gles, viewport, rotation_matrix, virtual_cursor_visible_at);
+    present_frame(
+        gles,
+        viewport,
+        rotation_matrix,
+        virtual_cursor_visible_at,
+        device_frame,
+    );
     {
         static SEEN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
