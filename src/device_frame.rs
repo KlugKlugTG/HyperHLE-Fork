@@ -427,6 +427,7 @@ static FRAME_OBJECTS: Mutex<Option<FrameObjects>> = Mutex::new(None);
 
 unsafe fn ensure_program(gles: &mut dyn GLES) -> Option<FrameProgram> {
     use crate::gles::gles2_raw as gles2;
+    use gles11::types::*;
     if let Some(program) = *FRAME_PROGRAM.lock().unwrap() {
         return Some(program);
     }
@@ -521,8 +522,8 @@ pub unsafe fn draw_es2(gles: &mut dyn GLES, info: &DrawInfo) {
     let mut old_viewport = [0i32; 4];
     gles.GetIntegerv(gles2::VIEWPORT, old_viewport.as_mut_ptr());
     let blend_was_on = gles.IsEnabled(gles2::BLEND) != 0;
-    let old_blend_src = get_int(gles, gles2::BLEND_SRC);
-    let old_blend_dst = get_int(gles, gles2::BLEND_DST);
+    let old_blend_src = get_int(gles, gles11::BLEND_SRC);
+    let old_blend_dst = get_int(gles, gles11::BLEND_DST);
     let slots = [program.a_pos as u32, program.a_uv as u32];
     let mut slot_was_enabled = [0i32; 2];
     for (&slot, was) in slots.iter().zip(slot_was_enabled.iter_mut()) {
