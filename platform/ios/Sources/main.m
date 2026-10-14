@@ -42,10 +42,9 @@ extern int csops(pid_t pid, unsigned int ops, void *useraddr, size_t usersize);
 #define TOUCHHLE_CS_DEBUGGED 0x10000000
 
 bool touchhle_ios_jit_is_from_debugger(void) {
-    // dynarmic's code allocator asks for its executable memory by executing
-    // `brk #0xf00d` (see oaknut's prepare_jit_region), a trap that only an
-    // attached debugger can service. With none attached the trap is fatal the
-    // instant a game starts, which reads as the app quitting for no reason.
+    // A debugger has granted JIT. How dynarmic then gets executable memory
+    // depends on the iOS version and on whether the debugger is still
+    // attached; see choose_jit_mode in patches/dynarmic-ios-jit.patch.
     unsigned int flags = 0;
     if (csops(getpid(), TOUCHHLE_CS_OPS_STATUS, &flags, sizeof(flags)) == 0
         && (flags & TOUCHHLE_CS_DEBUGGED) != 0) {

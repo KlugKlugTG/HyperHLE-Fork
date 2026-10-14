@@ -1,36 +1,40 @@
-From f488f760c69c42a97331961e8e6c359b46ccc9e9 Mon Sep 17 00:00:00 2001
-From: johnny901901901 <jonathankelsey100@gmail.com>
-Date: Sun, 2 Aug 2026 02:13:16 +0100
+From 6ee59f2f0234fcae57ca1e731c44f70cd92697ee Mon Sep 17 00:00:00 2001
+From: HyperHLE iOS <noreply@anthropic.com>
+Date: Wed, 14 Oct 2026 15:10:29 +0000
 Subject: [PATCH] Support the iOS arm64 JIT host
 
-Changes needed to run dynarmic's arm64 backend inside a signed iOS app,
-where the JIT region must be mapped with MAP_JIT and toggled between
-writable and executable rather than being RWX.
+Changes needed to run dynarmic's arm64 backend inside an iOS app. Based
+on Applesauce's "Support the iOS arm64 JIT host" (johnny901901901/dynarmic
+f488f760), extended to pick the JIT memory strategy at runtime:
 
-- oaknut CodeBlock: allocate with MAP_JIT and switch write/execute
-  protection around code generation on Apple platforms.
-- address_space / a32_address_space: apply the same protection dance
-  around block emission and patching.
+- oaknut CodeBlock: on iOS 26+ with a debugger attached, ask it for the
+  region with `brk #0xf00d` (StikDebug's script) and write through a
+  vm_remap alias; with CS_DEBUGGED (TrollStore "Enable JIT", AltJIT,
+  StikDebug before iOS 26) use anonymous memory flipped between RW and
+  RX with mprotect; otherwise use a MAP_JIT RWX region (the
+  dynamic-codesigning entitlement), failing with bad_alloc rather than
+  trapping when JIT is not enabled at all. The region is reused for the
+  life of the process.
+- address_space / a32_address_space: write through the writable view and
+  release the debugger after the prelude is emitted.
 - spin_lock_arm64: use the Apple-compatible sequence.
 - block_range_information: replace boost::icl::interval_map with a plain
   std::map of discrete intervals. The interval_map instantiation does not
   build against the Boost version used for the iOS toolchain.
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 ---
- .../oaknut/include/oaknut/code_block.hpp      | 131 +++++++++++++++++-
+ .../oaknut/include/oaknut/code_block.hpp      | 252 +++++++++++++++++-
  .../backend/arm64/a32_address_space.cpp       |   1 +
  src/dynarmic/backend/arm64/address_space.cpp  |   6 +-
  .../backend/block_range_information.cpp       |  15 +-
  .../backend/block_range_information.h         |   6 +-
- src/dynarmic/common/spin_lock_arm64.cpp       |  20 +++
- 6 files changed, 162 insertions(+), 17 deletions(-)
+ src/dynarmic/common/spin_lock_arm64.cpp       |  20 ++
+ 6 files changed, 283 insertions(+), 17 deletions(-)
 
 diff --git a/externals/oaknut/include/oaknut/code_block.hpp b/externals/oaknut/include/oaknut/code_block.hpp
-index bfa87d96..559f7caa 100644
+index bfa87d96..7c18b286 100644
 --- a/externals/oaknut/include/oaknut/code_block.hpp
 +++ b/externals/oaknut/include/oaknut/code_block.hpp
-@@ -14,6 +14,8 @@
+@@ -14,15 +14,132 @@
  #elif defined(__APPLE__)
  #    include <TargetConditionals.h>
  #    include <libkern/OSCacheControl.h>
@@ -39,17 +43,44 @@ index bfa87d96..559f7caa 100644
  #    include <pthread.h>
  #    include <sys/mman.h>
  #    include <unistd.h>
-@@ -23,6 +25,41 @@
++#    if TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
++#        include <cstdio>
++#        include <cstdlib>
++#        include <sys/sysctl.h>
++#        include <sys/types.h>
++// Not declared in the iOS SDK, but a stable libSystem syscall wrapper.
++extern "C" int csops(pid_t pid, unsigned int ops, void* useraddr, size_t usersize);
++#    endif
+ #else
+ #    include <sys/mman.h>
+ #endif
  
  namespace oaknut {
  
 +#if defined(__APPLE__) && TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
 +namespace detail {
 +
++// How this process gets memory it may both write and execute. iOS only allows
++// that when something has granted JIT, and each grant needs its own approach:
++enum class JitMode {
++    // A debugger is attached and services `brk #0xf00d` requests
++    // (StikDebug's script). Needed on iOS 26+, where the debugger has to map
++    // the region itself.
++    DebuggerServer,
++    // The process is CS_DEBUGGED (TrollStore's "Enable JIT", AltJIT, StikDebug
++    // before iOS 26) but nothing services `brk`: anonymous memory is flipped
++    // between RW and RX with mprotect.
++    Debugged,
++    // Neither, so the only remaining grant is the dynamic-codesigning
++    // entitlement (permanent JIT): one MAP_JIT RWX region.
++    MapJit,
++};
++
 +struct ReusableJitRegion {
 +    std::uint32_t* memory = nullptr;
 +    std::uint32_t* writable_memory = nullptr;
 +    std::size_t size = 0;
++    JitMode mode = JitMode::MapJit;
 +    bool in_use = false;
 +};
 +
@@ -57,6 +88,61 @@ index bfa87d96..559f7caa 100644
 +{
 +    static ReusableJitRegion region;
 +    return region;
++}
++
++inline bool process_is_traced()
++{
++    struct kinfo_proc info {};
++    int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid()};
++    std::size_t size = sizeof(info);
++    if (sysctl(mib, 4, &info, &size, nullptr, 0) != 0)
++        return false;
++    return (info.kp_proc.p_flag & P_TRACED) != 0;
++}
++
++inline bool process_is_cs_debugged()
++{
++    constexpr unsigned int cs_ops_status = 0;
++    constexpr std::uint32_t cs_debugged = 0x10000000;
++    std::uint32_t flags = 0;
++    return csops(getpid(), cs_ops_status, &flags, sizeof(flags)) == 0
++        && (flags & cs_debugged) != 0;
++}
++
++inline int os_major_version()
++{
++    char version[32] = {};
++    std::size_t size = sizeof(version) - 1;
++    if (sysctlbyname("kern.osproductversion", version, &size, nullptr, 0) != 0)
++        return 0;
++    return std::atoi(version);
++}
++
++inline JitMode choose_jit_mode()
++{
++    const bool traced = process_is_traced();
++    const bool debugged = traced || process_is_cs_debugged();
++    // Before iOS 26 a CS_DEBUGGED process may make anonymous memory executable
++    // itself, so the debugger is not needed at all (and may not even be
++    // attached any more, or may not understand `brk #0xf00d`).
++    if (traced && os_major_version() >= 26)
++        return JitMode::DebuggerServer;
++    if (debugged)
++        return JitMode::Debugged;
++    return JitMode::MapJit;
++}
++
++inline const char* jit_mode_name(JitMode mode)
++{
++    switch (mode) {
++    case JitMode::DebuggerServer:
++        return "debugger-mapped region (brk #0xf00d)";
++    case JitMode::Debugged:
++        return "CS_DEBUGGED mprotect";
++    case JitMode::MapJit:
++        return "MAP_JIT (dynamic-codesigning)";
++    }
++    return "unknown";
 +}
 +
 +__attribute__((noinline, optnone, naked)) static void* prepare_jit_region(void*, std::size_t)
@@ -81,12 +167,15 @@ index bfa87d96..559f7caa 100644
  class CodeBlock {
  public:
      explicit CodeBlock(std::size_t size)
-@@ -31,7 +68,47 @@ public:
+@@ -31,7 +148,80 @@ public:
  #if defined(_WIN32)
          m_memory = (std::uint32_t*)VirtualAlloc(nullptr, size, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
  #elif defined(__APPLE__)
 -#    if TARGET_OS_IPHONE
 +#    if TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
++        // The region is kept for the life of the process and handed to the
++        // next CodeBlock: a debugger-mapped region can only be requested
++        // once, and iOS allows only one MAP_JIT region per process.
 +        auto& reusable_region = detail::reusable_jit_region();
 +        if (reusable_region.memory != nullptr) {
 +            if (reusable_region.in_use || reusable_region.size != size)
@@ -94,43 +183,73 @@ index bfa87d96..559f7caa 100644
 +
 +            m_memory = reusable_region.memory;
 +            m_wmemory = reusable_region.writable_memory;
++            m_mode = reusable_region.mode;
 +            reusable_region.in_use = true;
 +        } else {
-+            m_memory = (std::uint32_t*)detail::prepare_jit_region(nullptr, size);
-+            if (m_memory == nullptr)
-+                throw std::bad_alloc{};
++            m_mode = detail::choose_jit_mode();
++            std::fprintf(stderr, "oaknut: allocating JIT memory via %s\n", detail::jit_mode_name(m_mode));
 +
-+            vm_prot_t current_protection;
-+            vm_prot_t maximum_protection;
-+            kern_return_t result = vm_remap(mach_task_self(),
-+                                            reinterpret_cast<vm_address_t*>(&m_wmemory),
-+                                            size,
-+                                            0,
-+                                            VM_FLAGS_ANYWHERE | VM_FLAGS_RANDOM_ADDR,
-+                                            mach_task_self(),
-+                                            reinterpret_cast<mach_vm_address_t>(m_memory),
-+                                            false,
-+                                            &current_protection,
-+                                            &maximum_protection,
-+                                            VM_INHERIT_NONE);
-+            if (result != KERN_SUCCESS ||
-+                vm_protect(mach_task_self(),
-+                           reinterpret_cast<vm_address_t>(m_wmemory),
-+                           size,
-+                           false,
-+                           VM_PROT_READ | VM_PROT_WRITE) != KERN_SUCCESS) {
-+                munmap(m_memory, size);
-+                throw std::bad_alloc{};
++            switch (m_mode) {
++            case detail::JitMode::DebuggerServer: {
++                m_memory = (std::uint32_t*)detail::prepare_jit_region(nullptr, size);
++                if (m_memory == nullptr)
++                    throw std::bad_alloc{};
++
++                vm_prot_t current_protection;
++                vm_prot_t maximum_protection;
++                kern_return_t result = vm_remap(mach_task_self(),
++                                                reinterpret_cast<vm_address_t*>(&m_wmemory),
++                                                size,
++                                                0,
++                                                VM_FLAGS_ANYWHERE | VM_FLAGS_RANDOM_ADDR,
++                                                mach_task_self(),
++                                                reinterpret_cast<mach_vm_address_t>(m_memory),
++                                                false,
++                                                &current_protection,
++                                                &maximum_protection,
++                                                VM_INHERIT_NONE);
++                if (result != KERN_SUCCESS ||
++                    vm_protect(mach_task_self(),
++                               reinterpret_cast<vm_address_t>(m_wmemory),
++                               size,
++                               false,
++                               VM_PROT_READ | VM_PROT_WRITE) != KERN_SUCCESS) {
++                    munmap(m_memory, size);
++                    throw std::bad_alloc{};
++                }
++                m_should_detach_jit_server = true;
++                break;
++            }
++            case detail::JitMode::Debugged: {
++                void* memory = mmap(nullptr, size, PROT_READ | PROT_EXEC, MAP_ANON | MAP_PRIVATE, -1, 0);
++                if (memory == MAP_FAILED)
++                    throw std::bad_alloc{};
++                m_memory = (std::uint32_t*)memory;
++                m_wmemory = m_memory;
++                break;
++            }
++            case detail::JitMode::MapJit: {
++                // Without the entitlement (i.e. JIT is simply not enabled)
++                // this fails, and the caller reports that instead of the
++                // process dying on its first JIT-compiled instruction.
++                void* memory = mmap(nullptr, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_ANON | MAP_PRIVATE | MAP_JIT, -1, 0);
++                if (memory == MAP_FAILED) {
++                    std::fprintf(stderr, "oaknut: MAP_JIT failed; JIT is not enabled for this process\n");
++                    throw std::bad_alloc{};
++                }
++                m_memory = (std::uint32_t*)memory;
++                m_wmemory = m_memory;
++                break;
++            }
 +            }
 +
-+            reusable_region = {m_memory, m_wmemory, size, true};
-+            m_should_detach_jit_server = true;
++            reusable_region = {m_memory, m_wmemory, size, m_mode, true};
 +        }
 +#    elif TARGET_OS_IPHONE
          m_memory = (std::uint32_t*)mmap(nullptr, size, PROT_READ | PROT_EXEC, MAP_ANON | MAP_PRIVATE, -1, 0);
  #    else
          m_memory = (std::uint32_t*)mmap(nullptr, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_ANON | MAP_PRIVATE | MAP_JIT, -1, 0);
-@@ -44,8 +121,18 @@ public:
+@@ -44,8 +234,18 @@ public:
          m_memory = (std::uint32_t*)mmap(nullptr, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_ANON | MAP_PRIVATE, -1, 0);
  #endif
  
@@ -149,7 +268,7 @@ index bfa87d96..559f7caa 100644
      }
  
      ~CodeBlock()
-@@ -56,6 +143,14 @@ public:
+@@ -56,6 +256,15 @@ public:
  #if defined(_WIN32)
          VirtualFree((void*)m_memory, 0, MEM_RELEASE);
  #else
@@ -159,12 +278,13 @@ index bfa87d96..559f7caa 100644
 +            reusable_region.in_use = false;
 +            return;
 +        }
-+        munmap(m_wmemory, m_size);
++        if (m_wmemory != m_memory)
++            munmap(m_wmemory, m_size);
 +#    endif
          munmap(m_memory, m_size);
  #endif
      }
-@@ -70,11 +165,23 @@ public:
+@@ -70,11 +279,26 @@ public:
          return m_memory;
      }
  
@@ -183,17 +303,23 @@ index bfa87d96..559f7caa 100644
  #if defined(__APPLE__) && !TARGET_OS_IPHONE
          pthread_jit_write_protect_np(1);
 -#elif defined(__APPLE__) || defined(__NetBSD__) || defined(__OpenBSD__)
++#elif defined(__APPLE__) && TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
++        if (m_mode == detail::JitMode::Debugged)
++            mprotect(m_memory, m_size, PROT_READ | PROT_EXEC);
 +#elif defined(__APPLE__) && TARGET_OS_IPHONE && TARGET_OS_SIMULATOR
 +        mprotect(m_memory, m_size, PROT_READ | PROT_EXEC);
 +#elif defined(__NetBSD__) || defined(__OpenBSD__)
          mprotect(m_memory, m_size, PROT_READ | PROT_EXEC);
  #endif
      }
-@@ -83,11 +190,23 @@ public:
+@@ -83,11 +307,26 @@ public:
      {
  #if defined(__APPLE__) && !TARGET_OS_IPHONE
          pthread_jit_write_protect_np(0);
 -#elif defined(__APPLE__) || defined(__NetBSD__) || defined(__OpenBSD__)
++#elif defined(__APPLE__) && TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
++        if (m_mode == detail::JitMode::Debugged)
++            mprotect(m_memory, m_size, PROT_READ | PROT_WRITE);
 +#elif defined(__APPLE__) && TARGET_OS_IPHONE && TARGET_OS_SIMULATOR
 +        mprotect(m_memory, m_size, PROT_READ | PROT_WRITE);
 +#elif defined(__NetBSD__) || defined(__OpenBSD__)
@@ -214,7 +340,7 @@ index bfa87d96..559f7caa 100644
      void invalidate(std::uint32_t* mem, std::size_t size)
      {
  #if defined(__APPLE__)
-@@ -136,8 +255,12 @@ public:
+@@ -136,8 +375,13 @@ public:
      }
  
  protected:
@@ -223,6 +349,7 @@ index bfa87d96..559f7caa 100644
 +    std::uint32_t* m_wmemory = nullptr;
      std::size_t m_size = 0;
 +#if defined(__APPLE__) && TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
++    detail::JitMode m_mode = detail::JitMode::MapJit;
 +    bool m_should_detach_jit_server = false;
 +#endif
  };

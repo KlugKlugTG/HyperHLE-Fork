@@ -383,7 +383,11 @@ private final class GameLibrary: ObservableObject {
                 TouchHLENativeHost.hideGameControls()
                 TouchHLENativeHost.restoreHostWindow()
                 self.isLaunching = false
-                if result != 0 {
+                if result != 0 && !touchhle_ios_jit_available() {
+                    // Without JIT the emulator stops while setting up its CPU.
+                    self.launchError = "JIT isn’t enabled, so \(core.kind.displayName) couldn’t start this game. "
+                        + "Enable JIT, then start the game again."
+                } else if result != 0 {
                     self.launchError = "\(core.kind.displayName) could not start this game. The diagnostic log has been saved in Files."
                 }
             }

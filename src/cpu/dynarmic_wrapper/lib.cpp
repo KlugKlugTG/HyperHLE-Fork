@@ -4,6 +4,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 #include <cstdint>
+#include <exception>
 #include <cstdio>
 
 #include "dynarmic/interface/A32/a32.h"
@@ -379,7 +380,15 @@ extern "C" {
 
 DynarmicWrapper *touchHLE_DynarmicWrapper_new(void *direct_memory_access_ptr,
                                               size_t null_page_count) {
-  return new DynarmicWrapper(direct_memory_access_ptr, null_page_count);
+  // An exception must not unwind into Rust. The likely one is Dynarmic failing
+  // to get executable memory (e.g. JIT not enabled on iOS); return null and let
+  // the caller report it.
+  try {
+    return new DynarmicWrapper(direct_memory_access_ptr, null_page_count);
+  } catch (const std::exception &e) {
+    fprintf(stderr, "Could not create the Dynarmic CPU: %s\n", e.what());
+    return nullptr;
+  }
 }
 void touchHLE_DynarmicWrapper_delete(DynarmicWrapper *cpu) { delete cpu; }
 

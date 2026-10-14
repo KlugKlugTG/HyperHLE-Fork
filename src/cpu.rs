@@ -174,6 +174,16 @@ impl Cpu {
             });
         let dynarmic_wrapper =
             unsafe { touchHLE_DynarmicWrapper_new(direct_memory_access_ptr, null_page_count) };
+        if dynarmic_wrapper.is_null() {
+            // Dynarmic could not get memory it may both write and execute.
+            if cfg!(target_os = "ios") {
+                panic!(
+                    "JIT isn't enabled, so the CPU emulator can't start. Enable JIT \
+                     (StikDebug, TrollStore or AltJIT) and start the game again."
+                );
+            }
+            panic!("Could not create the CPU emulator: no executable memory for the JIT.");
+        }
         Cpu {
             dynarmic_wrapper,
             direct_memory_access_ptr,

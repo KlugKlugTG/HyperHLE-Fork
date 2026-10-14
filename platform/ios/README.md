@@ -90,8 +90,12 @@ How the pieces fit together:
   SDL's UIKit backend needs a few changes for this host
   (`patches/sdl-ios-host.patch`), applied to a copy of `vendor/SDL` in
   `build/sdl-ios-src`.
-- Dynarmic needs the iOS JIT changes in `patches/dynarmic-ios-jit.patch`
-  (MAP_JIT memory with separate writable and executable views). They are
+- Dynarmic needs the iOS JIT changes in `patches/dynarmic-ios-jit.patch`.
+  These choose how to get executable memory when a game starts: from an
+  attached debugger via `brk #0xf00d` (StikDebug on iOS 26+), by switching
+  memory between writable and executable when the app is merely "debugged"
+  (TrollStore's Enable JIT, AltJIT, StikDebug before iOS 26), or as a `MAP_JIT`
+  region (permanent JIT). They are
   applied to a copy of `vendor/dynarmic` in `build/dynarmic-ios-src`, which the
   build points at through `TOUCHHLE_DYNARMIC_DIR`. The submodules themselves
   are never modified.
