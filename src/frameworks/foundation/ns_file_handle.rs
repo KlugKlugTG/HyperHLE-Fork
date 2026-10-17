@@ -17,7 +17,7 @@
 use super::ns_string;
 use super::NSUInteger;
 use crate::libc::posix_io;
-use crate::mem::{ConstPtr, ConstVoidPtr};
+use crate::mem::{ConstPtr, ConstVoidPtr,MutPtr}fileHandleForUpdatingURL:error: fileHandleForReadingFromURL:error:fileHandleForWritingToURL:error:;
 use crate::objc::{
     autorelease, id, msg, msg_class, nil, objc_classes, release, retain, ClassExports, HostObject,
     NSZonePtr,
