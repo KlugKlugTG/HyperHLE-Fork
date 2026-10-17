@@ -221,7 +221,9 @@ pub const CLASSES: ClassExports = objc_classes! {
         env.mem.write(error, nil);
     }
     handle
-}eDescriptor {
+    }
+
+- (i32)fileDescriptor {
     env.objc.borrow::<NSFileHandleHostObject>(this).fd
 }
 
