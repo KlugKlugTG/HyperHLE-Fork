@@ -184,7 +184,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     }
 }
 
-- (i32)fil+ (id)fileHandleForReadingFromURL:(id)url error:(MutPtr<id>)error {
++ (id)fileHandleForReadingFromURL:(id)url error:(MutPtr<id>)error {
     let path: id = msg![env; url path];
     let handle: id = if path == nil {
         nil
