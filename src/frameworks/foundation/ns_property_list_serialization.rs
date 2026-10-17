@@ -67,7 +67,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     if !error.is_null() {
         env.mem.write(error, nil);
     }
-    let error_desc: MutPtr<id> = Ptr::null();
+    let error_desc: MutPtr<id> = crate::mem::Ptr::null();
     msg_class![env; NSPropertyListSerialization
             dataFromPropertyList:plist
                           format:format
