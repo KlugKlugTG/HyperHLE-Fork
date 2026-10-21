@@ -99,6 +99,9 @@ struct NSURLSessionTaskHostObject {
     upload_body: id,
     /// The copied completion-handler block, or nil.
     completion_handler: id,
+    /// `-setTaskDescription:` copy, shown in debugging tools. Purely
+    /// informational, but Appodeal and other networking libraries set it.
+    task_description: id,
     state: i64,
     task_identifier: u64,
     is_download: bool,
@@ -139,6 +142,26 @@ fn invoke_completion_handler(
         &invoke,
         env,
         (block_arg, data, response, error),
+    );
+}
+
+/// Invoke a `void (^)(NSArray *, NSArray *, NSArray *)` block, as used by
+/// `-[NSURLSession getTasksWithCompletionHandler:]`.
+fn invoke_tasks_handler(env: &mut crate::Environment, block: id, a: id, b: id, c: id) {
+    if block == nil {
+        return;
+    }
+    let block_ptr: crate::mem::MutPtr<u32> = Ptr::from_bits(block.to_bits());
+    let invoke_addr: u32 = env.mem.read(block_ptr + BLOCK_INVOKE_WORD_OFFSET);
+    if invoke_addr == 0 {
+        return;
+    }
+    let invoke = GuestFunction::from_addr_with_thumb_bit(invoke_addr);
+    let block_arg: ConstVoidPtr = Ptr::from_bits(block.to_bits()).cast_const();
+    <GuestFunction as CallFromHost<(), (ConstVoidPtr, id, id, id)>>::call_from_host(
+        &invoke,
+        env,
+        (block_arg, a, b, c),
     );
 }
 
@@ -195,6 +218,7 @@ fn make_task(
         host.error = nil;
         host.bytes_received = 0;
         host.bytes_sent = 0;
+        host.task_description = nil;
         host.receiver = None;
     }
 
@@ -592,6 +616,18 @@ pub const CLASSES: ClassExports = objc_classes! {
     env.objc.borrow::<NSURLSessionHostObject>(this).delegate_queue
 }
 
+- (())getTasksWithCompletionHandler:(id)handler {
+    // touchHLE runs every task to completion on the guest run loop and does
+    // not keep a registry of finished tasks, so the truthful answer is three
+    // empty arrays. Networking libraries (Appodeal among them) call this on
+    // startup to observe existing work; leaving the selector unimplemented
+    // makes them throw and never finish initialising.
+    let data_tasks: id = msg_class![env; NSArray array];
+    let upload_tasks: id = msg_class![env; NSArray array];
+    let download_tasks: id = msg_class![env; NSArray array];
+    invoke_tasks_handler(env, handler, data_tasks, upload_tasks, download_tasks);
+}
+
 - (id)sessionDescription {
     env.objc.borrow::<NSURLSessionHostObject>(this).session_description
 }
@@ -600,6 +636,10 @@ pub const CLASSES: ClassExports = objc_classes! {
     let old = env.objc.borrow::<NSURLSessionHostObject>(this).session_description;
     env.objc.borrow_mut::<NSURLSessionHostObject>(this).session_description = copy;
     release(env, old);
+}
+
+- (())getAllTasksWithCompletionHandler:(id)handler {
+    () = msg![env; this getTasksWithCompletionHandler:handler];
 }
 
 // MARK: - Task creation
@@ -789,6 +829,25 @@ pub const CLASSES: ClassExports = objc_classes! {
     }
 }
 
+- (id)taskDescription {
+    env.objc.borrow::<NSURLSessionTaskHostObject>(this).task_description
+}
+- (())setTaskDescription:(id)description {
+    let copy: id = if description == nil {
+        nil
+    } else {
+        msg![env; description copy]
+    };
+    let old = env
+        .objc
+        .borrow::<NSURLSessionTaskHostObject>(this)
+        .task_description;
+    env.objc
+        .borrow_mut::<NSURLSessionTaskHostObject>(this)
+        .task_description = copy;
+    release(env, old);
+}
+
 - (i64)state {
     env.objc.borrow::<NSURLSessionTaskHostObject>(this).state
 }
@@ -828,13 +887,22 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())dealloc {
-    let (session, original_request, upload_body, completion_handler, response, error) = {
+    let (
+        session,
+        original_request,
+        upload_body,
+        completion_handler,
+        task_description,
+        response,
+        error,
+    ) = {
         let host = env.objc.borrow::<NSURLSessionTaskHostObject>(this);
         (
             host.session,
             host.original_request,
             host.upload_body,
             host.completion_handler,
+            host.task_description,
             host.response,
             host.error,
         )
@@ -843,6 +911,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     release(env, original_request);
     release(env, upload_body);
     release(env, completion_handler);
+    release(env, task_description);
     release(env, response);
     release(env, error);
     env.objc.dealloc_object(this, &mut env.mem);

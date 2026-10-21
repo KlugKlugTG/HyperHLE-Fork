@@ -874,6 +874,15 @@ pub const CLASSES: ClassExports = objc_classes! {
     let str = to_rust_string(env, str).to_string();
     to_rust_string(env, this).ends_with(&str)
 }
+// iOS 8+. `rangeOfString:` would work but returns an NSRange; SDKs such as
+// Appodeal call this directly during start-up and expect a BOOL.
+- (bool)containsString:(id)str {
+    if str == nil {
+        return false;
+    }
+    let str = to_rust_string(env, str).to_string();
+    to_rust_string(env, this).contains(&str)
+}
 
 - (NSComparisonResult)localizedCompare:(id)other {
     assert!(to_rust_string(env, this).is_ascii());

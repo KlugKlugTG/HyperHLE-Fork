@@ -280,6 +280,15 @@ enum GuestTrapRecovery {
         frame: GuestFrameRecord,
         reason: &'static str,
     },
+    /// Pop the return address of the frame that trapped off the guest stack
+    /// (the word at SP after a normal `push {..., lr}` prologue) and continue
+    /// in its caller. Used when the frame-pointer chain is unusable but the
+    /// stack still holds a plausible call return address.
+    UnwindStack {
+        return_addr: u32,
+        caller_sp: u32,
+        reason: &'static str,
+    },
     /// Step over the faulting instruction and continue in the same function.
     SkipInstruction { reason: &'static str },
 }
@@ -2373,6 +2382,36 @@ impl Environment {
         })
     }
 
+    /// Best-effort recovery for a guest that jumped into garbage: scan the
+    /// words at and above SP for one that looks like a return address (it
+    /// points into a code section and is preceded by a direct `bl`/`blx`).
+    /// Returns `(return_addr, caller_sp)` where `caller_sp` is the SP the
+    /// caller will have after the abandoned function's frame is gone.
+    ///
+    /// This is deliberately conservative and only used when branching to LR
+    /// has already been shown not to make progress, because a bogus unwind
+    /// skips whatever the abandoned call was supposed to do.
+    fn validated_stack_return_address(&self, sp: u32) -> Option<(u32, u32)> {
+        const MAX_SCAN_WORDS: u32 = 64;
+        let mut addr = sp;
+        for _ in 0..MAX_SCAN_WORDS {
+            let word = self.read_guest_u32_fallible(addr)?;
+            let candidate = word & !1;
+            if self.is_guest_code_address(candidate)
+                && decode_direct_call_before(
+                    word,
+                    |a| self.read_guest_u16_fallible(a),
+                    |a| self.read_guest_u32_fallible(a),
+                )
+                .is_some()
+            {
+                return Some((word, addr.wrapping_add(4)));
+            }
+            addr = addr.checked_add(4)?;
+        }
+        None
+    }
+
     /// Decode what kind of instruction raised an UndefinedInstruction or
     /// Breakpoint at `pc`.
     fn classify_guest_trap(&self, pc: u32, thumb: bool, instruction_len: u32) -> GuestTrapKind {
@@ -2695,6 +2734,25 @@ impl Environment {
                 regs[0] = 0;
                 self.cpu
                     .branch(GuestFunction::from_addr_with_thumb_bit(frame.saved_lr));
+            }
+            GuestTrapRecovery::UnwindStack {
+                return_addr,
+                caller_sp,
+                ..
+            } => {
+                // LR and the frame record are both unusable (the jump came
+                // from garbage), so take the return address that the call
+                // left on the stack and resume the caller after its call.
+                // LR is pointed at the thread-exit routine so a `bx lr`
+                // epilogue in that caller cannot jump back into the mess.
+                let thread_exit = self.dyld.thread_exit_routine().addr_with_thumb_bit();
+                let regs = self.cpu.regs_mut();
+                regs[cpu::Cpu::SP] = caller_sp;
+                regs[cpu::Cpu::LR] = thread_exit;
+                regs[abi::FRAME_POINTER] = 0;
+                regs[0] = 0;
+                self.cpu
+                    .branch(GuestFunction::from_addr_with_thumb_bit(return_addr));
             }
             GuestTrapRecovery::SkipInstruction { .. } => {
                 // Advance past the faulting instruction so the guest makes
@@ -3191,10 +3249,32 @@ impl Environment {
                     let sp = self.cpu.regs()[cpu::Cpu::SP];
                     self.last_deliberate_trap_bypass = Some((self.current_thread, sp));
                 }
+                // Number of wild-PC bypasses after which "fake return to LR"
+                // is assumed to be the thing keeping the guest stuck.
+                const WILD_PC_UNWIND_AFTER: u32 = 32;
                 let recovery = match trap_kind {
                     GuestTrapKind::DeliberateTrap { .. }
                     | GuestTrapKind::MisalignedInstruction { .. } => {
                         self.plan_guest_trap_recovery(pc, lr, count >= UNWIND_AFTER_REPEATS)
+                    }
+                    GuestTrapKind::OutsideCode | GuestTrapKind::ExecutionInData { .. }
+                        if total >= WILD_PC_UNWIND_AFTER
+                            && self.lr_is_consistent_with_fault(lr, pc) != Some(true) =>
+                    {
+                        // LR is not a plausible return address (or there is
+                        // no call instruction before it), so "return to LR"
+                        // is what bounces the guest between garbage PCs.
+                        // Find the real return address on the stack instead.
+                        let sp = self.cpu.regs()[cpu::Cpu::SP];
+                        match self.validated_stack_return_address(sp) {
+                            Some((return_addr, caller_sp)) => GuestTrapRecovery::UnwindStack {
+                                return_addr,
+                                caller_sp,
+                                reason: "LR does not look like a return address and \
+                                         branching to it keeps leaving the code",
+                            },
+                            None => GuestTrapRecovery::ReturnToLr,
+                        }
                     }
                     GuestTrapKind::OutsideCode | GuestTrapKind::ExecutionInData { .. }
                         if (lr & !1) == pc =>
@@ -3211,7 +3291,17 @@ impl Environment {
                                 frame,
                                 reason: "branching to LR keeps re-trapping at the same site",
                             },
-                            None => GuestTrapRecovery::ReturnToLr,
+                            None => match self
+                                .validated_stack_return_address(self.cpu.regs()[cpu::Cpu::SP])
+                            {
+                                Some((return_addr, caller_sp)) => GuestTrapRecovery::UnwindStack {
+                                    return_addr,
+                                    caller_sp,
+                                    reason: "branching to LR keeps re-trapping at the same site \
+                                             and the frame-pointer chain is unusable",
+                                },
+                                None => GuestTrapRecovery::ReturnToLr,
+                            },
                         }
                     }
                     _ => GuestTrapRecovery::ReturnToLr,
@@ -3252,6 +3342,16 @@ impl Environment {
                              saved LR={:#x}, caller SP={:#x}) and returning 0 to bypass \
                              the guest trap, because {}.",
                             frame.fp, frame.saved_fp, frame.saved_lr, frame.caller_sp, reason
+                        ),
+                        GuestTrapRecovery::UnwindStack {
+                            return_addr,
+                            caller_sp,
+                            reason,
+                        } => format!(
+                            "Unwinding the return address {:#x} from the guest stack \
+                             (caller SP={:#x}) and returning 0 to bypass the guest \
+                             trap, because {}.",
+                            return_addr, caller_sp, reason
                         ),
                         GuestTrapRecovery::SkipInstruction { reason } => format!(
                             "Skipping the faulting instruction (continuing at {:#x}), because {}.",
