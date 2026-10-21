@@ -280,6 +280,12 @@ enum GuestTrapRecovery {
         frame: GuestFrameRecord,
         reason: &'static str,
     },
+    /// Walk the whole frame-pointer chain (not just the top record) and resume
+    /// the nearest frame in the main executable with its caller SP/FP restored.
+    /// Needed when a wild PC keeps walking through data while LR stays at the
+    /// same stale call site: branching to LR alone leaves the callee's broken
+    /// SP behind, so the caller re-enters the same trap with a shifted PC.
+    UnwindToAppFrame { reason: &'static str },
     /// Step over the faulting instruction and continue in the same function.
     SkipInstruction { reason: &'static str },
 }
@@ -2696,6 +2702,35 @@ impl Environment {
                 self.cpu
                     .branch(GuestFunction::from_addr_with_thumb_bit(frame.saved_lr));
             }
+            GuestTrapRecovery::UnwindToAppFrame { reason } => {
+                // A stale LR in a wild-PC trap usually means the stack pointer
+                // and frame pointer no longer match the function we are
+                // "returning" to. Branching to LR alone re-runs that caller
+                // with the wrong SP, which is how one bad return turns into a
+                // never-ending walk over zeroed stack memory. Walk the frame
+                // pointer chain instead and resume the nearest app frame with
+                // its caller SP restored.
+                if crate::libc::cxxabi::unwind_to_app_frame(self).is_some() {
+                    self.guest_control_flow_redirected = false;
+                } else {
+                    log_no_panic!(
+                        "Warning: could not unwind to an app frame while recovering \
+                         from a trap ({}); falling back to a plain return to LR.",
+                        reason
+                    );
+                    match self.validated_guest_frame_record() {
+                        Some(frame) => self.apply_guest_trap_recovery(
+                            GuestTrapRecovery::UnwindFrame { frame, reason },
+                            pc,
+                            instruction_len,
+                        ),
+                        None => {
+                            let lr = self.cpu.regs()[cpu::Cpu::LR];
+                            self.cpu.branch(GuestFunction::from_addr_with_thumb_bit(lr));
+                        }
+                    }
+                }
+            }
             GuestTrapRecovery::SkipInstruction { .. } => {
                 // Advance past the faulting instruction so the guest makes
                 // forward progress, and clear the bypass counters since we're
@@ -3204,6 +3239,14 @@ impl Environment {
                         }
                     }
                     GuestTrapKind::OutsideCode | GuestTrapKind::ExecutionInData { .. }
+                        if lr_count >= UNWIND_AFTER_REPEATS =>
+                    {
+                        GuestTrapRecovery::UnwindToAppFrame {
+                            reason: "returning to the same LR keeps faulting at a new, \
+                                     ever-advancing PC (the stack/FP are stale)",
+                        }
+                    }
+                    GuestTrapKind::OutsideCode | GuestTrapKind::ExecutionInData { .. }
                         if count >= UNWIND_AFTER_REPEATS =>
                     {
                         match self.validated_guest_frame_record() {
@@ -3252,6 +3295,11 @@ impl Environment {
                              saved LR={:#x}, caller SP={:#x}) and returning 0 to bypass \
                              the guest trap, because {}.",
                             frame.fp, frame.saved_fp, frame.saved_lr, frame.caller_sp, reason
+                        ),
+                        GuestTrapRecovery::UnwindToAppFrame { reason } => format!(
+                            "Unwinding the frame-pointer chain to the nearest app frame \
+                             and restoring its caller SP/FP, because {}.",
+                            reason
                         ),
                         GuestTrapRecovery::SkipInstruction { reason } => format!(
                             "Skipping the faulting instruction (continuing at {:#x}), because {}.",

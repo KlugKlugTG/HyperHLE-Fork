@@ -868,6 +868,8 @@ impl Dyld {
 
         assert!(stubs.size % entry_size == 0);
         let stub_count = stubs.size / entry_size;
+        let mut skipped_stubs: Vec<u32> = Vec::new();
+        let mut skipped_stub_count = 0usize;
         for i in 0..stub_count {
             let ptr: MutPtr<u32> = Ptr::from_bits(stubs.addr + i * entry_size);
 
@@ -891,6 +893,10 @@ impl Dyld {
                 }
             }
             if mismatch {
+                skipped_stub_count += 1;
+                if skipped_stubs.len() < 8 {
+                    skipped_stubs.push(stubs.addr + i * entry_size);
+                }
                 continue;
             }
 
@@ -909,6 +915,17 @@ impl Dyld {
             }
             // Leave the __la_symbol_ptr intact in case we want to link it to
             // a real symbol later.
+        }
+        if !skipped_stubs.is_empty() {
+            log!(
+                "Warning: setup_lazy_linking: {} of {} stubs in {:?} did not match the \
+                 expected pattern and were left unpatched (first: {:#x?}). Calls through \
+                 them jump to the unrelocated __la_symbol_ptr and can land on the image base.",
+                skipped_stub_count,
+                stub_count,
+                bin.name,
+                skipped_stubs
+            );
         }
     }
 
