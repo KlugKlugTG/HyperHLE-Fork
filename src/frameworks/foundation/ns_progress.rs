@@ -23,12 +23,28 @@ struct NSProgressHostObject {
     cancelled: bool,
     paused: bool,
     pausable: bool,
+    cancellable: bool,
     indeterminate: bool,
     kind: id,
     localized_description: id,
     user_info: id,
+    cancellation_handler: id,
+    pausing_handler: id,
+    resuming_handler: id,
 }
 impl HostObject for NSProgressHostObject {}
+
+fn set_handler(
+    env: &mut crate::Environment,
+    object: id,
+    handler: id,
+    field: fn(&mut NSProgressHostObject) -> &mut id,
+) {
+    let copy: id = if handler == nil { nil } else { msg![env; handler copy] };
+    let old = *field(env.objc.borrow_mut::<NSProgressHostObject>(object));
+    *field(env.objc.borrow_mut::<NSProgressHostObject>(object)) = copy;
+    release(env, old);
+}
 
 pub const CLASSES: ClassExports = objc_classes! {
 
@@ -106,6 +122,30 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 - (())resume {
     env.objc.borrow_mut::<NSProgressHostObject>(this).paused = false;
+}
+- (bool)isCancellable {
+    env.objc.borrow::<NSProgressHostObject>(this).cancellable
+}
+- (())setCancellable:(bool)value {
+    env.objc.borrow_mut::<NSProgressHostObject>(this).cancellable = value;
+}
+- (id)cancellationHandler {
+    env.objc.borrow::<NSProgressHostObject>(this).cancellation_handler
+}
+- (())setCancellationHandler:(id)handler {
+    set_handler(env, this, handler, |host| &mut host.cancellation_handler);
+}
+- (id)pausingHandler {
+    env.objc.borrow::<NSProgressHostObject>(this).pausing_handler
+}
+- (())setPausingHandler:(id)handler {
+    set_handler(env, this, handler, |host| &mut host.pausing_handler);
+}
+- (id)resumingHandler {
+    env.objc.borrow::<NSProgressHostObject>(this).resuming_handler
+}
+- (())setResumingHandler:(id)handler {
+    set_handler(env, this, handler, |host| &mut host.resuming_handler);
 }
 
 - (id)kind {
@@ -200,13 +240,23 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())dealloc {
-    let (kind, localized_description, user_info) = {
+    let (kind, localized_description, user_info, cancellation_handler, pausing_handler, resuming_handler) = {
         let host = env.objc.borrow::<NSProgressHostObject>(this);
-        (host.kind, host.localized_description, host.user_info)
+        (
+            host.kind,
+            host.localized_description,
+            host.user_info,
+            host.cancellation_handler,
+            host.pausing_handler,
+            host.resuming_handler,
+        )
     };
     release(env, kind);
     release(env, localized_description);
     release(env, user_info);
+    release(env, cancellation_handler);
+    release(env, pausing_handler);
+    release(env, resuming_handler);
     env.objc.dealloc_object(this, &mut env.mem);
 }
 

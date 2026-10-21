@@ -81,6 +81,10 @@ pub const CLASSES: ClassExports = objc_classes! {
     msg![env; this hashTableWithOptions:5u32]
 }
 
+- (id)copyWithZone:(NSZonePtr)_zone {
+    crate::objc::retain(env, this)
+}
+
 - (id)init {
     msg![env; this initWithOptions:0u32 capacity:0u32]
 }
