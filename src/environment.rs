@@ -3231,14 +3231,18 @@ impl Environment {
                     | GuestTrapKind::MisalignedInstruction { .. } => {
                         self.plan_guest_trap_recovery(pc, lr, count >= UNWIND_AFTER_REPEATS)
                     }
-                    GuestTrapKind::OutsideCode | GuestTrapKind::ExecutionInData { .. }
+                    GuestTrapKind::UndecodableInstruction { .. }
+                    | GuestTrapKind::OutsideCode
+                    | GuestTrapKind::ExecutionInData { .. }
                         if (lr & !1) == pc =>
                     {
                         GuestTrapRecovery::SkipInstruction {
                             reason: "LR re-enters the same instruction",
                         }
                     }
-                    GuestTrapKind::OutsideCode | GuestTrapKind::ExecutionInData { .. }
+                    GuestTrapKind::UndecodableInstruction { .. }
+                    | GuestTrapKind::OutsideCode
+                    | GuestTrapKind::ExecutionInData { .. }
                         if lr_count >= UNWIND_AFTER_REPEATS =>
                     {
                         GuestTrapRecovery::UnwindToAppFrame {
