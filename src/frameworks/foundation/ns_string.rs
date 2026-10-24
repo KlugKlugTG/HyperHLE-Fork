@@ -2322,6 +2322,15 @@ pub const CLASSES: ClassExports = objc_classes! {
     nil
 }
 
+- (id)stringByResolvingSymlinksInPath {
+    // Apple: expands a leading tilde, resolves symlinks, removes "." and
+    // ".." components, and strips a "/private" prefix. touchHLE's guest
+    // filesystem has no symlinks, so there is nothing to resolve, and the
+    // result is what stringByStandardizingPath already produces (it also
+    // expands the tilde via stringByExpandingTildeInPath).
+    msg![env; this stringByStandardizingPath]
+}
+
 - (NSUInteger)lengthOfBytesUsingEncoding:(NSUInteger)encoding {
     let s = ns_string::to_rust_string(env, this);
     match encoding {

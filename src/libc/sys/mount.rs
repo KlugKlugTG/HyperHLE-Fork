@@ -119,5 +119,32 @@ fn fstatfs(env: &mut Environment, fd: FileDescriptor, buf: MutPtr<statfs>) -> i3
     result
 }
 
-pub const FUNCTIONS: FunctionExports =
-    &[export_c_func!(statfs(_, _)), export_c_func!(fstatfs(_, _))];
+/// `getfsstat(2)`: fill `buf` with one `statfs` per mounted filesystem.
+///
+/// touchHLE presents exactly one (fake) filesystem, so there is always one
+/// entry. As on real systems, a null `buf` just returns the count, and a
+/// buffer too small for an entry gets nothing written (returns 0). `flags`
+/// (`MNT_WAIT`/`MNT_NOWAIT`/`MNT_DWAIT`) only affect whether cached data is
+/// refreshed, which is meaningless for a fake filesystem, so it is ignored.
+fn getfsstat(env: &mut Environment, buf: MutPtr<statfs>, bufsize: i32, _flags: i32) -> i32 {
+    const MOUNTED_FS_COUNT: i32 = 1;
+    let entry_size = std::mem::size_of::<statfs>() as i32;
+
+    let result = if buf.is_null() {
+        MOUNTED_FS_COUNT
+    } else if bufsize >= entry_size {
+        env.mem.write(buf, fake_statfs());
+        MOUNTED_FS_COUNT
+    } else {
+        0
+    };
+
+    log_dbg!("getfsstat({buf:?}, {bufsize}, _) -> {result}");
+    result
+}
+
+pub const FUNCTIONS: FunctionExports = &[
+    export_c_func!(statfs(_, _)),
+    export_c_func!(fstatfs(_, _)),
+    export_c_func!(getfsstat(_, _, _)),
+];

@@ -319,9 +319,152 @@ fn thread_suspend(env: &mut Environment, target_act: thread_inspect_t) -> kern_r
     KERN_SUCCESS
 }
 
+type exception_mask_t = natural_t;
+/// Really `int` in the headers, but we do bit tests on it
+/// (`MACH_EXCEPTION_CODES` is bit 31), so use the unsigned type. Same width.
+type exception_behavior_t = u32;
+
+/// Exception types are numbered from 1 (0 is illegal) and the mask bit for
+/// type N is `1 << N`. This accepts every type XNU has defined, up to
+/// `EXC_CORPSE_NOTIFY` (13), so apps built against newer SDKs aren't rejected.
+const EXC_MASK_VALID: exception_mask_t = 0x3FFE; // bits 1..=13
+
+const EXCEPTION_DEFAULT: exception_behavior_t = 1;
+const EXCEPTION_STATE: exception_behavior_t = 2;
+const EXCEPTION_STATE_IDENTITY: exception_behavior_t = 3;
+const MACH_EXCEPTION_CODES: exception_behavior_t = 0x8000_0000;
+
+/// Whether `target_act` names a thread we know about (same port-numbering
+/// convention as `thread_resume`/`thread_suspend`: `thread_id + 1`).
+fn thread_port_is_valid(env: &Environment, target_act: thread_inspect_t) -> bool {
+    target_act != MACH_PORT_NULL
+        && target_act != MACH_PORT_DEAD
+        && ((target_act - 1) as usize) < env.threads.len()
+}
+
+/// `kern_return_t thread_set_exception_ports(thread_act_t, exception_mask_t,
+/// mach_port_t new_port, exception_behavior_t, thread_state_flavor_t)`
+///
+/// Crash reporters (PLCrashReporter, Breakpad, Crashlytics, ...) use this to
+/// route Mach exceptions to their own port. touchHLE never raises Mach
+/// exceptions, so we validate the arguments the way XNU does and then accept
+/// the request without recording it.
+fn thread_set_exception_ports(
+    env: &mut Environment,
+    thread: thread_t,
+    exception_mask: exception_mask_t,
+    new_port: mach_port_t,
+    behavior: exception_behavior_t,
+    new_flavor: thread_state_flavor_t,
+) -> kern_return_t {
+    if !thread_port_is_valid(env, thread) {
+        log!(
+            "Warning: thread_set_exception_ports({:?}): unknown thread; returning KERN_INVALID_ARGUMENT.",
+            thread
+        );
+        return KERN_INVALID_ARGUMENT;
+    }
+    if exception_mask & !EXC_MASK_VALID != 0 {
+        log!(
+            "Warning: thread_set_exception_ports(): invalid exception mask {:#x}; returning KERN_INVALID_ARGUMENT.",
+            exception_mask
+        );
+        return KERN_INVALID_ARGUMENT;
+    }
+
+    // As in XNU, the behavior is only checked when a real port is supplied.
+    // (The flavor can't be checked cheaply, and XNU doesn't either.)
+    let installs_handler = new_port != MACH_PORT_NULL && new_port != MACH_PORT_DEAD;
+    if installs_handler {
+        match behavior & !MACH_EXCEPTION_CODES {
+            EXCEPTION_DEFAULT | EXCEPTION_STATE | EXCEPTION_STATE_IDENTITY => {}
+            _ => {
+                log!(
+                    "Warning: thread_set_exception_ports(): invalid behavior {:#x}; returning KERN_INVALID_ARGUMENT.",
+                    behavior
+                );
+                return KERN_INVALID_ARGUMENT;
+            }
+        }
+        log!(
+            "Warning: thread_set_exception_ports({:?}, {:#x}, {:?}, {:#x}, {}): touchHLE never delivers Mach exceptions, so this handler will not be invoked.",
+            thread,
+            exception_mask,
+            new_port,
+            behavior,
+            new_flavor
+        );
+    } else {
+        log_dbg!(
+            "thread_set_exception_ports({:?}, {:#x}, {:?}, {:#x}, {}) (handler cleared)",
+            thread,
+            exception_mask,
+            new_port,
+            behavior,
+            new_flavor
+        );
+    }
+
+    KERN_SUCCESS
+}
+
+/// `kern_return_t thread_get_exception_ports(thread_act_t,
+/// exception_mask_t, exception_mask_array_t masks, mach_msg_type_number_t
+/// *masksCnt, exception_handler_array_t old_handlers,
+/// exception_behavior_array_t old_behaviors, exception_flavor_array_t
+/// old_flavors)`
+///
+/// Like XNU, only exception types that have a handler registered are
+/// reported. Since touchHLE never records any, the answer is always "none":
+/// `*masksCnt` is set to 0 and the output arrays are left untouched. That's
+/// what crash reporters expect to see on a thread nobody has hooked yet.
+#[allow(clippy::too_many_arguments)]
+fn thread_get_exception_ports(
+    env: &mut Environment,
+    thread: thread_t,
+    exception_mask: exception_mask_t,
+    _masks: MutPtr<exception_mask_t>,
+    masks_count: MutPtr<mach_msg_type_number_t>,
+    _old_handlers: MutPtr<mach_port_t>,
+    _old_behaviors: MutPtr<exception_behavior_t>,
+    _old_flavors: MutPtr<thread_state_flavor_t>,
+) -> kern_return_t {
+    if !thread_port_is_valid(env, thread) {
+        log!(
+            "Warning: thread_get_exception_ports({:?}): unknown thread; returning KERN_INVALID_ARGUMENT.",
+            thread
+        );
+        return KERN_INVALID_ARGUMENT;
+    }
+    if exception_mask & !EXC_MASK_VALID != 0 {
+        log!(
+            "Warning: thread_get_exception_ports(): invalid exception mask {:#x}; returning KERN_INVALID_ARGUMENT.",
+            exception_mask
+        );
+        return KERN_INVALID_ARGUMENT;
+    }
+    if masks_count.is_null() {
+        // A real kernel/MIG stub would fault in the guest; don't take the
+        // host down with it.
+        log!("Warning: thread_get_exception_ports(): null masksCnt; returning KERN_INVALID_ARGUMENT.");
+        return KERN_INVALID_ARGUMENT;
+    }
+
+    env.mem.write(masks_count, 0);
+
+    log_dbg!(
+        "thread_get_exception_ports({:?}, {:#x}, ...) => 0 handlers",
+        thread,
+        exception_mask
+    );
+    KERN_SUCCESS
+}
+
 pub const FUNCTIONS: FunctionExports = &[
+    export_c_func!(thread_get_exception_ports(_, _, _, _, _, _, _)),
     export_c_func!(thread_info(_, _, _, _)),
     export_c_func!(thread_policy_set(_, _, _, _)),
     export_c_func!(thread_resume(_)),
+    export_c_func!(thread_set_exception_ports(_, _, _, _, _)),
     export_c_func!(thread_suspend(_)),
 ];

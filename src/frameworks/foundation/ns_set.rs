@@ -551,6 +551,41 @@ pub const CLASSES: ClassExports = objc_classes! {
     this
 }
 
+// Pragmatic compatibility shim: NOT part of Apple's NSSet/NSMutableSet API.
+//
+// Some apps send dictionary selectors to an object that is a set here (a
+// mis-typed property, or a container whose class was resolved differently
+// than on a real device). A set has no real implementation of these, so
+// they would otherwise hit "does not respond to selector". Our backing
+// store is already a key -> value table whose values are normally the
+// NSNull placeholder, so we can answer them faithfully: the key becomes a
+// set member and the value is kept alongside it.
+- (id)objectForKey:(id)key {
+    if key == nil {
+        return nil;
+    }
+    log_dbg!("-[_touchHLE_NSMutableSet {:?} objectForKey:{:?}] (dictionary shim)", this, key);
+    let host_obj: SetHostObject = std::mem::take(env.objc.borrow_mut(this));
+    let value = host_obj.dict.lookup(env, key);
+    *env.objc.borrow_mut(this) = host_obj;
+    value
+}
+
+- (())setObject:(id)object forKey:(id)key {
+    // Apple's NSMutableDictionary raises NSInvalidArgumentException for nil.
+    if key == nil || object == nil {
+        log!(
+            "Warning: -[_touchHLE_NSMutableSet {:?} setObject:{:?} forKey:{:?}] with nil argument; ignoring.",
+            this, object, key
+        );
+        return;
+    }
+    log_dbg!("-[_touchHLE_NSMutableSet {:?} setObject:{:?} forKey:{:?}] (dictionary shim)", this, object, key);
+    let mut host_obj: SetHostObject = std::mem::take(env.objc.borrow_mut(this));
+    host_obj.dict.insert(env, key, object, /* copy_key: */ false);
+    *env.objc.borrow_mut(this) = host_obj;
+}
+
 - (())dealloc {
     std::mem::take(&mut env.objc.borrow_mut::<SetHostObject>(this).dict).release(env);
     env.objc.dealloc_object(this, &mut env.mem)

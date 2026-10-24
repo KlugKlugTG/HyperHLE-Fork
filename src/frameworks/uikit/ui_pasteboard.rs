@@ -5,13 +5,17 @@
  */
 //! `UIPasteboard` and `UILocalNotification`.
 
-use crate::frameworks::foundation::ns_string;
+use crate::frameworks::foundation::{ns_string, NSUInteger};
 use crate::objc::{
     id, msg, msg_class, nil, objc_classes, release, retain, ClassExports, HostObject, NSZonePtr,
 };
 use std::collections::HashMap;
 
 // MARK: - UIPasteboard host object
+
+/// Pasteboard types that `-string` / `-setString:` implicitly provide.
+/// (This is the content of `UIPasteboardTypeListString`.)
+const STRING_PASTEBOARD_TYPES: [&str; 2] = ["public.utf8-plain-text", "public.plain-text"];
 
 #[derive(Default)]
 struct UIPasteboardHostObject {
@@ -220,6 +224,37 @@ pub const CLASSES: ClassExports = objc_classes! {
     if let Some(old) = old_data {
         release(env, old);
     }
+}
+
+// Returns YES only if *every* requested type is present. touchHLE's
+// pasteboard has a single item, so "the first item" is the whole pasteboard.
+- (bool)containsPasteboardTypes:(id)pasteboard_types { // NSArray<NSString*>*
+    if pasteboard_types == nil {
+        return false;
+    }
+
+    let count: NSUInteger = msg![env; pasteboard_types count];
+    if count == 0 {
+        return false;
+    }
+
+    for i in 0..count {
+        let type_obj: id = msg![env; pasteboard_types objectAtIndex:i];
+        if type_obj == nil {
+            return false;
+        }
+        let type_str = ns_string::to_rust_string(env, type_obj);
+        let key: &str = type_str.as_ref();
+
+        let host = env.objc.borrow::<UIPasteboardHostObject>(this);
+        let present = host.data_by_type.contains_key(key)
+            || (host.string != nil && STRING_PASTEBOARD_TYPES.contains(&key));
+        if !present {
+            return false;
+        }
+    }
+
+    true
 }
 
 @end

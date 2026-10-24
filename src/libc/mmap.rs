@@ -61,7 +61,18 @@ fn mmap(
     }
 
     if (flags & MAP_ANON) != 0 {
-        assert!(ptr.to_bits() & PAGE_SIZE_ALIGN_MASK == 0);
+        // Real mmap always returns page-aligned addresses and callers (e.g.
+        // Boehm GC) rely on that. Fail gracefully instead of panicking the host.
+        if ptr.to_bits() & PAGE_SIZE_ALIGN_MASK != 0 {
+            log!(
+                "Warning: mmap MAP_ANON: allocator returned unaligned address {:?} for {} bytes; returning MAP_FAILED",
+                ptr,
+                len
+            );
+            env.mem.free(ptr);
+            set_errno(env, ENOMEM);
+            return MAP_FAILED;
+        }
 
         // Убираем жесткие assert_eq!(fd, -1) и assert_eq!(offset, 0).
         // В реальной iOS/Darwin при наличии флага MAP_ANON аргументы fd и
