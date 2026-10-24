@@ -60,7 +60,19 @@ pub const CLASSES: ClassExports = objc_classes! {
     msg_class![env; NSData dataWithBytesNoCopy:ptr length:len]
 }
 
-+ (id)propertyListFromData:(id)data // NSData *
++ (id)dataWithPropertyList:(id)plist
+                    format:(NSPropertyListFormat)format
+                   options:(NSUInteger)_options
+                     error:(MutPtr<id>)error { // NSError **
+    if !error.is_null() {
+        env.mem.write(error, nil);
+    }
+    let error_desc: MutPtr<id> = crate::mem::Ptr::null();
+    msg_class![env; NSPropertyListSerialization
+            dataFromPropertyList:plist
+                          format:format
+                errorDescription:error_desc]
+                     }+ (id)propertyListFromData:(id)data // NSData *
           mutabilityOption:(NSPropertyListMutabilityOptions)opt
                     format:(MutPtr<NSPropertyListFormat>)format
           errorDescription:(MutPtr<id>)error_string { // NSString **

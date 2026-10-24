@@ -25,6 +25,7 @@ struct NSXMLParserHostObject {
     delegate: id,
     error: id, // NSError*
     should_resolve_external_entities: bool,
+    process_namespaces: bool,
 }
 impl HostObject for NSXMLParserHostObject {}
 
@@ -40,6 +41,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         delegate: nil,
         error: nil,
         should_resolve_external_entities: false,
+        process_namespaces: false,
     });
     env.objc.alloc_object(this, host_object, &mut env.mem)
 }
@@ -70,7 +72,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         env.objc.borrow_mut::<NSXMLParserHostObject>(this).should_resolve_external_entities = should_resolve;
 }
 - (())setShouldProcessNamespaces:(bool)should {
-    todo_objc_setter!(this, should);
+    env.objc.borrow_mut::<NSXMLParserHostObject>(this).process_namespaces = should;
 }
 - (())setShouldReportNamespacePrefixes:(bool)should {
     todo_objc_setter!(this, should);
@@ -99,6 +101,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         return false;
     }
 
+    let process_namespaces = env.objc.borrow::<NSXMLParserHostObject>(this).process_namespaces;
     log_dbg!("Parsing XML data ({} bytes)...", length);
     let bytes: &[u8] = env.mem.bytes_at_mut(bytes.cast().cast_mut(), length);
 
@@ -113,6 +116,8 @@ pub const CLASSES: ClassExports = objc_classes! {
     reader.config_mut().trim_markup_names_in_closing_tags = true;
 
     let mut events: Vec<Event<'_>> = Vec::new();
+    let mut ns_uris: Vec<Option<String>> = Vec::new();
+    let mut ns_stack: Vec<NsFrame> = Vec::new();
     let mut had_error = false;
     let mut error_position: i32 = 0;
     let mut error_message: String = String::new();
@@ -122,6 +127,12 @@ pub const CLASSES: ClassExports = objc_classes! {
         match reader.read_event() {
             Ok(Event::Eof) => break,
             Ok(e) => {
+                let ns_uri = if process_namespaces {
+                    ns_resolve(&mut ns_stack, &e)
+                } else {
+                    None
+                };
+                ns_uris.push(ns_uri);
                 events.push(e.into_owned());
                 consecutive_errors = 0;
             }
@@ -178,7 +189,14 @@ pub const CLASSES: ClassExports = objc_classes! {
         () = msg![env; delegate parserDidStartDocument:this];
     }
 
-    for event in &events {
+    for (event_index, event) in events.iter().enumerate() {
+        let ns_uri_id: id = match &ns_uris[event_index] {
+            Some(uri) => {
+                let s: id = from_rust_string(env, uri.clone());
+                autorelease(env, s)
+            }
+            None => nil,
+        };
         match event {
             Event::Empty(e) => {
                 let name = safe_local_name(e.local_name().as_ref());
@@ -193,7 +211,7 @@ pub const CLASSES: ClassExports = objc_classes! {
                     let dict = build_attributes_dict(env, e);
                     () = msg![env; delegate parser:this
                                    didStartElement:name_id
-                                      namespaceURI:nil
+                                      namespaceURI:ns_uri_id
                                      qualifiedName:name_id
                                         attributes:dict];
                 }
@@ -205,7 +223,7 @@ pub const CLASSES: ClassExports = objc_classes! {
                 if delegate != nil && msg![env; delegate respondsToSelector:sel_end] {
                     () = msg![env; delegate parser:this
                                      didEndElement:name_id
-                                      namespaceURI:nil
+                                      namespaceURI:ns_uri_id
                                      qualifiedName:name_id];
                 }
             }
@@ -237,7 +255,7 @@ pub const CLASSES: ClassExports = objc_classes! {
                     let dict = build_attributes_dict(env, e);
                     () = msg![env; delegate parser:this
                                    didStartElement:name_id
-                                      namespaceURI:nil
+                                      namespaceURI:ns_uri_id
                                      qualifiedName:name_id
                                         attributes:dict];
                 }
@@ -254,7 +272,7 @@ pub const CLASSES: ClassExports = objc_classes! {
                 if delegate != nil && msg![env; delegate respondsToSelector:sel_end] {
                     () = msg![env; delegate parser:this
                                      didEndElement:name_id
-                                      namespaceURI:nil
+                                      namespaceURI:ns_uri_id
                                      qualifiedName:name_id];
                 }
             }
@@ -350,6 +368,77 @@ pub const CLASSES: ClassExports = objc_classes! {
 /// using lossy UTF-8 conversion (replaces invalid bytes with '').
 fn safe_local_name(name_bytes: &[u8]) -> String {
     String::from_utf8_lossy(name_bytes).into_owned()
+}
+
+/// One level of the XML element stack, used to resolve namespace URIs.
+struct NsFrame {
+    /// `xmlns` / `xmlns:prefix` declarations made on this element
+    /// (an empty prefix means the default namespace).
+    decls: Vec<(String, String)>,
+    /// The namespace URI this element itself resolved to, if any.
+    element_uri: Option<String>,
+}
+
+/// Keeps `stack` up to date for Start/Empty/End events and returns the
+/// namespace URI of the element (`None` for other events or no namespace).
+fn ns_resolve(stack: &mut Vec<NsFrame>, event: &Event<'_>) -> Option<String> {
+    match event {
+        Event::Start(e) => {
+            let frame = ns_make_frame(&stack[..], e);
+            let uri = frame.element_uri.clone();
+            stack.push(frame);
+            uri
+        }
+        Event::Empty(e) => ns_make_frame(&stack[..], e).element_uri,
+        Event::End(_) => stack.pop().and_then(|frame| frame.element_uri),
+        _ => None,
+    }
+}
+
+fn ns_make_frame(stack: &[NsFrame], e: &BytesStart<'_>) -> NsFrame {
+    let mut decls: Vec<(String, String)> = Vec::new();
+    for attr in e.attributes().flatten() {
+        let key = String::from_utf8_lossy(attr.key.as_ref()).into_owned();
+        let value = match attr.unescape_value() {
+            Ok(v) => v.to_string(),
+            Err(_) => String::from_utf8_lossy(attr.value.as_ref()).into_owned(),
+        };
+        if key == "xmlns" {
+            decls.push((String::new(), value));
+        } else if let Some(prefix) = key.strip_prefix("xmlns:") {
+            decls.push((prefix.to_string(), value));
+        }
+    }
+
+    let raw_name = String::from_utf8_lossy(e.name().as_ref()).into_owned();
+    let prefix: &str = match raw_name.split_once(':') {
+        Some((p, _)) => p,
+        None => "",
+    };
+
+    let mut element_uri: Option<String> = None;
+    for (p, uri) in decls.iter() {
+        if p == prefix {
+            element_uri = Some(uri.clone());
+        }
+    }
+    if element_uri.is_none() {
+        for frame in stack.iter().rev() {
+            for (p, uri) in frame.decls.iter() {
+                if p == prefix {
+                    element_uri = Some(uri.clone());
+                }
+            }
+            if element_uri.is_some() {
+                break;
+            }
+        }
+    }
+    // `xmlns=""` explicitly means "no namespace".
+    if element_uri.as_deref() == Some("") {
+        element_uri = None;
+    }
+    NsFrame { decls, element_uri }
 }
 
 /// Safely decode text from a Text event, returning None on failure.

@@ -17,7 +17,7 @@
 use super::ns_string;
 use super::NSUInteger;
 use crate::libc::posix_io;
-use crate::mem::{ConstPtr, ConstVoidPtr};
+use crate::mem::{ConstPtr, ConstVoidPtr, MutPtr};
 use crate::objc::{
     autorelease, id, msg, msg_class, nil, objc_classes, release, retain, ClassExports, HostObject,
     NSZonePtr,
@@ -183,6 +183,45 @@ pub const CLASSES: ClassExports = objc_classes! {
         },
     }
 }
+
++ (id)fileHandleForReadingFromURL:(id)url error:(MutPtr<id>)error {
+    let path: id = msg![env; url path];
+    let handle: id = if path == nil {
+        nil
+    } else {
+        msg![env; this fileHandleForReadingAtPath:path]
+    };
+    if handle == nil && !error.is_null() {
+        env.mem.write(error, nil);
+    }
+    handle
+}
+
++ (id)fileHandleForWritingToURL:(id)url error:(MutPtr<id>)error {
+    let path: id = msg![env; url path];
+    let handle: id = if path == nil {
+        nil
+    } else {
+        msg![env; this fileHandleForWritingAtPath:path]
+    };
+    if handle == nil && !error.is_null() {
+        env.mem.write(error, nil);
+    }
+    handle
+}
+
++ (id)fileHandleForUpdatingURL:(id)url error:(MutPtr<id>)error {
+    let path: id = msg![env; url path];
+    let handle: id = if path == nil {
+        nil
+    } else {
+        msg![env; this fileHandleForUpdatingAtPath:path]
+    };
+    if handle == nil && !error.is_null() {
+        env.mem.write(error, nil);
+    }
+    handle
+    }
 
 - (i32)fileDescriptor {
     env.objc.borrow::<NSFileHandleHostObject>(this).fd
